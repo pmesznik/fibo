@@ -63,7 +63,7 @@
   <aside class="toc">
     <details open>
       <summary>Contents</summary>
-      <ol><li><a href="#install">Installation</a></li><li><a href="#start">Getting started</a></li><li><a href="#library">Library and albums</a></li><li><a href="#search">Search and filters</a></li><li><a href="#tags">Tags, ratings and favorites</a></li><li><a href="#viewer">Photo viewer</a></li><li><a href="#editor">Photo editor</a></li><li><a href="#collage">Collages</a></li><li><a href="#map">Map</a></li><li><a href="#duplicates">Duplicates</a></li><li><a href="#data">Data and privacy</a></li><li><a href="#shortcuts">Keyboard shortcuts</a></li><li><a href="#faq">FAQ</a></li><li><a href="#build">Building from source</a></li><li><a href="#license">License</a></li></ol>
+      <ol><li><a href="#install">Installation</a></li><li><a href="#start">Getting started</a></li><li><a href="#library">Library and albums</a></li><li><a href="#search">Search and filters</a></li><li><a href="#tags">Tags, ratings and favorites</a></li><li><a href="#viewer">Photo viewer</a></li><li><a href="#editor">Photo editor</a></li><li><a href="#collage">Collages</a></li><li><a href="#map">Map</a></li><li><a href="#duplicates">Duplicates</a></li><li><a href="#data">Data and privacy</a></li><li><a href="#shortcuts">Keyboard shortcuts</a></li><li><a href="#updates">Updates</a></li><li><a href="#faq">FAQ</a></li><li><a href="#build">Building from source</a></li><li><a href="#license">License</a></li></ol>
     </details>
   </aside>
   <div class="doc-body">
@@ -175,6 +175,15 @@
           <tr><td><kbd>Esc</kbd></td><td>Closes in turn: red-eye mode, edit panel, full screen, viewer, menu</td></tr>
         </tbody>
       </table></section>
+    <section id="updates"><h3 class="sec-title">Updates</h3>
+      <p>Starting with version 0.2.0, FIBO checks GitHub for a newer version by itself:</p>
+      <ul>
+        <li>The check runs shortly after launch (silently when offline) and on demand: menu → <strong>Check for updates</strong>.</li>
+        <li>When a new version exists, FIBO asks: <em>Download and install</em>, <em>Later</em> or <em>Skip this version</em>. The release notes are shown in the dialog.</li>
+        <li>If you agree, FIBO downloads the installer with a progress bar, installs it and restarts. <strong>Save any open photo edits first.</strong></li>
+        <li>Updates are signed with the author’s key, and the app installs only updates with a valid signature. Your library, ratings and tags are untouched.</li>
+        <li>The version number is shown in the menu header. Version 0.1.0 must be updated by hand once, because it does not have this feature yet.</li>
+      </ul></section>
     <section id="faq"><h3 class="sec-title">FAQ</h3>
       <details><summary>Windows blocks the installer or the program.</summary><p>The program is not signed yet. See “Installation”: SmartScreen can be bypassed with “Run anyway”, while Smart App Control may require turning it off or waiting for a signed version.</p></details>
       <details><summary>The map is empty or shows an error.</summary><p>The map needs internet. If you are online but there are no pins, choose “Load locations from photos”: photos added earlier have no stored coordinates. Photos without GPS (such as screenshots) do not appear on the map.</p></details>

@@ -140,6 +140,15 @@ export const PL = {
           <tr><td>${kbd('Esc')}</td><td>Zamyka kolejno: tryb czerwonych oczu, panel edycji, pełny ekran, podgląd, menu</td></tr>
         </tbody>
       </table>` },
+    { id: 'updates', t: 'Aktualizacje', h: `
+      <p>Od wersji 0.2.0 FIBO sam sprawdza, czy na GitHubie jest nowsza wersja:</p>
+      <ul>
+        <li>Sprawdzenie następuje krótko po uruchomieniu (po cichu, gdy nie ma internetu) oraz na żądanie: menu → <strong>Sprawdź aktualizacje</strong>.</li>
+        <li>Gdy jest nowa wersja, FIBO pyta: <em>Pobierz i zainstaluj</em>, <em>Później</em> albo <em>Pomiń tę wersję</em>. W oknie widać opis zmian.</li>
+        <li>Po zgodzie FIBO pobiera instalator z paskiem postępu, instaluje go i uruchamia się ponownie. <strong>Zapisz najpierw otwarte edycje zdjęć.</strong></li>
+        <li>Aktualizacje są podpisane kluczem autora, a program instaluje tylko te z poprawnym podpisem. Biblioteka, oceny i tagi zostają bez zmian.</li>
+        <li>Numer wersji widać w nagłówku menu. Wersję 0.1.0 trzeba zaktualizować raz ręcznie, bo jeszcze nie ma tej funkcji.</li>
+      </ul>` },
     { id: 'faq', t: 'Najczęstsze pytania', h: `
       <details><summary>Windows blokuje instalator albo program.</summary><p>Program nie jest jeszcze podpisany cyfrowo. Zobacz sekcję „Instalacja”: SmartScreen da się obejść przyciskiem „Uruchom mimo to”, a Kontrola aplikacji inteligentnej może wymagać wyłączenia albo poczekania na wersję podpisaną.</p></details>
       <details><summary>Mapa jest pusta lub pokazuje błąd.</summary><p>Mapa wymaga internetu. Jeśli jest połączenie, a pinezek brak, wybierz „Wczytaj lokalizacje ze zdjęć”: zdjęcia dodane wcześniej nie mają zapisanych współrzędnych. Zdjęcia bez GPS (np. zrzuty ekranu) nie pojawią się na mapie.</p></details>
@@ -296,6 +305,15 @@ export const EN = {
           <tr><td>${kbd('Esc')}</td><td>Closes in turn: red-eye mode, edit panel, full screen, viewer, menu</td></tr>
         </tbody>
       </table>` },
+    { id: 'updates', t: 'Updates', h: `
+      <p>Starting with version 0.2.0, FIBO checks GitHub for a newer version by itself:</p>
+      <ul>
+        <li>The check runs shortly after launch (silently when offline) and on demand: menu → <strong>Check for updates</strong>.</li>
+        <li>When a new version exists, FIBO asks: <em>Download and install</em>, <em>Later</em> or <em>Skip this version</em>. The release notes are shown in the dialog.</li>
+        <li>If you agree, FIBO downloads the installer with a progress bar, installs it and restarts. <strong>Save any open photo edits first.</strong></li>
+        <li>Updates are signed with the author’s key, and the app installs only updates with a valid signature. Your library, ratings and tags are untouched.</li>
+        <li>The version number is shown in the menu header. Version 0.1.0 must be updated by hand once, because it does not have this feature yet.</li>
+      </ul>` },
     { id: 'faq', t: 'FAQ', h: `
       <details><summary>Windows blocks the installer or the program.</summary><p>The program is not signed yet. See “Installation”: SmartScreen can be bypassed with “Run anyway”, while Smart App Control may require turning it off or waiting for a signed version.</p></details>
       <details><summary>The map is empty or shows an error.</summary><p>The map needs internet. If you are online but there are no pins, choose “Load locations from photos”: photos added earlier have no stored coordinates. Photos without GPS (such as screenshots) do not appear on the map.</p></details>
