@@ -38,6 +38,7 @@
     "windows": {
       "nsis": {
         "languages": ["Polish"],
+        "customLanguageFiles": { "Polish": "installer/Polish.nsh" },
         "installMode": "currentUser",
         "installerIcon": "icons/icon.ico"
       }
