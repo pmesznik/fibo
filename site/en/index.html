@@ -63,7 +63,7 @@
   <aside class="toc">
     <details open>
       <summary>Contents</summary>
-      <ol><li><a href="#install">Installation</a></li><li><a href="#start">Getting started</a></li><li><a href="#library">Library and albums</a></li><li><a href="#search">Search and filters</a></li><li><a href="#tags">Tags, ratings and favorites</a></li><li><a href="#viewer">Photo viewer</a></li><li><a href="#editor">Photo editor</a></li><li><a href="#collage">Collages</a></li><li><a href="#map">Map</a></li><li><a href="#duplicates">Duplicates</a></li><li><a href="#data">Data and privacy</a></li><li><a href="#shortcuts">Keyboard shortcuts</a></li><li><a href="#updates">Updates</a></li><li><a href="#faq">FAQ</a></li><li><a href="#build">Building from source</a></li><li><a href="#license">License</a></li></ol>
+      <ol><li><a href="#install">Installation</a></li><li><a href="#start">Getting started</a></li><li><a href="#library">Library and albums</a></li><li><a href="#search">Search and filters</a></li><li><a href="#tags">Tags, ratings and favorites</a></li><li><a href="#xmp">Metadata in files (XMP)</a></li><li><a href="#albums">Your own albums</a></li><li><a href="#watch">Watched folders</a></li><li><a href="#files">File operations</a></li><li><a href="#viewer">Photo viewer</a></li><li><a href="#editor">Photo editor</a></li><li><a href="#collage">Collages</a></li><li><a href="#map">Map</a></li><li><a href="#duplicates">Duplicates</a></li><li><a href="#data">Data and privacy</a></li><li><a href="#shortcuts">Keyboard shortcuts</a></li><li><a href="#updates">Updates</a></li><li><a href="#faq">FAQ</a></li><li><a href="#build">Building from source</a></li><li><a href="#license">License</a></li></ol>
     </details>
   </aside>
   <div class="doc-body">
@@ -114,8 +114,40 @@
         <li><strong>Ratings:</strong> 1 to 5 stars (keys <kbd>1</kbd>–<kbd>5</kbd>, <kbd>0</kbd> clears).</li>
         <li><strong>Favorites:</strong> the heart or the <kbd>F</kbd> key.</li>
       </ul></section>
+    <section id="xmp"><h3 class="sec-title">Metadata in files (XMP)</h3>
+      <p>Tags, ratings and favorites are stored not only in the FIBO library but also in XMP files next to your photos (for example <code>photo.jpg.xmp</code>). They do not vanish with the database, and other programs (digiKam, Lightroom, darktable) can read them. The photos themselves are not modified.</p>
+      <ul>
+        <li><strong>Automatic saving</strong> is on by default. Turn it off in the menu → <em>Metadata in files</em>, which also has a <em>Save everything to XMP files</em> button.</li>
+        <li><strong>XMP files from other programs</strong> are left untouched: FIBO recognises them by the missing FIBO marker and skips them.</li>
+        <li><strong>Reading:</strong> when adding photos, FIBO picks up the tags and ratings they already have: from Windows Explorer (“Tags” and “Rating”), from XMP and IPTC in JPEG files (the way Picasa stored them) and from <code>.xmp</code> files next to the photos. For photos already in the library use <em>Load tags and ratings from files</em>. Reading only adds: it never overwrites ratings or removes tags.</li>
+        <li>A tag the photo already has is not added a second time.</li>
+      </ul></section>
+    <section id="albums"><h3 class="sec-title">Your own albums</h3>
+      <p>Albums in <strong>Albums → My albums</strong> do not depend on folders: they are your own collections, and one photo can be in many albums. Files stay where they are.</p>
+      <ul>
+        <li>New album: the <em>New album</em> button, or right-click selected photos → <em>Add to album…</em> → <em>New album…</em>.</li>
+        <li>Opening an album shows its photos in the library. Right-click → <em>Remove from this album</em> takes photos out of the album (not off the disk).</li>
+        <li>Each album has rename and delete buttons. Deleting an album does not delete photos. Album names are unique (case does not matter).</li>
+      </ul></section>
+    <section id="watch"><h3 class="sec-title">Watched folders</h3>
+      <p>A folder added with <em>Add folder</em> is watched from then on. FIBO checks it <strong>after launch, when you return to the window (at most once per 30 seconds) and every 5 minutes</strong>:</p>
+      <ul>
+        <li>new photos are added automatically, together with tags and ratings stored in the file (a notification appears),</li>
+        <li>photos whose files vanished from the disk disappear from the library. If a whole folder is unavailable (for example an unplugged drive), nothing is removed,</li>
+        <li>unchanged files are skipped, so checking a large library is fast.</li>
+      </ul>
+      <p>The list of watched folders is in the menu → <em>Watched folders</em>. Clicking a folder (after confirmation) stops watching it, and its photos stay in the library. <em>Check for new photos now</em> checks immediately.</p></section>
+    <section id="files"><h3 class="sec-title">File operations</h3>
+      <p>Right-click a photo or a selection. The menu acts on all selected photos:</p>
+      <ul>
+        <li><strong>Rating</strong> (stars), <strong>favorite</strong>, <strong>Tags…</strong>, <strong>Add to album…</strong>, <strong>Collage</strong> (from two photos), <strong>Select all</strong>.</li>
+        <li><strong>Rename file…</strong> (one photo): the extension stays and the XMP file is renamed with the photo. FIBO rejects names with characters Windows does not allow (<code>\ / : * ? " &lt; &gt; |</code>), reserved names (CON, NUL, COM1…) and never overwrites an existing file.</li>
+        <li><strong>Move to folder…</strong> and <strong>Copy to folder…</strong>: nothing is overwritten, and when a name is taken FIBO appends <code>_1</code>, <code>_2</code>. The XMP file goes with the photo. Moving across drives copies, checks the size and only then removes the source.</li>
+        <li><strong>Move to Recycle Bin…</strong> asks for confirmation and moves the files to the Windows Recycle Bin, from where you can restore them.</li>
+      </ul></section>
     <section id="viewer"><h3 class="sec-title">Photo viewer</h3>
-      <p>Double-click a photo (or press Enter) to open it full screen. The top bar has the name, rating, favorite, undo and redo, slideshow and full screen; the bottom has a thumbnail strip. Arrows at the edges switch photos.</p>
+      <p>Double-click a photo (or press Enter) to open it full screen. The top bar has the name, rating, favorite, undo and redo, slideshow, zoom, compare with original and full screen; the bottom has a thumbnail strip. Arrows at the edges switch photos.</p>
+      <p><strong>Zooming:</strong> the mouse wheel zooms at the cursor, dragging pans the image, and double-click toggles between fit-to-window and 100% (keys <kbd>+</kbd>, <kbd>-</kbd> and <kbd>Z</kbd>). <strong>Before and after:</strong> hold the compare button or the <kbd>B</kbd> key to see the untouched original.</p>
       <p>The wand button (or the <kbd>E</kbd> key) opens the edit panel. The <strong>Info</strong> tab shows name, folder, dimensions, size, date taken, camera and tags.</p></section>
     <section id="editor"><h3 class="sec-title">Photo editor</h3>
       <p>The edit panel has four tabs. Changes show live, and you can undo without limits while editing (<kbd>Ctrl</kbd> + <kbd>Z</kbd> and <kbd>Ctrl</kbd> + <kbd>Y</kbd>).</p>
@@ -157,7 +189,7 @@
       <ul>
         <li><strong>Your photos never leave your computer.</strong> FIBO has no accounts and sends no photos or statistics. The only internet use is downloading map tiles when you open the Map tab (and possibly downloading WebView2 during installation).</li>
         <li>The library (index, ratings, tags, coordinates) is the <code>library.db</code> database in <code>%APPDATA%\pl.local.menedzerzdjec</code>, and thumbnails are in its <code>thumbs</code> subfolder. Back it up by copying that folder. The folder has that name for technical reasons and does not change across updates.</li>
-        <li>Copies of originals after editing are in <code>.originals</code> folders next to your photos.</li>
+        <li>Copies of originals after editing are in <code>.originals</code> folders next to your photos, and tags, ratings and favorites are also in <code>.xmp</code> files next to the photos (this can be turned off in the menu).</li>
         <li>Uninstalling does not delete your photos or your library.</li>
       </ul></section>
     <section id="shortcuts"><h3 class="sec-title">Keyboard shortcuts</h3>
@@ -168,6 +200,10 @@
           <tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>Previous and next photo</td></tr>
           <tr><td><kbd>Space</kbd></td><td>Slideshow: start and stop</td></tr>
           <tr><td><kbd>E</kbd></td><td>Edit panel</td></tr>
+          <tr><td><kbd>+</kbd> <kbd>-</kbd> / mouse wheel</td><td>Zoom the photo in and out in the viewer</td></tr>
+          <tr><td><kbd>Z</kbd> / double-click the photo</td><td>Fit to window ↔ 100% zoom</td></tr>
+          <tr><td>hold <kbd>B</kbd></td><td>Show the untouched original (before and after)</td></tr>
+          <tr><td>right mouse button</td><td>Action menu for the selected photos</td></tr>
           <tr><td><kbd>F</kbd></td><td>Favorite</td></tr>
           <tr><td><kbd>0</kbd>–<kbd>5</kbd></td><td>Rating (0 clears)</td></tr>
           <tr><td><kbd>Ctrl</kbd> + <kbd>Z</kbd> / <kbd>Ctrl</kbd> + <kbd>Y</kbd></td><td>Undo / redo an editor change</td></tr>

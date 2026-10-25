@@ -63,7 +63,7 @@
   <aside class="toc">
     <details open>
       <summary>Spis treści</summary>
-      <ol><li><a href="#install">Instalacja</a></li><li><a href="#start">Pierwsze kroki</a></li><li><a href="#library">Biblioteka i albumy</a></li><li><a href="#search">Szukanie i filtry</a></li><li><a href="#tags">Tagi, oceny i ulubione</a></li><li><a href="#viewer">Podgląd zdjęcia</a></li><li><a href="#editor">Edytor zdjęć</a></li><li><a href="#collage">Kolaże</a></li><li><a href="#map">Mapa</a></li><li><a href="#duplicates">Duplikaty</a></li><li><a href="#data">Dane i prywatność</a></li><li><a href="#shortcuts">Skróty klawiszowe</a></li><li><a href="#updates">Aktualizacje</a></li><li><a href="#faq">Najczęstsze pytania</a></li><li><a href="#build">Budowanie ze źródeł</a></li><li><a href="#license">Licencja</a></li></ol>
+      <ol><li><a href="#install">Instalacja</a></li><li><a href="#start">Pierwsze kroki</a></li><li><a href="#library">Biblioteka i albumy</a></li><li><a href="#search">Szukanie i filtry</a></li><li><a href="#tags">Tagi, oceny i ulubione</a></li><li><a href="#xmp">Metadane w plikach (XMP)</a></li><li><a href="#albums">Własne albumy</a></li><li><a href="#watch">Obserwowane foldery</a></li><li><a href="#files">Operacje na plikach</a></li><li><a href="#viewer">Podgląd zdjęcia</a></li><li><a href="#editor">Edytor zdjęć</a></li><li><a href="#collage">Kolaże</a></li><li><a href="#map">Mapa</a></li><li><a href="#duplicates">Duplikaty</a></li><li><a href="#data">Dane i prywatność</a></li><li><a href="#shortcuts">Skróty klawiszowe</a></li><li><a href="#updates">Aktualizacje</a></li><li><a href="#faq">Najczęstsze pytania</a></li><li><a href="#build">Budowanie ze źródeł</a></li><li><a href="#license">Licencja</a></li></ol>
     </details>
   </aside>
   <div class="doc-body">
@@ -114,8 +114,40 @@
         <li><strong>Oceny:</strong> od 1 do 5 gwiazdek (klawisze <kbd>1</kbd>–<kbd>5</kbd>, a <kbd>0</kbd> zeruje).</li>
         <li><strong>Ulubione:</strong> serce lub klawisz <kbd>F</kbd>.</li>
       </ul></section>
+    <section id="xmp"><h3 class="sec-title">Metadane w plikach (XMP)</h3>
+      <p>Tagi, oceny i ulubione zapisują się nie tylko w bibliotece FIBO, ale też w plikach XMP obok zdjęć (np. <code>foto.jpg.xmp</code>). Dzięki temu nie giną razem z bazą, a inne programy (digiKam, Lightroom, darktable) mogą je odczytać. Same zdjęcia nie są zmieniane.</p>
+      <ul>
+        <li><strong>Zapis automatyczny</strong> jest domyślnie włączony. Wyłączysz go w menu → <em>Metadane w plikach</em>. Tam też jest przycisk <em>Zapisz wszystko do plików XMP</em>.</li>
+        <li><strong>Pliki XMP innych programów</strong> zostają nietknięte: FIBO rozpoznaje je po braku własnego znacznika i pomija.</li>
+        <li><strong>Wczytywanie:</strong> przy dodawaniu zdjęć FIBO bierze tagi i oceny, które zdjęcia już mają: z Eksploratora Windows („Tagi” i „Oceny”), z XMP i IPTC w plikach JPEG (tak zapisywała Picasa) oraz z plików <code>.xmp</code> obok zdjęć. Dla zdjęć już obecnych w bibliotece służy przycisk <em>Wczytaj tagi i oceny z plików</em>. Wczytywanie tylko uzupełnia: nie nadpisuje ocen i nie usuwa tagów.</li>
+        <li>Tag, który zdjęcie już ma, nie jest dodawany drugi raz.</li>
+      </ul></section>
+    <section id="albums"><h3 class="sec-title">Własne albumy</h3>
+      <p>Albumy w zakładce <strong>Albumy → Moje albumy</strong> nie zależą od folderów: to Twoje zbiory zdjęć, a jedno zdjęcie może być w wielu albumach. Pliki zostają na swoim miejscu.</p>
+      <ul>
+        <li>Nowy album: przycisk <em>Nowy album</em> albo prawy przycisk myszy na zaznaczonych zdjęciach → <em>Dodaj do albumu…</em> → <em>Nowy album…</em>.</li>
+        <li>Wejście w album pokazuje jego zdjęcia w bibliotece. Prawy przycisk → <em>Usuń z tego albumu</em> wyjmuje zdjęcia z albumu (nie z dysku).</li>
+        <li>Przy albumie są przyciski zmiany nazwy i usunięcia. Usunięcie albumu nie usuwa zdjęć. Nazwy albumów nie powtarzają się (wielkość liter nie ma znaczenia).</li>
+      </ul></section>
+    <section id="watch"><h3 class="sec-title">Obserwowane foldery</h3>
+      <p>Folder dodany przyciskiem <em>Dodaj folder</em> jest od tej chwili obserwowany. FIBO sprawdza go <strong>po uruchomieniu, po powrocie do okna (najwyżej raz na 30 sekund) i co 5 minut</strong>:</p>
+      <ul>
+        <li>nowe zdjęcia dodają się same, razem z tagami i ocenami zapisanymi w pliku (pokazuje się powiadomienie),</li>
+        <li>zdjęcia, których pliki zniknęły z dysku, znikają z biblioteki. Jeśli cały folder jest niedostępny (np. odłączony dysk), nic nie jest usuwane,</li>
+        <li>niezmienione pliki są pomijane, więc sprawdzanie dużej biblioteki jest szybkie.</li>
+      </ul>
+      <p>Listę obserwowanych folderów widać w menu → <em>Obserwowane foldery</em>. Kliknięcie folderu (po potwierdzeniu) przestaje go obserwować, a zdjęcia zostają w bibliotece. Przycisk <em>Sprawdź nowe zdjęcia teraz</em> robi sprawdzenie od razu.</p></section>
+    <section id="files"><h3 class="sec-title">Operacje na plikach</h3>
+      <p>Kliknij prawym przyciskiem myszy zdjęcie lub zaznaczenie. Menu działa na wszystkich zaznaczonych zdjęciach:</p>
+      <ul>
+        <li><strong>Ocena</strong> (gwiazdki), <strong>ulubione</strong>, <strong>Tagi…</strong>, <strong>Dodaj do albumu…</strong>, <strong>Kolaż</strong> (od dwóch zdjęć), <strong>Zaznacz wszystkie</strong>.</li>
+        <li><strong>Zmień nazwę pliku…</strong> (jedno zdjęcie): rozszerzenie zostaje, plik XMP zmienia nazwę razem ze zdjęciem. FIBO odrzuca nazwy ze znakami niedozwolonymi w Windows (<code>\ / : * ? " &lt; &gt; |</code>), zarezerwowane (CON, NUL, COM1…) i nie nadpisuje istniejącego pliku.</li>
+        <li><strong>Przenieś do folderu…</strong> i <strong>Kopiuj do folderu…</strong>: nic nie jest nadpisywane, przy zajętej nazwie FIBO dopisuje <code>_1</code>, <code>_2</code>. Plik XMP idzie razem ze zdjęciem. Przenoszenie między dyskami kopiuje, sprawdza rozmiar i dopiero wtedy usuwa źródło.</li>
+        <li><strong>Przenieś do Kosza…</strong> pyta o zgodę i przenosi pliki do Kosza Windows, skąd można je przywrócić.</li>
+      </ul></section>
     <section id="viewer"><h3 class="sec-title">Podgląd zdjęcia</h3>
-      <p>Dwuklik na zdjęciu (albo Enter) otwiera je na cały ekran. U góry są nazwa, ocena, ulubione, cofnij i ponów, pokaz slajdów i pełny ekran, a na dole pasek miniatur. Strzałki przy krawędziach przełączają zdjęcia.</p>
+      <p>Dwuklik na zdjęciu (albo Enter) otwiera je na cały ekran. U góry są nazwa, ocena, ulubione, cofnij i ponów, pokaz slajdów, powiększanie, porównanie z oryginałem i pełny ekran, a na dole pasek miniatur. Strzałki przy krawędziach przełączają zdjęcia.</p>
+      <p><strong>Powiększanie:</strong> kółko myszy przybliża w miejscu kursora, przeciągnięcie przesuwa obraz, dwuklik przełącza między dopasowaniem do okna a powiększeniem 100% (klawisze <kbd>+</kbd>, <kbd>-</kbd> i <kbd>Z</kbd>). <strong>Przed i po:</strong> przytrzymaj przycisk porównania albo klawisz <kbd>B</kbd>, żeby zobaczyć oryginał bez zmian.</p>
       <p>Przycisk różdżki (lub klawisz <kbd>E</kbd>) otwiera panel edycji. Zakładka <strong>Info</strong> pokazuje nazwę, folder, wymiary, rozmiar, datę zdjęcia, aparat i tagi.</p></section>
     <section id="editor"><h3 class="sec-title">Edytor zdjęć</h3>
       <p>Panel edycji ma cztery zakładki. Zmiany widać na żywo, a cofnąć je można bez ograniczeń w trakcie edycji (<kbd>Ctrl</kbd> + <kbd>Z</kbd> i <kbd>Ctrl</kbd> + <kbd>Y</kbd>).</p>
@@ -157,7 +189,7 @@
       <ul>
         <li><strong>Zdjęcia nie opuszczają komputera.</strong> FIBO nie ma kont, nie wysyła zdjęć ani statystyk. Jedyne połączenie z internetem to pobieranie kafelków mapy po otwarciu zakładki Mapa (i ewentualne pobranie WebView2 przy instalacji).</li>
         <li>Biblioteka (indeks, oceny, tagi, współrzędne) to baza <code>library.db</code> w folderze <code>%APPDATA%\pl.local.menedzerzdjec</code>, a miniatury leżą w jego podfolderze <code>thumbs</code>. Kopię zapasową zrobisz, kopiując ten folder. Folder nazywa się tak ze względów technicznych i nie zmienia się przy aktualizacjach.</li>
-        <li>Kopie oryginałów po edycji leżą w folderach <code>.originals</code> obok zdjęć.</li>
+        <li>Kopie oryginałów po edycji leżą w folderach <code>.originals</code> obok zdjęć, a tagi, oceny i ulubione dodatkowo w plikach <code>.xmp</code> obok zdjęć (można to wyłączyć w menu).</li>
         <li>Usunięcie programu nie usuwa Twoich zdjęć ani biblioteki.</li>
       </ul></section>
     <section id="shortcuts"><h3 class="sec-title">Skróty klawiszowe</h3>
@@ -168,6 +200,10 @@
           <tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>Poprzednie i następne zdjęcie</td></tr>
           <tr><td><kbd>Spacja</kbd></td><td>Pokaz slajdów: start i stop</td></tr>
           <tr><td><kbd>E</kbd></td><td>Panel edycji</td></tr>
+          <tr><td><kbd>+</kbd> <kbd>-</kbd> / kółko myszy</td><td>Powiększ i pomniejsz zdjęcie w podglądzie</td></tr>
+          <tr><td><kbd>Z</kbd> / dwuklik na zdjęciu</td><td>Dopasuj do okna ↔ powiększenie 100%</td></tr>
+          <tr><td>przytrzymaj <kbd>B</kbd></td><td>Pokaż oryginał bez zmian (przed i po)</td></tr>
+          <tr><td>prawy przycisk myszy</td><td>Menu akcji dla zaznaczonych zdjęć</td></tr>
           <tr><td><kbd>F</kbd></td><td>Ulubione</td></tr>
           <tr><td><kbd>0</kbd>–<kbd>5</kbd></td><td>Ocena (0 zeruje)</td></tr>
           <tr><td><kbd>Ctrl</kbd> + <kbd>Z</kbd> / <kbd>Ctrl</kbd> + <kbd>Y</kbd></td><td>Cofnij / ponów zmianę w edytorze</td></tr>

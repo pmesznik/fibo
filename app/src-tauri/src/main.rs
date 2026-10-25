@@ -204,7 +204,7 @@ fn build_row(path: &Path) -> Option<Row> {
         std::mem::swap(&mut w, &mut h);
     }
     // Metadane już zapisane w zdjęciu lub w pliku XMP (np. z innego programu).
-    let meta = read_metadata(path, Some(&exif));
+    let embedded = read_metadata(path, Some(&exif));
     Some(Row {
         path: path.to_string_lossy().to_string(),
         folder: path.parent().map(|p| p.to_string_lossy().to_string()).unwrap_or_default(),
@@ -213,7 +213,7 @@ fn build_row(path: &Path) -> Option<Row> {
         modified,
         exif,
         dims: (w, h),
-        sidecar: meta,
+        sidecar: embedded,
     })
 }
 
@@ -1745,6 +1745,8 @@ mod tests {
         assert!(lib.join("morze 2024.jpg").exists() && !x.exists());
         assert!(xmp_path(&lib.join("morze 2024.jpg")).exists() && !xmp_path(&x).exists(), "XMP idzie za zdjęciem");
         image::RgbImage::new(8, 8).save(lib.join("zajete.jpg")).unwrap();
+        // Skan dodaje ten plik do biblioteki (później zniknie z dysku i rescan ma go usunąć).
+        assert_eq!(scan_blocking(&state, lib.to_str().unwrap(), &|_| {}).unwrap(), 1);
         assert!(rename_photo_core(&state, id, "zajete").is_err(), "nie nadpisujemy istniejącego pliku");
 
         // Przenoszenie: nazwa zajęta w celu dostaje _1, nic nie jest nadpisane.

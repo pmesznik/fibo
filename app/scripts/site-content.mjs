@@ -79,8 +79,40 @@ export const PL = {
         <li><strong>Oceny:</strong> od 1 do 5 gwiazdek (klawisze ${kbd('1')}–${kbd('5')}, a ${kbd('0')} zeruje).</li>
         <li><strong>Ulubione:</strong> serce lub klawisz ${kbd('F')}.</li>
       </ul>` },
+    { id: 'xmp', t: 'Metadane w plikach (XMP)', h: `
+      <p>Tagi, oceny i ulubione zapisują się nie tylko w bibliotece FIBO, ale też w plikach XMP obok zdjęć (np. <code>foto.jpg.xmp</code>). Dzięki temu nie giną razem z bazą, a inne programy (digiKam, Lightroom, darktable) mogą je odczytać. Same zdjęcia nie są zmieniane.</p>
+      <ul>
+        <li><strong>Zapis automatyczny</strong> jest domyślnie włączony. Wyłączysz go w menu → <em>Metadane w plikach</em>. Tam też jest przycisk <em>Zapisz wszystko do plików XMP</em>.</li>
+        <li><strong>Pliki XMP innych programów</strong> zostają nietknięte: FIBO rozpoznaje je po braku własnego znacznika i pomija.</li>
+        <li><strong>Wczytywanie:</strong> przy dodawaniu zdjęć FIBO bierze tagi i oceny, które zdjęcia już mają: z Eksploratora Windows („Tagi” i „Oceny”), z XMP i IPTC w plikach JPEG (tak zapisywała Picasa) oraz z plików <code>.xmp</code> obok zdjęć. Dla zdjęć już obecnych w bibliotece służy przycisk <em>Wczytaj tagi i oceny z plików</em>. Wczytywanie tylko uzupełnia: nie nadpisuje ocen i nie usuwa tagów.</li>
+        <li>Tag, który zdjęcie już ma, nie jest dodawany drugi raz.</li>
+      </ul>` },
+    { id: 'albums', t: 'Własne albumy', h: `
+      <p>Albumy w zakładce <strong>Albumy → Moje albumy</strong> nie zależą od folderów: to Twoje zbiory zdjęć, a jedno zdjęcie może być w wielu albumach. Pliki zostają na swoim miejscu.</p>
+      <ul>
+        <li>Nowy album: przycisk <em>Nowy album</em> albo prawy przycisk myszy na zaznaczonych zdjęciach → <em>Dodaj do albumu…</em> → <em>Nowy album…</em>.</li>
+        <li>Wejście w album pokazuje jego zdjęcia w bibliotece. Prawy przycisk → <em>Usuń z tego albumu</em> wyjmuje zdjęcia z albumu (nie z dysku).</li>
+        <li>Przy albumie są przyciski zmiany nazwy i usunięcia. Usunięcie albumu nie usuwa zdjęć. Nazwy albumów nie powtarzają się (wielkość liter nie ma znaczenia).</li>
+      </ul>` },
+    { id: 'watch', t: 'Obserwowane foldery', h: `
+      <p>Folder dodany przyciskiem <em>Dodaj folder</em> jest od tej chwili obserwowany. FIBO sprawdza go <strong>po uruchomieniu, po powrocie do okna (najwyżej raz na 30 sekund) i co 5 minut</strong>:</p>
+      <ul>
+        <li>nowe zdjęcia dodają się same, razem z tagami i ocenami zapisanymi w pliku (pokazuje się powiadomienie),</li>
+        <li>zdjęcia, których pliki zniknęły z dysku, znikają z biblioteki. Jeśli cały folder jest niedostępny (np. odłączony dysk), nic nie jest usuwane,</li>
+        <li>niezmienione pliki są pomijane, więc sprawdzanie dużej biblioteki jest szybkie.</li>
+      </ul>
+      <p>Listę obserwowanych folderów widać w menu → <em>Obserwowane foldery</em>. Kliknięcie folderu (po potwierdzeniu) przestaje go obserwować, a zdjęcia zostają w bibliotece. Przycisk <em>Sprawdź nowe zdjęcia teraz</em> robi sprawdzenie od razu.</p>` },
+    { id: 'files', t: 'Operacje na plikach', h: `
+      <p>Kliknij prawym przyciskiem myszy zdjęcie lub zaznaczenie. Menu działa na wszystkich zaznaczonych zdjęciach:</p>
+      <ul>
+        <li><strong>Ocena</strong> (gwiazdki), <strong>ulubione</strong>, <strong>Tagi…</strong>, <strong>Dodaj do albumu…</strong>, <strong>Kolaż</strong> (od dwóch zdjęć), <strong>Zaznacz wszystkie</strong>.</li>
+        <li><strong>Zmień nazwę pliku…</strong> (jedno zdjęcie): rozszerzenie zostaje, plik XMP zmienia nazwę razem ze zdjęciem. FIBO odrzuca nazwy ze znakami niedozwolonymi w Windows (<code>\\ / : * ? " &lt; &gt; |</code>), zarezerwowane (CON, NUL, COM1…) i nie nadpisuje istniejącego pliku.</li>
+        <li><strong>Przenieś do folderu…</strong> i <strong>Kopiuj do folderu…</strong>: nic nie jest nadpisywane, przy zajętej nazwie FIBO dopisuje <code>_1</code>, <code>_2</code>. Plik XMP idzie razem ze zdjęciem. Przenoszenie między dyskami kopiuje, sprawdza rozmiar i dopiero wtedy usuwa źródło.</li>
+        <li><strong>Przenieś do Kosza…</strong> pyta o zgodę i przenosi pliki do Kosza Windows, skąd można je przywrócić.</li>
+      </ul>` },
     { id: 'viewer', t: 'Podgląd zdjęcia', h: `
-      <p>Dwuklik na zdjęciu (albo Enter) otwiera je na cały ekran. U góry są nazwa, ocena, ulubione, cofnij i ponów, pokaz slajdów i pełny ekran, a na dole pasek miniatur. Strzałki przy krawędziach przełączają zdjęcia.</p>
+      <p>Dwuklik na zdjęciu (albo Enter) otwiera je na cały ekran. U góry są nazwa, ocena, ulubione, cofnij i ponów, pokaz slajdów, powiększanie, porównanie z oryginałem i pełny ekran, a na dole pasek miniatur. Strzałki przy krawędziach przełączają zdjęcia.</p>
+      <p><strong>Powiększanie:</strong> kółko myszy przybliża w miejscu kursora, przeciągnięcie przesuwa obraz, dwuklik przełącza między dopasowaniem do okna a powiększeniem 100% (klawisze ${kbd('+')}, ${kbd('-')} i ${kbd('Z')}). <strong>Przed i po:</strong> przytrzymaj przycisk porównania albo klawisz ${kbd('B')}, żeby zobaczyć oryginał bez zmian.</p>
       <p>Przycisk różdżki (lub klawisz ${kbd('E')}) otwiera panel edycji. Zakładka <strong>Info</strong> pokazuje nazwę, folder, wymiary, rozmiar, datę zdjęcia, aparat i tagi.</p>` },
     { id: 'editor', t: 'Edytor zdjęć', h: `
       <p>Panel edycji ma cztery zakładki. Zmiany widać na żywo, a cofnąć je można bez ograniczeń w trakcie edycji (${kbd('Ctrl', 'Z')} i ${kbd('Ctrl', 'Y')}).</p>
@@ -122,7 +154,7 @@ export const PL = {
       <ul>
         <li><strong>Zdjęcia nie opuszczają komputera.</strong> FIBO nie ma kont, nie wysyła zdjęć ani statystyk. Jedyne połączenie z internetem to pobieranie kafelków mapy po otwarciu zakładki Mapa (i ewentualne pobranie WebView2 przy instalacji).</li>
         <li>Biblioteka (indeks, oceny, tagi, współrzędne) to baza <code>library.db</code> w folderze <code>%APPDATA%\\pl.local.menedzerzdjec</code>, a miniatury leżą w jego podfolderze <code>thumbs</code>. Kopię zapasową zrobisz, kopiując ten folder. Folder nazywa się tak ze względów technicznych i nie zmienia się przy aktualizacjach.</li>
-        <li>Kopie oryginałów po edycji leżą w folderach <code>.originals</code> obok zdjęć.</li>
+        <li>Kopie oryginałów po edycji leżą w folderach <code>.originals</code> obok zdjęć, a tagi, oceny i ulubione dodatkowo w plikach <code>.xmp</code> obok zdjęć (można to wyłączyć w menu).</li>
         <li>Usunięcie programu nie usuwa Twoich zdjęć ani biblioteki.</li>
       </ul>` },
     { id: 'shortcuts', t: 'Skróty klawiszowe', h: `
@@ -133,6 +165,10 @@ export const PL = {
           <tr><td>${kbd('←')} ${kbd('→')}</td><td>Poprzednie i następne zdjęcie</td></tr>
           <tr><td>${kbd('Spacja')}</td><td>Pokaz slajdów: start i stop</td></tr>
           <tr><td>${kbd('E')}</td><td>Panel edycji</td></tr>
+          <tr><td>${kbd('+')} ${kbd('-')} / kółko myszy</td><td>Powiększ i pomniejsz zdjęcie w podglądzie</td></tr>
+          <tr><td>${kbd('Z')} / dwuklik na zdjęciu</td><td>Dopasuj do okna ↔ powiększenie 100%</td></tr>
+          <tr><td>przytrzymaj ${kbd('B')}</td><td>Pokaż oryginał bez zmian (przed i po)</td></tr>
+          <tr><td>prawy przycisk myszy</td><td>Menu akcji dla zaznaczonych zdjęć</td></tr>
           <tr><td>${kbd('F')}</td><td>Ulubione</td></tr>
           <tr><td>${kbd('0')}–${kbd('5')}</td><td>Ocena (0 zeruje)</td></tr>
           <tr><td>${kbd('Ctrl', 'Z')} / ${kbd('Ctrl', 'Y')}</td><td>Cofnij / ponów zmianę w edytorze</td></tr>
@@ -244,8 +280,40 @@ export const EN = {
         <li><strong>Ratings:</strong> 1 to 5 stars (keys ${kbd('1')}–${kbd('5')}, ${kbd('0')} clears).</li>
         <li><strong>Favorites:</strong> the heart or the ${kbd('F')} key.</li>
       </ul>` },
+    { id: 'xmp', t: 'Metadata in files (XMP)', h: `
+      <p>Tags, ratings and favorites are stored not only in the FIBO library but also in XMP files next to your photos (for example <code>photo.jpg.xmp</code>). They do not vanish with the database, and other programs (digiKam, Lightroom, darktable) can read them. The photos themselves are not modified.</p>
+      <ul>
+        <li><strong>Automatic saving</strong> is on by default. Turn it off in the menu → <em>Metadata in files</em>, which also has a <em>Save everything to XMP files</em> button.</li>
+        <li><strong>XMP files from other programs</strong> are left untouched: FIBO recognises them by the missing FIBO marker and skips them.</li>
+        <li><strong>Reading:</strong> when adding photos, FIBO picks up the tags and ratings they already have: from Windows Explorer (“Tags” and “Rating”), from XMP and IPTC in JPEG files (the way Picasa stored them) and from <code>.xmp</code> files next to the photos. For photos already in the library use <em>Load tags and ratings from files</em>. Reading only adds: it never overwrites ratings or removes tags.</li>
+        <li>A tag the photo already has is not added a second time.</li>
+      </ul>` },
+    { id: 'albums', t: 'Your own albums', h: `
+      <p>Albums in <strong>Albums → My albums</strong> do not depend on folders: they are your own collections, and one photo can be in many albums. Files stay where they are.</p>
+      <ul>
+        <li>New album: the <em>New album</em> button, or right-click selected photos → <em>Add to album…</em> → <em>New album…</em>.</li>
+        <li>Opening an album shows its photos in the library. Right-click → <em>Remove from this album</em> takes photos out of the album (not off the disk).</li>
+        <li>Each album has rename and delete buttons. Deleting an album does not delete photos. Album names are unique (case does not matter).</li>
+      </ul>` },
+    { id: 'watch', t: 'Watched folders', h: `
+      <p>A folder added with <em>Add folder</em> is watched from then on. FIBO checks it <strong>after launch, when you return to the window (at most once per 30 seconds) and every 5 minutes</strong>:</p>
+      <ul>
+        <li>new photos are added automatically, together with tags and ratings stored in the file (a notification appears),</li>
+        <li>photos whose files vanished from the disk disappear from the library. If a whole folder is unavailable (for example an unplugged drive), nothing is removed,</li>
+        <li>unchanged files are skipped, so checking a large library is fast.</li>
+      </ul>
+      <p>The list of watched folders is in the menu → <em>Watched folders</em>. Clicking a folder (after confirmation) stops watching it, and its photos stay in the library. <em>Check for new photos now</em> checks immediately.</p>` },
+    { id: 'files', t: 'File operations', h: `
+      <p>Right-click a photo or a selection. The menu acts on all selected photos:</p>
+      <ul>
+        <li><strong>Rating</strong> (stars), <strong>favorite</strong>, <strong>Tags…</strong>, <strong>Add to album…</strong>, <strong>Collage</strong> (from two photos), <strong>Select all</strong>.</li>
+        <li><strong>Rename file…</strong> (one photo): the extension stays and the XMP file is renamed with the photo. FIBO rejects names with characters Windows does not allow (<code>\\ / : * ? " &lt; &gt; |</code>), reserved names (CON, NUL, COM1…) and never overwrites an existing file.</li>
+        <li><strong>Move to folder…</strong> and <strong>Copy to folder…</strong>: nothing is overwritten, and when a name is taken FIBO appends <code>_1</code>, <code>_2</code>. The XMP file goes with the photo. Moving across drives copies, checks the size and only then removes the source.</li>
+        <li><strong>Move to Recycle Bin…</strong> asks for confirmation and moves the files to the Windows Recycle Bin, from where you can restore them.</li>
+      </ul>` },
     { id: 'viewer', t: 'Photo viewer', h: `
-      <p>Double-click a photo (or press Enter) to open it full screen. The top bar has the name, rating, favorite, undo and redo, slideshow and full screen; the bottom has a thumbnail strip. Arrows at the edges switch photos.</p>
+      <p>Double-click a photo (or press Enter) to open it full screen. The top bar has the name, rating, favorite, undo and redo, slideshow, zoom, compare with original and full screen; the bottom has a thumbnail strip. Arrows at the edges switch photos.</p>
+      <p><strong>Zooming:</strong> the mouse wheel zooms at the cursor, dragging pans the image, and double-click toggles between fit-to-window and 100% (keys ${kbd('+')}, ${kbd('-')} and ${kbd('Z')}). <strong>Before and after:</strong> hold the compare button or the ${kbd('B')} key to see the untouched original.</p>
       <p>The wand button (or the ${kbd('E')} key) opens the edit panel. The <strong>Info</strong> tab shows name, folder, dimensions, size, date taken, camera and tags.</p>` },
     { id: 'editor', t: 'Photo editor', h: `
       <p>The edit panel has four tabs. Changes show live, and you can undo without limits while editing (${kbd('Ctrl', 'Z')} and ${kbd('Ctrl', 'Y')}).</p>
@@ -287,7 +355,7 @@ export const EN = {
       <ul>
         <li><strong>Your photos never leave your computer.</strong> FIBO has no accounts and sends no photos or statistics. The only internet use is downloading map tiles when you open the Map tab (and possibly downloading WebView2 during installation).</li>
         <li>The library (index, ratings, tags, coordinates) is the <code>library.db</code> database in <code>%APPDATA%\\pl.local.menedzerzdjec</code>, and thumbnails are in its <code>thumbs</code> subfolder. Back it up by copying that folder. The folder has that name for technical reasons and does not change across updates.</li>
-        <li>Copies of originals after editing are in <code>.originals</code> folders next to your photos.</li>
+        <li>Copies of originals after editing are in <code>.originals</code> folders next to your photos, and tags, ratings and favorites are also in <code>.xmp</code> files next to the photos (this can be turned off in the menu).</li>
         <li>Uninstalling does not delete your photos or your library.</li>
       </ul>` },
     { id: 'shortcuts', t: 'Keyboard shortcuts', h: `
@@ -298,6 +366,10 @@ export const EN = {
           <tr><td>${kbd('←')} ${kbd('→')}</td><td>Previous and next photo</td></tr>
           <tr><td>${kbd('Space')}</td><td>Slideshow: start and stop</td></tr>
           <tr><td>${kbd('E')}</td><td>Edit panel</td></tr>
+          <tr><td>${kbd('+')} ${kbd('-')} / mouse wheel</td><td>Zoom the photo in and out in the viewer</td></tr>
+          <tr><td>${kbd('Z')} / double-click the photo</td><td>Fit to window ↔ 100% zoom</td></tr>
+          <tr><td>hold ${kbd('B')}</td><td>Show the untouched original (before and after)</td></tr>
+          <tr><td>right mouse button</td><td>Action menu for the selected photos</td></tr>
           <tr><td>${kbd('F')}</td><td>Favorite</td></tr>
           <tr><td>${kbd('0')}–${kbd('5')}</td><td>Rating (0 clears)</td></tr>
           <tr><td>${kbd('Ctrl', 'Z')} / ${kbd('Ctrl', 'Y')}</td><td>Undo / redo an editor change</td></tr>
