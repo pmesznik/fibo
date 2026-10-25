@@ -16,7 +16,27 @@ export type Photo = {
   tags: string[]
   lat: number | null
   lon: number | null
+  albums: number[]
 }
+
+export type Album = { id: number; name: string; count: number }
+export type RescanReport = { added: number; removed: number; roots: number }
+export type MoveReport = { done: number; errors: string[] }
+
+export const rescanRoots = () => invoke<RescanReport>('rescan_roots')
+export const listRoots = () => invoke<string[]>('list_roots')
+export const removeRoot = (path: string) => invoke('remove_root', { path })
+
+export const listAlbums = () => invoke<Album[]>('list_albums')
+export const createAlbum = (name: string) => invoke<Album>('create_album', { name })
+export const renameAlbum = (id: number, name: string) => invoke('rename_album', { id, name })
+export const deleteAlbum = (id: number) => invoke('delete_album', { id })
+export const addToAlbum = (albumId: number, ids: number[]) => invoke('add_to_album', { albumId, ids })
+export const removeFromAlbum = (albumId: number, ids: number[]) => invoke('remove_from_album', { albumId, ids })
+
+/** Zmienia nazwę pliku (rozszerzenie zostaje); zwraca nową nazwę z rozszerzeniem. */
+export const renamePhoto = (id: number, newStem: string) => invoke<string>('rename_photo', { id, newStem })
+export const movePhotos = (ids: number[], dest: string, copy: boolean) => invoke<MoveReport>('move_photos', { ids, dest, copy })
 
 export const inTauri = '__TAURI_INTERNALS__' in window
 
@@ -59,7 +79,7 @@ export async function thumbnailUrl(id: number) {
   return convertFileSrc(await invoke<string>('thumbnail', { id }))
 }
 
-export async function pickFolder() {
-  const dir = await open({ directory: true, multiple: false, title: 'Wybierz folder ze zdjęciami' })
+export async function pickFolder(title = 'Wybierz folder ze zdjęciami') {
+  const dir = await open({ directory: true, multiple: false, title })
   return typeof dir === 'string' ? dir : null
 }

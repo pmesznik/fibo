@@ -1,9 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { listen } from '@tauri-apps/api/event'
 import { MapView } from './MapView'
 import { Duplicates } from './Duplicates'
 import { UpdateDialog, useUpdater } from './Updater'
 import { exportSidecars, getSidecarEnabled, importSidecars, setSidecarEnabled } from './api'
+import {
+  addToAlbum, createAlbum, deleteAlbum, listAlbums, listRoots, movePhotos, removeFromAlbum, removeRoot,
+  renameAlbum, renamePhoto, rescanRoots, trashPhotos, type Album,
+} from './api'
+import { AlbumPicker, PromptDialog } from './Dialogs'
 import { addTag, deleteTag, inTauri, listPhotos, pickFolder, refreshLibrary, removeTag, scanFolder, setFavorite, setRating, type Photo } from './api'
 import { TagEditor, type TagCount } from './TagEditor'
 import { Thumb } from './Thumb'
@@ -13,7 +18,7 @@ import { Justified } from './Justified'
 import { Chip, Sec, Toast } from './ui'
 import {
   Images, FolderOpen, Users, MapPin, Heart, Star, Plus, Play, Maximize2, X,
-  SlidersHorizontal, Search as SearchIcon, ImageUp, Ruler, LayoutDashboard, Check, ListChecks, Tag, CalendarDays, Copy, RefreshCw, Download, Save,
+  SlidersHorizontal, Search as SearchIcon, ImageUp, Ruler, LayoutDashboard, Check, ListChecks, Tag, CalendarDays, Copy, RefreshCw, Download, Save, Pencil, Trash2,
 } from './FiboIcons'
 
 type Mode = 'library' | 'albums' | 'favs' | 'people' | 'map'
@@ -42,7 +47,7 @@ const TABS: { id: Mode; icon: typeof Images; label: string }[] = [
 // Podgląd w przeglądarce (bez Tauri) pokazuje kafle demonstracyjne.
 const DEMO: Photo[] = Array.from({ length: 48 }, (_, i) => ({
   id: -(i + 1), path: '', name: `demo-${i}.jpg`, size: 0, modified: 0, taken: null,
-  width: null, height: null, camera: null, rating: i % 6, favorite: i % 7 === 0, tags: [],
+  width: null, height: null, camera: null, rating: i % 6, favorite: i % 7 === 0, tags: [], albums: [],
   // Podgląd w przeglądarce: kilka miejsc na świecie, żeby było co zobaczyć na globusie.
   ...(i % 4 === 0 ? { lat: 52.23 + (i % 3) * 0.0001, lon: 21.01 } : i % 4 === 1 ? { lat: 48.86, lon: 2.35 } : i % 4 === 2 ? { lat: 40.71, lon: -74.0 } : { lat: null, lon: null }),
 }))
@@ -98,8 +103,52 @@ export default function App() {
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
   useEffect(() => { if (inTauri) getSidecarEnabled().then(setSidecarOn).catch(() => {}) }, [])
 
+  const [albums, setAlbums] = useState<Album[]>([])
+  const [albumId, setAlbumId] = useState<number | null>(null)
+  const [picker, setPicker] = useState(false)
+  const [prompt, setPrompt] = useState<null | {
+    title: string; label: string; initial?: string; confirm: string; hint?: string
+    onSubmit: (v: string) => Promise<string | void> | string | void
+  }>(null)
+  const [roots, setRoots] = useState<string[]>([])
+  const rescanBusy = useRef(false)
+  const lastRescan = useRef(0)
+
   const reload = useCallback(async () => { if (inTauri) setAll(await listPhotos()) }, [])
   useEffect(() => { reload() }, [reload])
+  const reloadAlbums = useCallback(async () => { if (inTauri) setAlbums(await listAlbums()) }, [])
+  const reloadRoots = useCallback(async () => { if (inTauri) setRoots(await listRoots()) }, [])
+  useEffect(() => { reloadAlbums(); reloadRoots() }, [reloadAlbums, reloadRoots])
+
+  /** Szuka nowych zdjęć w obserwowanych folderach i usuwa z biblioteki zdjęcia, których plików już nie ma. */
+  const rescan = useCallback(async (manual = false) => {
+    if (!inTauri || rescanBusy.current) return
+    rescanBusy.current = true
+    lastRescan.current = Date.now()
+    try {
+      const r = await rescanRoots()
+      if (r.added || r.removed) {
+        await reload(); await reloadAlbums()
+        say([r.added ? `Nowe zdjęcia: ${r.added}` : '', r.removed ? `Zniknęły z dysku: ${r.removed}` : ''].filter(Boolean).join(', '), 'ok')
+      } else if (manual) {
+        say('Brak nowych zdjęć w obserwowanych folderach', 'ok')
+      }
+    } catch (e) {
+      if (manual) say(`Błąd sprawdzania folderów: ${e}`, 'err')
+    } finally {
+      rescanBusy.current = false
+    }
+  }, [reload, reloadAlbums, say])
+
+  // Automatycznie: krótko po starcie, po powrocie do okna (najwyżej raz na 30 s) i co 5 minut.
+  useEffect(() => {
+    if (!inTauri) return
+    const first = window.setTimeout(() => rescan(), 2500)
+    const onFocus = () => { if (Date.now() - lastRescan.current > 30000) rescan() }
+    window.addEventListener('focus', onFocus)
+    const every = window.setInterval(() => rescan(), 5 * 60 * 1000)
+    return () => { window.clearTimeout(first); window.removeEventListener('focus', onFocus); window.clearInterval(every) }
+  }, [rescan])
 
   useEffect(() => {
     if (!inTauri) return
@@ -115,8 +164,8 @@ export default function App() {
       setBusy(true)
       setProgress(0)
       const n = await scanFolder(dir)
-      await reload()
-      say(`Gotowe: ${n} zdjęć`, 'ok')
+      await reload(); await reloadRoots()
+      say(n ? `Gotowe: ${n} ${pl(n, 'nowe zdjęcie', 'nowe zdjęcia', 'nowych zdjęć')}. Folder jest teraz obserwowany` : 'Brak nowych zdjęć w tym folderze', 'ok')
     } catch (e) {
       say(`Błąd skanowania: ${e}`, 'err')
     } finally {
@@ -144,6 +193,7 @@ export default function App() {
     const q = query.trim().toLowerCase()
     const list = all.filter((p) =>
       (!folder || dirOf(p.path) === folder) &&
+      (albumId === null || p.albums.includes(albumId)) &&
       (!onlyFav || p.favorite) &&
       p.rating >= minStars &&
       activeTags.every((t) => p.tags.includes(t)) &&
@@ -152,7 +202,7 @@ export default function App() {
     if (sort === 'name') list.sort((a, b) => a.name.localeCompare(b.name, 'pl', { numeric: true }))
     else list.sort((a, b) => (sort === 'date-desc' ? whenOf(b).localeCompare(whenOf(a)) : whenOf(a).localeCompare(whenOf(b))))
     return list
-  }, [all, query, folder, onlyFav, minStars, sort, activeTags])
+  }, [all, query, folder, albumId, onlyFav, minStars, sort, activeTags])
 
   // Foldery od najnowszego; rok albumu to rok jego najnowszego zdjęcia (jak w Picasie).
   const folders = useMemo(() => {
@@ -285,6 +335,84 @@ export default function App() {
     setMenu(null)
   }
 
+  // Własne albumy.
+  const realIds = () => sel.filter((i) => i >= 0)
+  const afterAlbumChange = async () => { await reload(); await reloadAlbums() }
+  const pickAlbum = async (a: Album) => {
+    setPicker(false)
+    try { await addToAlbum(a.id, realIds()); await afterAlbumChange(); say(`Dodano do albumu „${a.name}”: ${realIds().length}`, 'ok') }
+    catch (e) { say(`Błąd albumu: ${e}`, 'err') }
+  }
+  const newAlbum = (thenAdd: boolean) => setPrompt({
+    title: 'Nowy album', label: 'Nazwa albumu', confirm: thenAdd ? 'Utwórz i dodaj zdjęcia' : 'Utwórz album',
+    onSubmit: async (name) => {
+      try {
+        const a = await createAlbum(name)
+        if (thenAdd) await addToAlbum(a.id, realIds())
+        await afterAlbumChange()
+        say(thenAdd ? `Utworzono album „${a.name}” i dodano zdjęcia` : `Utworzono album „${a.name}”`, 'ok')
+      } catch (e) { return String(e) }
+    },
+  })
+  const renameAlbumPrompt = (a: Album) => setPrompt({
+    title: 'Zmień nazwę albumu', label: 'Nazwa albumu', initial: a.name, confirm: 'Zapisz',
+    onSubmit: async (name) => { try { await renameAlbum(a.id, name); await reloadAlbums() } catch (e) { return String(e) } },
+  })
+  const deleteAlbumAsk = (a: Album) => setConfirm({
+    text: `Usunąć album „${a.name}”? Zdjęcia zostaną w bibliotece i na dysku, znika tylko album.`, yes: 'Usuń album',
+    run: async () => {
+      try { await deleteAlbum(a.id); if (albumId === a.id) setAlbumId(null); await afterAlbumChange(); say(`Usunięto album „${a.name}”`, 'ok') }
+      catch (e) { say(`Błąd: ${e}`, 'err') }
+    },
+  })
+  const leaveAlbum = async () => {
+    if (albumId === null) return
+    setMenu(null)
+    try { await removeFromAlbum(albumId, realIds()); await afterAlbumChange(); say('Usunięto z albumu (pliki zostają na dysku)', 'ok') }
+    catch (e) { say(`Błąd albumu: ${e}`, 'err') }
+  }
+
+  // Operacje na plikach: zmiana nazwy, przenoszenie, kopiowanie i Kosz.
+  const renameSelected = () => {
+    setMenu(null)
+    const p = all.find((x) => x.id === sel[0])
+    if (!p || sel.length !== 1) return
+    setPrompt({
+      title: 'Zmień nazwę pliku', label: 'Nowa nazwa (rozszerzenie zostaje)', initial: p.name.replace(/\.[^.]+$/, ''), confirm: 'Zmień nazwę',
+      hint: 'Zmienia się plik na dysku razem z jego plikiem XMP.',
+      onSubmit: async (v) => { try { const n = await renamePhoto(p.id, v); await reload(); say(`Nowa nazwa: ${n}`, 'ok') } catch (e) { return String(e) } },
+    })
+  }
+  const moveSelected = async (copy: boolean) => {
+    setMenu(null)
+    const ids = realIds()
+    if (!ids.length) return
+    try {
+      const dir = await pickFolder(copy ? 'Skopiuj zdjęcia do folderu' : 'Przenieś zdjęcia do folderu')
+      if (!dir) return
+      const r = await movePhotos(ids, dir, copy)
+      await reload()
+      say(r.errors.length ? `${copy ? 'Skopiowano' : 'Przeniesiono'} ${r.done}, błędy: ${r.errors.length} (${r.errors[0]})` : `${copy ? 'Skopiowano' : 'Przeniesiono'}: ${r.done}`, r.errors.length ? 'err' : 'ok')
+    } catch (e) { say(`Błąd: ${e}`, 'err') }
+  }
+  const trashSelected = () => {
+    setMenu(null)
+    const ids = realIds()
+    if (!ids.length) return
+    setConfirm({
+      text: `Przenieść ${ids.length} ${pl(ids.length, 'zdjęcie', 'zdjęcia', 'zdjęć')} do Kosza Windows? Możesz je stamtąd przywrócić.`, yes: 'Przenieś do Kosza',
+      run: async () => {
+        try {
+          const n = await trashPhotos(ids)
+          setAll((l) => l.filter((p) => !ids.includes(p.id)))
+          setSel([])
+          await reloadAlbums()
+          say(`Przeniesiono do Kosza: ${n}`, 'ok')
+        } catch (e) { say(`Nie udało się przenieść do Kosza: ${e}`, 'err'); await reload() }
+      },
+    })
+  }
+
   const cycleRating = () => {
     if (!current) return
     const rating = (current.rating + 1) % 6
@@ -308,6 +436,7 @@ export default function App() {
     if (viewer) return
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
+      if (prompt || picker) return // te okna same obsługują Esc
       if (menu) setMenu(null)
       else if (confirm) setConfirm(null)
       else if (tagDlg) setTagDlg(false)
@@ -315,7 +444,7 @@ export default function App() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [viewer, confirm, tagDlg, menu])
+  }, [viewer, confirm, tagDlg, menu, prompt, picker])
 
   const multi = sel.length > 1 || selectMode
   const tile = (p: Photo, ratio43: boolean) => {
@@ -366,7 +495,7 @@ export default function App() {
       <nav id="tabs" className="glass" aria-label="Widoki">
         {TABS.map((t) => (
           <button key={t.id} className={mode === t.id ? 'active' : ''} aria-current={mode === t.id ? 'page' : undefined}
-            onClick={() => { setMode(t.id); if (t.id === 'albums') setFolder(null) }}>
+            onClick={() => { setMode(t.id); if (t.id === 'albums') setFolder(null); if (t.id === 'albums' || t.id === 'library') setAlbumId(null) }}>
             <t.icon size={19} strokeWidth={1.8} />
             <span>{t.label}</span>
           </button>
@@ -465,6 +594,22 @@ export default function App() {
               <button className="wide" disabled={xmpBusy} onClick={runExport}><Save size={17} /> Zapisz wszystko do plików XMP</button>
               <button className="wide" disabled={xmpBusy} onClick={runImport}><Download size={17} /> Wczytaj tagi i oceny z plików</button>
             </Sec>
+            <Sec id="roots" icon={<RefreshCw size={17} />} title="Obserwowane foldery" hint={roots.length ? `${roots.length} ${pl(roots.length, 'folder', 'foldery', 'folderów')}, nowe zdjęcia dodają się same` : 'Brak obserwowanych folderów'}>
+              <p style={{ margin: '0 0 8px', color: 'var(--muted)', fontSize: 13 }}>
+                FIBO sprawdza te foldery po uruchomieniu, po powrocie do okna i co 5 minut. Nowe zdjęcia pojawiają się same (razem z tagami i ocenami zapisanymi w pliku), a zdjęcia usunięte z dysku znikają z biblioteki.
+              </p>
+              <div className="chips">
+                {roots.map((r) => (
+                  <Chip key={r} on onClick={() => setConfirm({
+                    text: `Przestać obserwować „${folderName(r)}”? Zdjęcia zostają w bibliotece, ale nowe pliki z tego folderu nie będą już dodawane.`, yes: 'Przestań obserwować',
+                    run: async () => { try { await removeRoot(r); await reloadRoots() } catch (e) { say(`Błąd: ${e}`, 'err') } },
+                  })} label={`Przestań obserwować ${r}`}>
+                    <FolderOpen size={13} /> {folderName(r)} <X size={13} />
+                  </Chip>
+                ))}
+              </div>
+              <button className="wide" onClick={() => rescan(true)}><RefreshCw size={17} /> Sprawdź nowe zdjęcia teraz</button>
+            </Sec>
             <Sec id="folders" icon={<FolderOpen size={17} />} title="Foldery" hint={folder ? folderName(folder) : `${folders.length} ${pl(folders.length, 'folder', 'foldery', 'folderów')}`}>
               <div className="chips">
                 <Chip on={!folder} onClick={() => setFolder(null)}>Wszystkie <b>{all.length}</b></Chip>
@@ -507,7 +652,7 @@ export default function App() {
         {(mode === 'library' || mode === 'favs') && (
           <>
             <div style={{ marginBottom: 14 }}>
-              <h1 style={{ margin: 0, font: '700 22px/1.2 system-ui' }}>{mode === 'favs' ? 'Ulubione' : folder ? folderName(folder) : 'Biblioteka'}</h1>
+              <h1 style={{ margin: 0, font: '700 22px/1.2 system-ui' }}>{mode === 'favs' ? 'Ulubione' : albumId !== null ? (albums.find((a) => a.id === albumId)?.name ?? 'Album') : folder ? folderName(folder) : 'Biblioteka'}</h1>
               <div style={{ color: 'var(--muted)', fontSize: 13 }}>{subtitle}</div>
               {years.length > 1 && (
                 <div className="chips" style={{ marginTop: 10 }} role="navigation" aria-label="Przejdź do roku">
@@ -515,10 +660,11 @@ export default function App() {
                   {years.map((y) => <Chip key={y} onClick={() => jumpToYear(y)}>{y}</Chip>)}
                 </div>
               )}
-              {(query || folder || minStars > 0 || activeTags.length > 0) && (
+              {(query || folder || albumId !== null || minStars > 0 || activeTags.length > 0) && (
                 <div className="chips" style={{ marginTop: 10 }}>
                   {activeTags.map((t) => <Chip key={t} on onClick={() => toggleTagFilter(t)} label={`Usuń filtr tagu ${t}`}><Tag size={13} /> {t} <X size={13} /></Chip>)}
                   {query && <Chip on onClick={() => setQuery('')} label="Usuń szukanie"><SearchIcon size={13} /> {query} <X size={13} /></Chip>}
+                  {albumId !== null && <Chip on onClick={() => setAlbumId(null)} label="Pokaż całą bibliotekę"><FolderOpen size={13} /> Album: {albums.find((a) => a.id === albumId)?.name ?? '…'} <X size={13} /></Chip>}
                   {folder && <Chip on onClick={() => setFolder(null)} label="Usuń filtr folderu"><FolderOpen size={13} /> {folderName(folder)} <X size={13} /></Chip>}
                   {minStars > 0 && <Chip on onClick={() => setMinStars(0)} label="Usuń filtr oceny">≥ {minStars} <Star size={12} fill="currentColor" /> <X size={13} /></Chip>}
                 </div>
@@ -559,7 +705,42 @@ export default function App() {
         {mode === 'albums' && (
           <>
             <h1 style={{ margin: '0 0 14px', font: '700 22px/1.2 system-ui' }}>Albumy</h1>
-            {folders.length === 0 && <div className="empty" style={{ height: '50vh' }}>Brak albumów. Dotknij + i dodaj folder ze zdjęciami.</div>}
+
+            <section style={{ marginBottom: 28 }}>
+              <h2 style={{ margin: '0 0 12px', font: '650 18px/1.2 system-ui', display: 'flex', alignItems: 'center', gap: 12 }}>
+                Moje albumy
+                <button className="chip" onClick={() => { setSel([]); newAlbum(false) }}><Plus size={14} /> Nowy album</button>
+              </h2>
+              {albums.length === 0 ? (
+                <p style={{ margin: 0, color: 'var(--muted)', fontSize: 14 }}>
+                  Nie masz jeszcze własnych albumów. Załóż album przyciskiem powyżej albo zaznacz zdjęcia, kliknij prawym przyciskiem i wybierz „Dodaj do albumu…”.
+                </p>
+              ) : (
+                <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${size + 40}px, 1fr))` }}>
+                  {albums.map((a) => {
+                    const cover = all.find((p) => p.albums.includes(a.id))
+                    return (
+                      <div key={a.id}>
+                        <button className="bare block w-full text-left" aria-label={`Album ${a.name}, ${a.count} zdjęć`} onClick={() => { setAlbumId(a.id); setFolder(null); setMode('library') }}>
+                          <div className="relative aspect-[4/3] overflow-hidden" style={{ borderRadius: 'var(--r-card)', boxShadow: 'var(--elev-1)', background: 'var(--tonal)' }}>
+                            {cover ? <Thumb photo={cover} /> : <div className="empty" style={{ fontSize: 13 }}>Pusty album</div>}
+                          </div>
+                          <div className="mt-2 truncate" style={{ fontWeight: 600 }}>{a.name}</div>
+                          <div style={{ color: 'var(--muted)', fontSize: 13 }}>{a.count} {pl(a.count, 'zdjęcie', 'zdjęcia', 'zdjęć')}</div>
+                        </button>
+                        <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
+                          <button className="ico" style={{ minWidth: 40, minHeight: 36 }} aria-label={`Zmień nazwę albumu ${a.name}`} title="Zmień nazwę" onClick={() => renameAlbumPrompt(a)}><Pencil size={16} /></button>
+                          <button className="ico" style={{ minWidth: 40, minHeight: 36 }} aria-label={`Usuń album ${a.name}`} title="Usuń album (zdjęcia zostają)" onClick={() => deleteAlbumAsk(a)}><Trash2 size={16} /></button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </section>
+
+            <h2 style={{ margin: '0 0 12px', font: '650 18px/1.2 system-ui' }}>Foldery</h2>
+            {folders.length === 0 && <div className="empty" style={{ height: '30vh' }}>Brak folderów. Dotknij „Dodaj folder” i wskaż folder ze zdjęciami.</div>}
             {foldersByYear.map((g) => (
               <section key={g.year} style={{ marginBottom: 28 }}>
                 <h2 style={{ margin: '0 0 12px', font: '650 18px/1.2 system-ui' }}>{g.year}</h2>
@@ -669,8 +850,8 @@ export default function App() {
       {menu && sel.length > 0 && (
         <>
           <div className="fixed inset-0 z-[1890]" onClick={() => setMenu(null)} onContextMenu={(e) => { e.preventDefault(); setMenu(null) }} />
-          <div className="glass fixed z-[1900] flex w-[260px] flex-col p-2" role="menu" aria-label="Akcje dla zaznaczonych zdjęć"
-            style={{ borderRadius: 'var(--r-card)', left: Math.max(8, Math.min(menu.x, window.innerWidth - 268)), top: Math.max(8, Math.min(menu.y, window.innerHeight - 380)) }}>
+          <div className="glass fixed z-[1900] flex w-[270px] flex-col overflow-y-auto p-2" role="menu" aria-label="Akcje dla zaznaczonych zdjęć"
+            style={{ borderRadius: 'var(--r-card)', left: Math.max(8, Math.min(menu.x, window.innerWidth - 278)), top: Math.max(8, Math.min(menu.y, window.innerHeight - 560)), maxHeight: 'calc(100vh - 16px)' }}>
             <div style={{ padding: '6px 10px 8px', fontSize: 12.5, color: 'var(--muted)', fontWeight: 600 }}>
               {sel.length === 1 ? (all.find((p) => p.id === sel[0])?.name ?? '') : `${sel.length} ${pl(sel.length, 'zdjęcie', 'zdjęcia', 'zdjęć')}`}
             </div>
@@ -691,11 +872,29 @@ export default function App() {
             {sel.length > 1 && (
               <button className="text menu-item" role="menuitem" onClick={() => { setMenu(null); startCollage() }}><LayoutDashboard size={18} /> Kolaż z zaznaczonych</button>
             )}
+            <button className="text menu-item" role="menuitem" onClick={() => { setMenu(null); setPicker(true) }}><FolderOpen size={18} /> Dodaj do albumu…</button>
+            {albumId !== null && (
+              <button className="text menu-item" role="menuitem" onClick={leaveAlbum}><X size={18} /> Usuń z tego albumu</button>
+            )}
+            <div style={{ height: 1, background: 'var(--glass-line)', margin: '4px 6px' }} />
+            {sel.length === 1 && (
+              <button className="text menu-item" role="menuitem" onClick={renameSelected}><Pencil size={18} /> Zmień nazwę pliku…</button>
+            )}
+            <button className="text menu-item" role="menuitem" onClick={() => moveSelected(false)}><ImageUp size={18} /> Przenieś do folderu…</button>
+            <button className="text menu-item" role="menuitem" onClick={() => moveSelected(true)}><Copy size={18} /> Kopiuj do folderu…</button>
+            <button className="text menu-item" role="menuitem" style={{ color: 'var(--err)' }} onClick={trashSelected}><Trash2 size={18} /> Przenieś do Kosza…</button>
+            <div style={{ height: 1, background: 'var(--glass-line)', margin: '4px 6px' }} />
             <button className="text menu-item" role="menuitem" onClick={() => { setSel(photos.map((p) => p.id)); setMenu(null) }}><ListChecks size={18} /> Zaznacz wszystkie ({photos.length})</button>
             <button className="text menu-item" role="menuitem" onClick={() => { setSelected(null); setMenu(null) }}><X size={18} /> Odznacz</button>
           </div>
         </>
       )}
+
+      {picker && sel.length > 0 && (
+        <AlbumPicker albums={albums} count={realIds().length} onPick={pickAlbum} onClose={() => setPicker(false)}
+          onCreate={() => { setPicker(false); newAlbum(true) }} />
+      )}
+      {prompt && <PromptDialog {...prompt} onClose={() => setPrompt(null)} />}
 
       <UpdateDialog u={updater} />
 

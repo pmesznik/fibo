@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   X, ChevronLeft, ChevronRight, Star, Heart, Play, Pause, Maximize, Undo2, Redo2,
   RotateCcw, RotateCw, FlipHorizontal, FlipVertical, Eye, Wand2, Save, CopyPlus, History,
-  Sliders, Sparkles, Info, Tag, Crop as CropIcon, Trash2, Sun, Palette, Aperture, Pencil, Zap,
+  ZoomIn, ZoomOut, Compare, Sliders, Sparkles, Info, Tag, Crop as CropIcon, Trash2, Sun, Palette, Aperture, Pencil, Zap,
 } from './FiboIcons'
 import { hasOriginal, readImage, restoreOriginal, saveEdit, setFavorite, setRating, type Photo } from './api'
 import { Thumb } from './Thumb'
@@ -89,6 +89,10 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
   const [tab, setTab] = useState<Tab>('basic')
   const [redEyeMode, setRedEyeMode] = useState(false)
   const [playing, setPlaying] = useState(autoplay)
+  const [zoom, setZoom] = useState(1)
+  const [pan, setPan] = useState({ x: 0, y: 0 })
+  const [compare, setCompare] = useState(false)
+  const drag = useRef<{ x: number; y: number; px: number; py: number } | null>(null)
   const [original, setOriginal] = useState(false)
   const [toast, setToast] = useState<{ text: string; kind?: 'ok' | 'err' } | null>(null)
   const [pendingNav, setPendingNav] = useState<number | null>(null)
@@ -101,6 +105,7 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
     if (!photo) return
     let dead = false
     setBitmap(null); setLoadError(null); setEdit(EMPTY_EDIT); setUndo([]); setRedo([]); setRedEyeMode(false)
+    setZoom(1); setPan({ x: 0, y: 0 }); setCompare(false)
     readImage(photo.id)
       .then((buf) => createImageBitmap(new Blob([buf]), { imageOrientation: 'from-image' }))
       .then((b) => { if (!dead) setBitmap(b) })
@@ -109,18 +114,53 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
     return () => { dead = true }
   }, [photo?.id, photo?.modified])
 
-  // Podgląd na żywo.
+  // Przy powiększeniu rysujemy w większej rozdzielczości (stopniami co 900 px, żeby nie przerysowywać przy każdym kroku rolki).
+  const renderSide = bitmap && zoom > 1 ? Math.min(Math.max(bitmap.width, bitmap.height), Math.ceil((1800 * zoom) / 900) * 900) : 1800
+
+  // Podgląd na żywo. Przy porównaniu pokazujemy oryginał bez żadnych zmian.
   useEffect(() => {
     if (!bitmap || !canvasRef.current) return
     const raf = requestAnimationFrame(() => {
       const c = canvasRef.current
       if (!c) return
-      const out = renderEdit(bitmap, edit, 1800)
+      const out = renderEdit(bitmap, compare ? EMPTY_EDIT : edit, renderSide)
       c.width = out.width; c.height = out.height
       c.getContext('2d')!.drawImage(out, 0, 0)
     })
     return () => cancelAnimationFrame(raf)
-  }, [bitmap, edit])
+  }, [bitmap, edit, compare, renderSide])
+
+  // Powiększanie kółkiem myszy w miejscu kursora; przy powrocie do 1 obraz wraca na środek.
+  const zoomAt = (factor: number, cx = 0, cy = 0) => {
+    setZoom((z0) => {
+      const z1 = Math.min(8, Math.max(1, z0 * factor))
+      setPan((p) => (z1 === 1 ? { x: 0, y: 0 } : { x: cx * (1 - z1 / z0) + p.x * (z1 / z0), y: cy * (1 - z1 / z0) + p.y * (z1 / z0) }))
+      return z1
+    })
+  }
+  const onWheel = (e: React.WheelEvent) => {
+    if (!bitmap) return
+    const r = e.currentTarget.getBoundingClientRect()
+    zoomAt(e.deltaY < 0 ? 1.18 : 1 / 1.18, e.clientX - (r.left + r.width / 2), e.clientY - (r.top + r.height / 2))
+  }
+  /** Dwuklik: dopasowanie do okna <-> powiększenie do 100% (jeden piksel zdjęcia na jeden piksel ekranu). */
+  const toggleActualSize = () => {
+    if (!bitmap || !canvasRef.current) return
+    if (zoom > 1) { setZoom(1); setPan({ x: 0, y: 0 }); return }
+    const fullW = edit.geo.rot % 2 === 1 ? bitmap.height : bitmap.width
+    const z100 = fullW / Math.max(1, canvasRef.current.clientWidth)
+    setZoom(Math.min(8, Math.max(2, z100)))
+  }
+  const onPanStart = (e: React.PointerEvent) => {
+    if (zoom <= 1 || redEyeMode) return
+    drag.current = { x: e.clientX, y: e.clientY, px: pan.x, py: pan.y }
+    e.currentTarget.setPointerCapture(e.pointerId)
+  }
+  const onPanMove = (e: React.PointerEvent) => {
+    const d = drag.current
+    if (d) setPan({ x: d.px + e.clientX - d.x, y: d.py + e.clientY - d.y })
+  }
+  const onPanEnd = () => { drag.current = null }
 
   const say = useCallback((text: string, kind?: 'ok' | 'err') => {
     setToast({ text, kind })
@@ -221,9 +261,15 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
       else if (/^[0-5]$/.test(e.key)) rate(+e.key)
       else if (e.key.toLowerCase() === 'f') toggleFav()
       else if (e.key.toLowerCase() === 'e') setSheet((v) => !v)
+      else if (e.key === '+' || e.key === '=') zoomAt(1.4)
+      else if (e.key === '-' || e.key === '_') zoomAt(1 / 1.4)
+      else if (e.key.toLowerCase() === 'z') toggleActualSize()
+      else if (e.key.toLowerCase() === 'b') setCompare(true)
     }
+    const onUp = (e: KeyboardEvent) => { if (e.key.toLowerCase() === 'b') setCompare(false) }
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    window.addEventListener('keyup', onUp)
+    return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onUp) }
   })
 
   const onCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -245,17 +291,32 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
   return (
     <div className="fixed inset-0 z-[1500]" style={{ background: 'var(--bg)' }} role="dialog" aria-modal="true" aria-label={`Podgląd: ${photo.name}`}>
       {/* Obraz na całym ekranie */}
-      <div className="absolute inset-0 flex items-center justify-center"
+      <div className="absolute inset-0 flex items-center justify-center overflow-hidden" onWheel={onWheel}
         style={{ padding: 'calc(76px + var(--sat)) ' + (sheet ? '394px' : '16px') + ' calc(104px + var(--sab)) 16px', transition: 'padding .3s var(--ease)', background: 'color-mix(in srgb, var(--bg) 60%, #000)' }}>
         {loadError && <div className="empty">Nie można otworzyć zdjęcia: {loadError}</div>}
         {!bitmap && !loadError && <div className="empty">Wczytywanie…</div>}
         <canvas
           ref={canvasRef}
           onClick={onCanvasClick}
+          onDoubleClick={toggleActualSize}
+          onPointerDown={onPanStart}
+          onPointerMove={onPanMove}
+          onPointerUp={onPanEnd}
+          onPointerCancel={onPanEnd}
           aria-label={photo.name}
           className={bitmap ? '' : 'hidden'}
-          style={{ maxWidth: '100%', maxHeight: '100%', borderRadius: 'var(--r-md)', boxShadow: '0 10px 40px rgba(0,0,0,.4)', cursor: redEyeMode ? 'crosshair' : 'default' }}
+          style={{
+            maxWidth: '100%', maxHeight: '100%', borderRadius: 'var(--r-md)', boxShadow: '0 10px 40px rgba(0,0,0,.4)',
+            cursor: redEyeMode ? 'crosshair' : zoom > 1 ? 'grab' : 'zoom-in', touchAction: 'none',
+            transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: 'center center',
+          }}
         />
+        {compare && (
+          <div className="chip on" style={{ position: 'absolute', left: '50%', bottom: 'calc(112px + var(--sab))', transform: 'translateX(-50%)', background: 'var(--panel)', pointerEvents: 'none' }}>Oryginał (bez zmian)</div>
+        )}
+        {zoom > 1 && (
+          <div className="chip" style={{ position: 'absolute', left: 16, bottom: 'calc(112px + var(--sab))', background: 'var(--panel)', pointerEvents: 'none' }}>{Math.round(zoom * 100)}%</div>
+        )}
       </div>
 
       {photos[index - 1] && (
@@ -288,6 +349,10 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
         <button className="ico" aria-label="Cofnij" title="Cofnij (Ctrl+Z)" disabled={!undo.length} onClick={doUndo}><Undo2 size={19} /></button>
         <button className="ico" aria-label="Ponów" title="Ponów (Ctrl+Y)" disabled={!redo.length} onClick={doRedo}><Redo2 size={19} /></button>
         <button className={`ico ${playing ? 'on' : ''}`} aria-label="Pokaz slajdów" aria-pressed={playing} title="Pokaz slajdów (spacja)" onClick={() => setPlaying((p) => !p)}>{playing ? <Pause size={19} /> : <Play size={19} />}</button>
+        <button className="ico" aria-label="Pomniejsz" title="Pomniejsz (−)" disabled={zoom <= 1} onClick={() => zoomAt(1 / 1.4)}><ZoomOut size={19} /></button>
+        <button className="ico" aria-label="Powiększ" title="Powiększ (+, kółko myszy, dwuklik: 100%)" onClick={() => zoomAt(1.4)}><ZoomIn size={19} /></button>
+        <button className={`ico ${compare ? 'on' : ''}`} aria-label="Przytrzymaj, aby zobaczyć oryginał" aria-pressed={compare} title="Przytrzymaj, aby zobaczyć oryginał (B)"
+          disabled={!dirty} onPointerDown={() => setCompare(true)} onPointerUp={() => setCompare(false)} onPointerLeave={() => setCompare(false)}><Compare size={19} /></button>
         <button className="ico" aria-label="Pełny ekran" onClick={fullscreen}><Maximize size={19} /></button>
       </div>
 

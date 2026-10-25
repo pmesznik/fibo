@@ -43,6 +43,7 @@ struct Photo {
     tags: Vec<String>,
     lat: Option<f64>,
     lon: Option<f64>,
+    albums: Vec<i64>,
 }
 
 fn open_db(path: &Path) -> rusqlite::Result<Connection> {
@@ -70,7 +71,15 @@ fn open_db(path: &Path) -> rusqlite::Result<Connection> {
             PRIMARY KEY (photo_id, tag_id)
         );
         CREATE INDEX IF NOT EXISTS idx_photo_tags_tag ON photo_tags(tag_id);
-        CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);",
+        CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS roots (path TEXT PRIMARY KEY);
+        CREATE TABLE IF NOT EXISTS albums (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE COLLATE NOCASE);
+        CREATE TABLE IF NOT EXISTS album_photos (
+            album_id INTEGER NOT NULL,
+            photo_id INTEGER NOT NULL,
+            PRIMARY KEY (album_id, photo_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_album_photos_photo ON album_photos(photo_id);",
     )?;
     // Migracja: współrzędne GPS dla mapy. Błąd "duplicate column" oznacza, że kolumny już są.
     for col in ["lat", "lon"] {
@@ -236,15 +245,39 @@ fn flush(state: &AppState, rows: &mut Vec<Row>) -> Result<(), String> {
     tx.commit().map_err(|e| e.to_string())
 }
 
+fn mtime_secs(meta: &fs::Metadata) -> i64 {
+    meta.modified().ok().and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map(|d| d.as_secs() as i64).unwrap_or(0)
+}
+
+/// Zdjęcia, które już są w bibliotece w tej samej wersji pliku (ścieżka, rozmiar, data zmiany).
+fn known_files(state: &AppState) -> Result<std::collections::HashSet<(String, i64, i64)>, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare("SELECT path, size, modified FROM photos").map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+        .map_err(|e| e.to_string())?
+        .filter_map(Result::ok)
+        .collect();
+    Ok(rows)
+}
+
 /// Skanuje partiami po 50 zdjęć; blokada bazy jest trzymana tylko podczas zapisu partii.
+/// Pliki niezmienione od ostatniego skanu są pomijane, więc ponowne skanowanie dużego folderu jest szybkie.
+/// Zwraca liczbę nowych lub zmienionych zdjęć.
 fn scan_blocking(state: &AppState, root: &str, progress: &dyn Fn(usize)) -> Result<usize, String> {
     let mut batch = Vec::new();
     let mut count = 0;
+    let known = known_files(state)?;
     let walker = WalkDir::new(root).into_iter().filter_entry(|e| e.file_name() != ORIGINALS_DIR);
     for entry in walker.filter_map(Result::ok) {
         let path = entry.path();
         if !entry.file_type().is_file() || !is_photo(path) {
             continue;
+        }
+        if let Ok(meta) = entry.metadata() {
+            if known.contains(&(path.to_string_lossy().to_string(), meta.len() as i64, mtime_secs(&meta))) {
+                continue;
+            }
         }
         let Some(row) = build_row(path) else { continue };
         batch.push(row);
@@ -264,7 +297,10 @@ async fn scan_folder(app: tauri::AppHandle, path: String) -> Result<usize, Strin
     // Skanowanie jest blokujące, więc nie powinno zajmować wątku interfejsu.
     tauri::async_runtime::spawn_blocking(move || {
         let emitter = app.clone();
-        scan_blocking(&app.state::<AppState>(), &path, &move |n| {
+        let state = app.state::<AppState>();
+        // Dodany folder jest od teraz obserwowany: nowe zdjęcia pojawią się same.
+        add_root(&state, &path)?;
+        scan_blocking(&state, &path, &move |n| {
             let _ = emitter.emit("scan-progress", n);
         })
     })
@@ -310,7 +346,8 @@ fn list_photos(state: State<'_, AppState>) -> Result<Vec<Photo>, String> {
         .prepare(
             "SELECT id, path, name, size, modified, taken, width, height, camera, rating, favorite,
                     (SELECT group_concat(t.name, char(31)) FROM photo_tags pt JOIN tags t ON t.id = pt.tag_id
-                     WHERE pt.photo_id = photos.id), lat, lon
+                     WHERE pt.photo_id = photos.id), lat, lon,
+                    (SELECT group_concat(album_id) FROM album_photos WHERE photo_id = photos.id)
              FROM photos ORDER BY COALESCE(taken, datetime(modified,'unixepoch')) DESC",
         )
         .map_err(|e| e.to_string())?;
@@ -334,6 +371,10 @@ fn list_photos(state: State<'_, AppState>) -> Result<Vec<Photo>, String> {
                     .unwrap_or_default(),
                 lat: r.get(12)?,
                 lon: r.get(13)?,
+                albums: r
+                    .get::<_, Option<String>>(14)?
+                    .map(|s| s.split(',').filter_map(|x| x.parse().ok()).collect())
+                    .unwrap_or_default(),
             })
         })
         .map_err(|e| e.to_string())?
@@ -863,6 +904,352 @@ async fn import_sidecars(app: tauri::AppHandle) -> Result<ImportReport, String> 
     .map_err(|e| e.to_string())?
 }
 
+// ---- Obserwowane foldery, albumy i operacje na plikach -------------------
+
+fn add_root_conn(conn: &Connection, root: &str) -> rusqlite::Result<()> {
+    let existing: Vec<String> = {
+        let mut stmt = conn.prepare("SELECT path FROM roots")?;
+        let rows = stmt.query_map([], |r| r.get(0))?.filter_map(Result::ok).collect();
+        rows
+    };
+    // Podfolder folderu, który już jest obserwowany, nie potrzebuje własnego wpisu.
+    if existing.iter().any(|r| Path::new(root).starts_with(r)) {
+        return Ok(());
+    }
+    for r in &existing {
+        if Path::new(r).starts_with(root) {
+            conn.execute("DELETE FROM roots WHERE path = ?1", [r])?;
+        }
+    }
+    conn.execute("INSERT OR IGNORE INTO roots (path) VALUES (?1)", [root])?;
+    Ok(())
+}
+
+fn add_root(state: &AppState, root: &str) -> Result<(), String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    add_root_conn(&conn, root).map_err(|e| e.to_string())
+}
+
+/// Biblioteka sprzed wprowadzenia obserwowania: foldery główne wyznaczamy z folderów zdjęć.
+fn backfill_roots(conn: &Connection) -> rusqlite::Result<()> {
+    let count: i64 = conn.query_row("SELECT COUNT(*) FROM roots", [], |r| r.get(0))?;
+    if count > 0 {
+        return Ok(());
+    }
+    let mut folders: Vec<String> = {
+        let mut stmt = conn.prepare("SELECT DISTINCT folder FROM photos")?;
+        let rows = stmt.query_map([], |r| r.get(0))?.filter_map(Result::ok).collect();
+        rows
+    };
+    folders.sort_by_key(|f| f.len()); // foldery nadrzędne są krótsze, więc dochodzą pierwsze
+    for f in folders {
+        add_root_conn(conn, &f)?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn list_roots(state: State<'_, AppState>) -> Result<Vec<String>, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare("SELECT path FROM roots ORDER BY path").map_err(|e| e.to_string())?;
+    let rows = stmt.query_map([], |r| r.get(0)).map_err(|e| e.to_string())?.filter_map(Result::ok).collect();
+    Ok(rows)
+}
+
+/// Przestaje obserwować folder; zdjęcia zostają w bibliotece.
+#[tauri::command]
+fn remove_root(state: State<'_, AppState>, path: String) -> Result<(), String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM roots WHERE path = ?1", [&path]).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+fn forget_photo(conn: &Connection, id: i64) -> rusqlite::Result<()> {
+    conn.execute("DELETE FROM photo_tags WHERE photo_id = ?1", [id])?;
+    conn.execute("DELETE FROM album_photos WHERE photo_id = ?1", [id])?;
+    conn.execute("DELETE FROM photos WHERE id = ?1", [id])?;
+    Ok(())
+}
+
+#[derive(Serialize, Default, Debug)]
+struct RescanReport {
+    added: usize,
+    removed: usize,
+    roots: usize,
+}
+
+/// Przeszukuje obserwowane foldery (pomijając niezmienione pliki) i usuwa z biblioteki zdjęcia, których plików już nie ma.
+/// Zdjęcie znika z biblioteki tylko wtedy, gdy jego folder istnieje, a pliku w nim nie ma (odłączony dysk niczego nie kasuje).
+fn rescan_blocking(state: &AppState) -> Result<RescanReport, String> {
+    let roots: Vec<String> = {
+        let conn = state.db.lock().map_err(|e| e.to_string())?;
+        let mut stmt = conn.prepare("SELECT path FROM roots").map_err(|e| e.to_string())?;
+        let rows = stmt.query_map([], |r| r.get(0)).map_err(|e| e.to_string())?.filter_map(Result::ok).collect();
+        rows
+    };
+    let mut rep = RescanReport::default();
+    for root in &roots {
+        if !Path::new(root).is_dir() {
+            continue;
+        }
+        rep.roots += 1;
+        rep.added += scan_blocking(state, root, &|_| {})?;
+    }
+    let rows = all_photo_ids(state)?;
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    for (id, path) in rows {
+        let p = Path::new(&path);
+        let gone = matches!(fs::metadata(p), Err(e) if e.kind() == std::io::ErrorKind::NotFound);
+        if gone && p.parent().map(|d| d.is_dir()).unwrap_or(false) {
+            forget_photo(&conn, id).map_err(|e| e.to_string())?;
+            rep.removed += 1;
+        }
+    }
+    if rep.removed > 0 {
+        conn.execute("DELETE FROM tags WHERE id NOT IN (SELECT tag_id FROM photo_tags)", []).map_err(|e| e.to_string())?;
+    }
+    Ok(rep)
+}
+
+#[tauri::command]
+async fn rescan_roots(app: tauri::AppHandle) -> Result<RescanReport, String> {
+    tauri::async_runtime::spawn_blocking(move || rescan_blocking(&app.state::<AppState>()))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+// Własne albumy: zdjęcie może być w wielu albumach, a album nie zależy od folderów.
+
+#[derive(Serialize)]
+struct Album {
+    id: i64,
+    name: String,
+    count: i64,
+}
+
+fn clean_album_name(s: &str) -> Result<String, String> {
+    let t = s.split_whitespace().collect::<Vec<_>>().join(" ");
+    if t.is_empty() {
+        Err("Podaj nazwę albumu".into())
+    } else if t.chars().count() > 60 {
+        Err("Nazwa albumu może mieć najwyżej 60 znaków".into())
+    } else {
+        Ok(t)
+    }
+}
+
+fn album_error(e: rusqlite::Error) -> String {
+    if e.to_string().contains("UNIQUE") { "Album o takiej nazwie już istnieje".into() } else { e.to_string() }
+}
+
+#[tauri::command]
+fn list_albums(state: State<'_, AppState>) -> Result<Vec<Album>, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare("SELECT a.id, a.name, (SELECT COUNT(*) FROM album_photos WHERE album_id = a.id) FROM albums a ORDER BY a.name COLLATE NOCASE")
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |r| Ok(Album { id: r.get(0)?, name: r.get(1)?, count: r.get(2)? }))
+        .map_err(|e| e.to_string())?
+        .filter_map(Result::ok)
+        .collect();
+    Ok(rows)
+}
+
+#[tauri::command]
+fn create_album(state: State<'_, AppState>, name: String) -> Result<Album, String> {
+    let name = clean_album_name(&name)?;
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    conn.execute("INSERT INTO albums (name) VALUES (?1)", [&name]).map_err(album_error)?;
+    Ok(Album { id: conn.last_insert_rowid(), name, count: 0 })
+}
+
+#[tauri::command]
+fn rename_album(state: State<'_, AppState>, id: i64, name: String) -> Result<(), String> {
+    let name = clean_album_name(&name)?;
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    conn.execute("UPDATE albums SET name = ?2 WHERE id = ?1", params![id, name]).map_err(album_error)?;
+    Ok(())
+}
+
+/// Usuwa sam album; zdjęcia zostają w bibliotece i na dysku.
+#[tauri::command]
+fn delete_album(state: State<'_, AppState>, id: i64) -> Result<(), String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM album_photos WHERE album_id = ?1", [id]).map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM albums WHERE id = ?1", [id]).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn add_to_album(state: State<'_, AppState>, album_id: i64, ids: Vec<i64>) -> Result<(), String> {
+    let mut conn = state.db.lock().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    for id in ids {
+        tx.execute("INSERT OR IGNORE INTO album_photos (album_id, photo_id) VALUES (?1, ?2)", params![album_id, id])
+            .map_err(|e| e.to_string())?;
+    }
+    tx.commit().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn remove_from_album(state: State<'_, AppState>, album_id: i64, ids: Vec<i64>) -> Result<(), String> {
+    let mut conn = state.db.lock().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    for id in ids {
+        tx.execute("DELETE FROM album_photos WHERE album_id = ?1 AND photo_id = ?2", params![album_id, id])
+            .map_err(|e| e.to_string())?;
+    }
+    tx.commit().map_err(|e| e.to_string())
+}
+
+// Zmiana nazwy, przenoszenie i kopiowanie plików (razem z plikiem XMP zdjęcia).
+
+/// Nazwa pliku bez rozszerzenia, dozwolona w Windows.
+fn valid_stem(s: &str) -> Result<String, String> {
+    let t = s.trim();
+    if t.is_empty() {
+        return Err("Podaj nazwę pliku".into());
+    }
+    if t.chars().count() > 150 {
+        return Err("Nazwa pliku jest za długa".into());
+    }
+    if t.chars().any(|c| c.is_control() || "\\/:*?\"<>|".contains(c)) {
+        return Err("Nazwa nie może zawierać znaków \\ / : * ? \" < > |".into());
+    }
+    if t.ends_with('.') {
+        return Err("Nazwa nie może kończyć się kropką".into());
+    }
+    let base = t.split('.').next().unwrap_or("").to_uppercase();
+    let reserved = ["CON", "PRN", "AUX", "NUL"].contains(&base.as_str())
+        || ((base.starts_with("COM") || base.starts_with("LPT")) && base.len() == 4 && base.as_bytes()[3].is_ascii_digit());
+    if reserved {
+        return Err("Ta nazwa jest zarezerwowana przez Windows".into());
+    }
+    Ok(t.to_string())
+}
+
+/// Ścieżka w `dir` o danej nazwie; gdy zajęta, dopisuje _1, _2 itd.
+fn unique_target(dir: &Path, name: &str) -> PathBuf {
+    let first = dir.join(name);
+    if !first.exists() {
+        return first;
+    }
+    let p = Path::new(name);
+    let stem = p.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+    let ext = p.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
+    (1..)
+        .map(|n| dir.join(format!("{stem}_{n}{ext}")))
+        .find(|c| !c.exists())
+        .unwrap_or(first)
+}
+
+/// Przenosi plik; między dyskami (rename zawodzi) kopiuje, sprawdza rozmiar i dopiero wtedy usuwa źródło.
+fn move_file(src: &Path, dst: &Path) -> Result<(), String> {
+    if fs::rename(src, dst).is_ok() {
+        return Ok(());
+    }
+    fs::copy(src, dst).map_err(|e| e.to_string())?;
+    let same = fs::metadata(src).map(|m| m.len()).ok() == fs::metadata(dst).map(|m| m.len()).ok();
+    if !same {
+        let _ = fs::remove_file(dst);
+        return Err("Kopia pliku jest niepełna, źródło zostało nietknięte".into());
+    }
+    fs::remove_file(src).map_err(|e| e.to_string())
+}
+
+/// Plik XMP (własny albo cudzy) należy do zdjęcia, więc idzie razem z nim.
+fn carry_sidecar(src_photo: &Path, dst_photo: &Path, copy: bool) {
+    let s = xmp_path(src_photo);
+    if !s.exists() {
+        return;
+    }
+    let d = xmp_path(dst_photo);
+    let _ = if copy { fs::copy(&s, &d).map(|_| ()).map_err(|e| e.to_string()) } else { move_file(&s, &d) };
+}
+
+/// Zmienia nazwę pliku zdjęcia (rozszerzenie zostaje). Zwraca nową nazwę z rozszerzeniem.
+#[tauri::command]
+fn rename_photo(state: State<'_, AppState>, id: i64, new_stem: String) -> Result<String, String> {
+    rename_photo_core(&state, id, &new_stem)
+}
+
+fn rename_photo_core(state: &AppState, id: i64, new_stem: &str) -> Result<String, String> {
+    let stem = valid_stem(new_stem)?;
+    let (path, _, _) = photo_path(state, id)?;
+    let src = PathBuf::from(&path);
+    let dir = src.parent().ok_or("brak folderu")?.to_path_buf();
+    let old_name = src.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    let new_name = match src.extension() {
+        Some(e) => format!("{stem}.{}", e.to_string_lossy()),
+        None => stem,
+    };
+    let dst = dir.join(&new_name);
+    if dst.exists() && new_name.to_lowercase() != old_name.to_lowercase() {
+        return Err("Plik o tej nazwie już istnieje w tym folderze".into());
+    }
+    fs::rename(&src, &dst).map_err(|e| e.to_string())?;
+    carry_sidecar(&src, &dst, false);
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    conn.execute(
+        "UPDATE photos SET path = ?2, name = ?3 WHERE id = ?1",
+        params![id, dst.to_string_lossy(), new_name],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(new_name)
+}
+
+#[derive(Serialize, Default, Debug)]
+struct MoveReport {
+    done: usize,
+    errors: Vec<String>,
+}
+
+/// Przenosi lub kopiuje zdjęcia do wskazanego folderu. Przy zajętej nazwie dopisuje _1, _2, nic nie nadpisuje.
+fn move_photos_blocking(state: &AppState, ids: &[i64], dest: &Path, copy: bool) -> Result<MoveReport, String> {
+    if !dest.is_dir() {
+        return Err("Folder docelowy nie istnieje".into());
+    }
+    let mut rep = MoveReport::default();
+    for &id in ids {
+        let (path, taken, camera) = photo_path(state, id)?;
+        let src = PathBuf::from(&path);
+        let name = src.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+        if src.parent() == Some(dest) && !copy {
+            continue; // już tam jest
+        }
+        let target = unique_target(dest, &name);
+        let result = if copy { fs::copy(&src, &target).map(|_| ()).map_err(|e| e.to_string()) } else { move_file(&src, &target) };
+        if let Err(e) = result {
+            rep.errors.push(format!("{name}: {e}"));
+            continue;
+        }
+        carry_sidecar(&src, &target, copy);
+        if copy {
+            reindex(state, &target, taken, camera)?;
+        } else {
+            let new_name = target.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+            let conn = state.db.lock().map_err(|e| e.to_string())?;
+            // Nieaktualny wiersz o tej ścieżce (pliku już nie ma) nie może zablokować przeniesienia.
+            conn.execute("DELETE FROM photos WHERE path = ?1 AND id != ?2", params![target.to_string_lossy(), id]).map_err(|e| e.to_string())?;
+            conn.execute(
+                "UPDATE photos SET path = ?2, folder = ?3, name = ?4 WHERE id = ?1",
+                params![id, target.to_string_lossy(), dest.to_string_lossy(), new_name],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+        rep.done += 1;
+    }
+    Ok(rep)
+}
+
+#[tauri::command]
+async fn move_photos(app: tauri::AppHandle, ids: Vec<i64>, dest: String, copy: bool) -> Result<MoveReport, String> {
+    tauri::async_runtime::spawn_blocking(move || move_photos_blocking(&app.state::<AppState>(), &ids, Path::new(&dest), copy))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 // ---- Duplikaty ------------------------------------------------------------
 
 /// Suma kontrolna FNV-1a (64 bity) całej zawartości pliku.
@@ -1085,8 +1472,7 @@ fn trash_photos(state: State<'_, AppState>, ids: Vec<i64>) -> Result<usize, Stri
             let _ = trash::delete(&xmp);
         }
         let conn = state.db.lock().map_err(|e| e.to_string())?;
-        conn.execute("DELETE FROM photo_tags WHERE photo_id = ?1", [id]).map_err(|e| e.to_string())?;
-        conn.execute("DELETE FROM photos WHERE id = ?1", [id]).map_err(|e| e.to_string())?;
+        forget_photo(&conn, id).map_err(|e| e.to_string())?;
         n += 1;
     }
     let conn = state.db.lock().map_err(|e| e.to_string())?;
@@ -1320,6 +1706,108 @@ mod tests {
         assert_eq!(rating, 5);
     }
 
+    fn test_state(dir: &Path) -> AppState {
+        let _ = fs::remove_dir_all(dir);
+        fs::create_dir_all(dir.join("thumbs")).unwrap();
+        AppState { db: Mutex::new(open_db(&dir.join("t.db")).unwrap()), thumbs: dir.join("thumbs"), sidecar: AtomicBool::new(true) }
+    }
+
+    fn photo_id(state: &AppState, name: &str) -> i64 {
+        state.db.lock().unwrap().query_row("SELECT id FROM photos WHERE name = ?1", [name], |r| r.get(0)).unwrap()
+    }
+
+    #[test]
+    fn rename_move_copy_and_rescan() {
+        let dir = std::env::temp_dir().join("mz-files-test");
+        let state = test_state(&dir);
+        let lib = dir.join("lib");
+        let other = dir.join("inne");
+        fs::create_dir_all(&lib).unwrap();
+        fs::create_dir_all(&other).unwrap();
+        let x = lib.join("x.jpg");
+        image::RgbImage::new(8, 8).save(&x).unwrap();
+        fs::write(xmp_path(&x), build_xmp(3, true, &["morze".into()])).unwrap();
+
+        // Skan dodaje zdjęcie razem z tym, co ma w pliku XMP, i zapamiętuje folder jako obserwowany.
+        add_root(&state, lib.to_str().unwrap()).unwrap();
+        assert_eq!(scan_blocking(&state, lib.to_str().unwrap(), &|_| {}).unwrap(), 1);
+        let id = photo_id(&state, "x.jpg");
+        let (rating, fav): (i64, i64) = state.db.lock().unwrap().query_row("SELECT rating, favorite FROM photos WHERE id = ?1", [id], |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
+        assert_eq!((rating, fav), (3, 1));
+        // Ponowny skan niczego nie zmienia (plik niezmieniony, więc pominięty).
+        assert_eq!(scan_blocking(&state, lib.to_str().unwrap(), &|_| {}).unwrap(), 0);
+
+        // Zmiana nazwy: złe nazwy odrzucone, dobra zmienia plik, XMP i wpis w bazie.
+        for bad in ["", "a/b", "co:n", "CON", "kropka.", "gwiazdka*"] {
+            assert!(rename_photo_core(&state, id, bad).is_err(), "powinno odrzucić {bad:?}");
+        }
+        assert_eq!(rename_photo_core(&state, id, "morze 2024").unwrap(), "morze 2024.jpg");
+        assert!(lib.join("morze 2024.jpg").exists() && !x.exists());
+        assert!(xmp_path(&lib.join("morze 2024.jpg")).exists() && !xmp_path(&x).exists(), "XMP idzie za zdjęciem");
+        image::RgbImage::new(8, 8).save(lib.join("zajete.jpg")).unwrap();
+        assert!(rename_photo_core(&state, id, "zajete").is_err(), "nie nadpisujemy istniejącego pliku");
+
+        // Przenoszenie: nazwa zajęta w celu dostaje _1, nic nie jest nadpisane.
+        image::RgbImage::new(8, 8).save(other.join("morze 2024.jpg")).unwrap();
+        let rep = move_photos_blocking(&state, &[id], &other, false).unwrap();
+        assert_eq!((rep.done, rep.errors.len()), (1, 0));
+        assert!(other.join("morze 2024_1.jpg").exists() && !lib.join("morze 2024.jpg").exists());
+        assert!(xmp_path(&other.join("morze 2024_1.jpg")).exists());
+        let folder: String = state.db.lock().unwrap().query_row("SELECT folder FROM photos WHERE id = ?1", [id], |r| r.get(0)).unwrap();
+        assert_eq!(folder, other.to_string_lossy());
+
+        // Kopiowanie tworzy nowe zdjęcie w bibliotece z tymi samymi tagami (z kopii pliku XMP).
+        let rep = move_photos_blocking(&state, &[id], &lib, true).unwrap();
+        assert_eq!(rep.done, 1);
+        let n: i64 = state.db.lock().unwrap().query_row("SELECT COUNT(*) FROM photos WHERE name = 'morze 2024_1.jpg' OR name = 'morze 2024.jpg'", [], |r| r.get(0)).unwrap();
+        assert!(n >= 1);
+        assert!(move_photos_blocking(&state, &[id], &dir.join("nie ma"), false).is_err());
+
+        // Rescan: nowe pliki w obserwowanym folderze są dodawane, a usunięte znikają z biblioteki.
+        image::RgbImage::new(9, 9).save(lib.join("nowe.jpg")).unwrap();
+        fs::remove_file(lib.join("zajete.jpg")).unwrap();
+        let rep = rescan_blocking(&state).unwrap();
+        assert!(rep.added >= 1, "{rep:?}");
+        assert!(rep.removed >= 1, "{rep:?}");
+        let names: Vec<String> = {
+            let conn = state.db.lock().unwrap();
+            let mut s = conn.prepare("SELECT name FROM photos").unwrap();
+            s.query_map([], |r| r.get(0)).unwrap().filter_map(Result::ok).collect()
+        };
+        assert!(names.contains(&"nowe.jpg".to_string()) && !names.contains(&"zajete.jpg".to_string()));
+
+        // Odłączony dysk: folder nie istnieje, więc zdjęcia z niego nie znikają z biblioteki.
+        fs::remove_dir_all(&other).unwrap();
+        let before: i64 = state.db.lock().unwrap().query_row("SELECT COUNT(*) FROM photos", [], |r| r.get(0)).unwrap();
+        let _ = rescan_blocking(&state).unwrap();
+        let after: i64 = state.db.lock().unwrap().query_row("SELECT COUNT(*) FROM photos", [], |r| r.get(0)).unwrap();
+        assert_eq!(before, after, "brak folderu nie może kasować zdjęć z biblioteki");
+    }
+
+    #[test]
+    fn albums_roots_and_names() {
+        let dir = std::env::temp_dir().join("mz-albums-test");
+        let state = test_state(&dir);
+        {
+            let conn = state.db.lock().unwrap();
+            // Foldery nadrzędne przejmują podfoldery.
+            add_root_conn(&conn, "C:\\Zdjecia\\2024").unwrap();
+            add_root_conn(&conn, "C:\\Zdjecia").unwrap();
+            add_root_conn(&conn, "C:\\Zdjecia\\2023").unwrap();
+            let roots: Vec<String> = conn.prepare("SELECT path FROM roots").unwrap().query_map([], |r| r.get(0)).unwrap().filter_map(Result::ok).collect();
+            assert_eq!(roots, vec!["C:\\Zdjecia".to_string()]);
+        }
+        assert_eq!(clean_album_name("  Wakacje   2024 ").unwrap(), "Wakacje 2024");
+        assert!(clean_album_name("   ").is_err());
+        assert!(clean_album_name(&"a".repeat(61)).is_err());
+        assert!(valid_stem("zdjęcie 1").is_ok() && valid_stem("lpt1").is_err() && valid_stem("com3.txt").is_err());
+
+        let conn = state.db.lock().unwrap();
+        conn.execute("INSERT INTO albums (name) VALUES ('Wakacje')", []).unwrap();
+        let dup = conn.execute("INSERT INTO albums (name) VALUES ('wakacje')", []).unwrap_err();
+        assert_eq!(album_error(dup), "Album o takiej nazwie już istnieje", "nazwa albumu jest unikalna bez względu na wielkość liter");
+    }
+
     #[test]
     fn scan_and_thumbnail() {
         // Test na prawdziwym folderze ze zdjęciami: pomijany, gdy nie podano FOTO_DIR (np. w CI).
@@ -1346,6 +1834,7 @@ fn main() {
             let thumbs = dir.join("thumbs");
             fs::create_dir_all(&thumbs)?;
             let db = open_db(&dir.join("library.db"))?;
+            let _ = backfill_roots(&db);
             // Zapis metadanych do plików XMP jest domyślnie włączony.
             let sidecar = db
                 .query_row("SELECT value FROM settings WHERE key = 'sidecar'", [], |r| r.get::<_, String>(0))
@@ -1354,7 +1843,7 @@ fn main() {
             app.manage(AppState { db: Mutex::new(db), thumbs, sidecar: AtomicBool::new(sidecar) });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![get_sidecar_enabled, set_sidecar_enabled, export_sidecars, import_sidecars, scan_folder, refresh_library, find_duplicates, trash_photos, list_photos, thumbnail, set_rating, set_favorite, add_tag, remove_tag, delete_tag, save_edit, save_collage, read_image, has_original, restore_original])
+        .invoke_handler(tauri::generate_handler![list_roots, remove_root, rescan_roots, list_albums, create_album, rename_album, delete_album, add_to_album, remove_from_album, rename_photo, move_photos, get_sidecar_enabled, set_sidecar_enabled, export_sidecars, import_sidecars, scan_folder, refresh_library, find_duplicates, trash_photos, list_photos, thumbnail, set_rating, set_favorite, add_tag, remove_tag, delete_tag, save_edit, save_collage, read_image, has_original, restore_original])
         .run(tauri::generate_context!())
         .expect("błąd uruchomienia aplikacji");
 }
