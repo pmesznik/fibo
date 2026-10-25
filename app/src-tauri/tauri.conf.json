@@ -11,7 +11,7 @@
   },
   "app": {
     "windows": [
-      { "title": "FIBO", "width": 1400, "height": 880, "minWidth": 900, "minHeight": 600 }
+      { "title": "FIBO", "width": 1200, "height": 720, "minWidth": 820, "minHeight": 520, "center": true, "maximized": true }
     ],
     "security": {
       "csp": null,

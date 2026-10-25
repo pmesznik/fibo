@@ -18,6 +18,13 @@ import {
 type Mode = 'library' | 'albums' | 'favs' | 'people' | 'map'
 type Sort = 'date-desc' | 'date-asc' | 'name'
 type Group = 'year' | 'month' | 'none'
+type Theme = 'auto' | 'light' | 'dark'
+
+/** Ustawia motyw na <html>; „auto” zdejmuje wymuszenie i zostaje motyw systemu. */
+const applyTheme = (t: Theme) => {
+  if (t === 'auto') document.documentElement.removeAttribute('data-theme')
+  else document.documentElement.setAttribute('data-theme', t)
+}
 
 /** Data zrobienia zdjęcia (EXIF), a gdy jej nie ma, data modyfikacji pliku. Format: RRRR-MM-DD GG:MM:SS. */
 const whenOf = (p: Photo) => (p.taken && /^\d{4}-\d{2}/.test(p.taken) ? p.taken : new Date(p.modified * 1000).toISOString().replace('T', ' '))
@@ -72,6 +79,12 @@ export default function App() {
     try { const v = localStorage.getItem('group'); return v === 'month' || v === 'none' ? v : 'year' } catch { return 'year' }
   })
   const setGroup = (g: Group) => { setGroupState(g); try { localStorage.setItem('group', g) } catch { /* brak pamięci */ } }
+
+  const [theme, setThemeState] = useState<Theme>(() => {
+    try { const v = localStorage.getItem('theme'); return v === 'light' || v === 'dark' ? v : 'auto' } catch { return 'auto' }
+  })
+  const setTheme = (t: Theme) => { setThemeState(t); applyTheme(t); try { localStorage.setItem('theme', t) } catch { /* brak pamięci */ } }
+  useEffect(() => { applyTheme(theme) }, [theme])
 
   const say = useCallback((text: string, kind?: 'ok' | 'err') => {
     setToast({ text, kind })
@@ -313,8 +326,8 @@ export default function App() {
         ))}
       </nav>
 
-      <button className="fab glass" aria-label="Dodaj folder ze zdjęciami" title="Dodaj folder" onClick={addFolder}>
-        <Plus size={22} strokeWidth={2} />
+      <button className="fab-pill glass" aria-label="Dodaj folder ze zdjęciami" title="Dodaj folder ze zdjęciami" onClick={addFolder}>
+        <Plus size={20} strokeWidth={2} /><span>Dodaj folder</span>
       </button>
 
       {/* Szuflada */}
@@ -405,7 +418,14 @@ export default function App() {
               </div>
               {folders.length === 0 && <p style={{ color: 'var(--muted)', fontSize: 13 }}>Brak folderów. Dodaj pierwszy przyciskiem Dodaj folder.</p>}
             </Sec>
-            <Sec id="look" icon={<Ruler size={17} />} title="Wygląd" hint={original ? 'Oryginalne proporcje' : 'Równe kafelki 4:3'}>
+            <Sec id="look" icon={<Ruler size={17} />} title="Wygląd" defaultOpen
+              hint={`${theme === 'auto' ? 'Motyw systemu' : theme === 'light' ? 'Jasny motyw' : 'Ciemny motyw'} · ${original ? 'oryginalne proporcje' : 'równe kafelki'}`}>
+              <label>Motyw</label>
+              <div className="chips">
+                {([['auto', 'Jak w systemie'], ['light', 'Jasny'], ['dark', 'Ciemny']] as [Theme, string][]).map(([v, l]) => (
+                  <Chip key={v} on={theme === v} onClick={() => setTheme(v)}>{l}</Chip>
+                ))}
+              </div>
               <label>Układ miniatur</label>
               <div className="chips">
                 <Chip on={original} onClick={() => setGridMode(true)}>Oryginalne proporcje</Chip>

@@ -61,7 +61,9 @@ export function MapView({ photos, total, refreshing, onRefresh, onOpen }: {
   // Utworzenie mapy (raz).
   useEffect(() => {
     if (!box.current) return
-    const dark = window.matchMedia('(prefers-color-scheme: dark)').matches
+    // Styl mapy zgodny z motywem aplikacji (ręcznym albo systemowym).
+    const forced = document.documentElement.getAttribute('data-theme')
+    const dark = forced ? forced === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches
     const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#e4572e'
     const first = placesRef.current
     const center: [number, number] = first.length
