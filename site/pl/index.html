@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FIBO: menedżer i edytor zdjęć na Windows</title>
+<meta name="description" content="FIBO porządkuje zdjęcia według dat, tagów i miejsc, ma edytor z efektami, kolaże i wyszukiwanie duplikatów. Wszystko lokalnie, na licencji GPL.">
+<meta property="og:title" content="FIBO: menedżer i edytor zdjęć na Windows">
+<meta property="og:description" content="FIBO porządkuje zdjęcia według dat, tagów i miejsc, ma edytor z efektami, kolaże i wyszukiwanie duplikatów. Wszystko lokalnie, na licencji GPL.">
+<meta property="og:image" content="https://pmesznik.github.io/fibo/assets/fibo-logo.png">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<link rel="alternate" hreflang="en" href="../en/">
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body data-lang="pl" data-repo="pmesznik/fibo" data-version="0.1.0">
+<a class="skip" href="#docs">Dokumentacja</a>
+<header class="top">
+  <div class="wrap bar">
+    <a class="brand" href="#top" aria-label="FIBO"><img src="../assets/fibo-ikona.svg" alt="" width="36" height="36"><span>FIBO</span></a>
+    <nav aria-label="Dokumentacja">
+      <a href="#features">Funkcje</a>
+      <a href="#docs">Dokumentacja</a>
+      <a href="https://github.com/pmesznik/fibo">Kod na GitHubie</a>
+      <a class="lang" id="lang-switch" href="../en/" hreflang="en" lang="en">English</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+<section class="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <p class="eyebrow">Twoje zdjęcia w złotym podziale</p>
+      <h1>FIBO</h1>
+      <p class="lead">FIBO to menedżer i edytor zdjęć na Windows, inspirowany Picasą 3. Porządkuje zdjęcia według lat, tagów i miejsc na globusie, poprawia je jednym kliknięciem i szuka duplikatów. Wszystko dzieje się na Twoim komputerze.</p>
+      <div class="dl-box" id="download">
+        <a class="btn primary" id="dl-btn" href="https://github.com/pmesznik/fibo/releases/latest"
+           data-label="Pobierz FIBO {v} na Windows" data-fallback="Pobierz najnowszą wersję"
+           data-meta="Windows 10 i 11, 64-bitowy · instalator {size} · {date}" data-meta-fallback="Windows 10 i 11, 64-bitowy">Pobierz najnowszą wersję</a>
+        <p class="meta" id="dl-meta">Windows 10 i 11, 64-bitowy</p>
+        <p class="meta"><a href="https://github.com/pmesznik/fibo/releases">Wszystkie wersje</a> · <a href="https://github.com/pmesznik/fibo">Kod na GitHubie</a></p>
+        <p class="meta small" id="dl-name" data-tpl="Nazwa pliku zawiera numer wersji, np. FIBO_{v}_x64-setup.exe."></p>
+        <p class="note small"><a href="#install">Instalator nie jest jeszcze podpisany cyfrowo, więc Windows może ostrzec przy pierwszym uruchomieniu. Szczegóły w sekcji „Instalacja”.</a></p>
+      </div>
+    </div>
+    <div class="hero-art" aria-hidden="true"><img src="../assets/fibo-logo.svg" alt="" width="520"></div>
+  </div>
+</section>
+
+<section class="wrap" id="features">
+  <h2>Co potrafi FIBO</h2>
+  <div class="cards">
+    <article class="card"><div class="ico"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="fibo-icon" aria-hidden="true"><path class="fi" d="M14.2 19H2.5A11.7 11.7 0 0 1 14.2 7.3Z" fill="currentColor" fill-opacity=".2" stroke="none"></path><rect x="2.5" y="5" width="19" height="14" rx="2.5"></rect><path d="M14.2 5V19M14.2 12H21.5"></path><path d="M2.5 19A11.7 11.7 0 0 1 14.2 7.3"></path></svg></div><h3>Biblioteka według lat</h3><p>Zdjęcia ułożone według daty zrobienia, z nagłówkami lat i miesięcy oraz siatką w oryginalnych proporcjach.</p></article>
+    <article class="card"><div class="ico"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="fibo-icon" aria-hidden="true"><path class="fi" d="M3 5A2 2 0 0 1 5 3h6.2a2 2 0 0 1 1.4.6l8.2 8.2a2 2 0 0 1 0 2.8l-6.2 6.2a2 2 0 0 1-2.8 0L3.6 12.6A2 2 0 0 1 3 11.2Z" fill="currentColor" fill-opacity=".2" stroke="none"></path><path d="M3 5A2 2 0 0 1 5 3h6.2a2 2 0 0 1 1.4.6l8.2 8.2a2 2 0 0 1 0 2.8l-6.2 6.2a2 2 0 0 1-2.8 0L3.6 12.6A2 2 0 0 1 3 11.2Z"></path><circle cx="7.7" cy="7.7" r="1.6"></circle></svg></div><h3>Tagi, oceny, ulubione</h3><p>Oznaczaj zdjęcia tagami i gwiazdkami, filtruj i szukaj. Bez konta i bez chmury.</p></article>
+    <article class="card"><div class="ico"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="fibo-icon" aria-hidden="true"><path d="M4 20 14.2 9.8"></path><path class="fi" d="M17.6 2.8000000000000003Q18.032 5.968 21.200000000000003 6.4Q18.032 6.832000000000001 17.6 10.0Q17.168000000000003 6.832000000000001 14.000000000000002 6.4Q17.168000000000003 5.968 17.6 2.8000000000000003Z" fill="currentColor" fill-opacity=".2" stroke="none"></path><path d="M17.6 2.8000000000000003Q18.032 5.968 21.200000000000003 6.4Q18.032 6.832000000000001 17.6 10.0Q17.168000000000003 6.832000000000001 14.000000000000002 6.4Q17.168000000000003 5.968 17.6 2.8000000000000003Z"></path><path class="fi" d="M8 3.3000000000000003Q8.228 4.972 9.9 5.2Q8.228 5.428 8 7.1Q7.772 5.428 6.1 5.2Q7.772 4.972 8 3.3000000000000003Z" fill="currentColor" fill-opacity=".2" stroke="none"></path><path d="M8 3.3000000000000003Q8.228 4.972 9.9 5.2Q8.228 5.428 8 7.1Q7.772 5.428 6.1 5.2Q7.772 4.972 8 3.3000000000000003Z"></path><path class="fi" d="M19 13.8Q19.204 15.296 20.7 15.5Q19.204 15.704 19 17.2Q18.796 15.704 17.3 15.5Q18.796 15.296 19 13.8Z" fill="currentColor" fill-opacity=".2" stroke="none"></path><path d="M19 13.8Q19.204 15.296 20.7 15.5Q19.204 15.704 19 17.2Q18.796 15.704 17.3 15.5Q18.796 15.296 19 13.8Z"></path></svg></div><h3>Edytor z efektami</h3><p>Szybkie poprawki, kadrowanie, krzywe światła i ponad 30 efektów. Oryginał zawsze zostaje bezpieczny.</p></article>
+    <article class="card"><div class="ico"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="fibo-icon" aria-hidden="true"><rect class="fi" x="2.5" y="2.5" width="11" height="19" rx="2.5" fill="currentColor" fill-opacity=".2" stroke="none"></rect><rect x="2.5" y="2.5" width="11" height="19" rx="2.5"></rect><rect x="16" y="2.5" width="5.5" height="5.5" rx="1.8"></rect><rect x="16" y="10.5" width="5.5" height="11" rx="1.8"></rect></svg></div><h3>Kolaże</h3><p>Siatka, mozaika, stos zdjęć lub kontaktówka z zaznaczonych zdjęć, gotowe do wydruku.</p></article>
+    <article class="card"><div class="ico"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="fibo-icon" aria-hidden="true"><path class="fi" d="M12 21.5s-7-6.1-7-11.5a7 7 0 0 1 14 0c0 5.4-7 11.5-7 11.5Z" fill="currentColor" fill-opacity=".2" stroke="none"></path><path d="M12 21.5s-7-6.1-7-11.5a7 7 0 0 1 14 0c0 5.4-7 11.5-7 11.5Z"></path><circle cx="12" cy="10" r="2.6"></circle></svg></div><h3>Globus ze zdjęciami</h3><p>Pinezki w miejscach, gdzie zrobiono zdjęcia. Kliknij pinezkę i zobacz zdjęcia z tego miejsca.</p></article>
+    <article class="card"><div class="ico"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="fibo-icon" aria-hidden="true"><rect class="fi" x="8.5" y="8.5" width="13" height="13" rx="2.5" fill="currentColor" fill-opacity=".2" stroke="none"></rect><rect x="8.5" y="8.5" width="13" height="13" rx="2.5"></rect><path d="M15.5 8.5V6A2.5 2.5 0 0 0 13 3.5H6A2.5 2.5 0 0 0 3.5 6v7A2.5 2.5 0 0 0 6 15.5h2.5"></path></svg></div><h3>Duplikaty</h3><p>Znajduje identyczne i podobne zdjęcia, proponuje najlepsze i przenosi resztę do Kosza.</p></article>
+  </div>
+</section>
+
+<section class="wrap docs" id="docs">
+  <aside class="toc">
+    <details open>
+      <summary>Spis treści</summary>
+      <ol><li><a href="#install">Instalacja</a></li><li><a href="#start">Pierwsze kroki</a></li><li><a href="#library">Biblioteka i albumy</a></li><li><a href="#search">Szukanie i filtry</a></li><li><a href="#tags">Tagi, oceny i ulubione</a></li><li><a href="#viewer">Podgląd zdjęcia</a></li><li><a href="#editor">Edytor zdjęć</a></li><li><a href="#collage">Kolaże</a></li><li><a href="#map">Mapa</a></li><li><a href="#duplicates">Duplikaty</a></li><li><a href="#data">Dane i prywatność</a></li><li><a href="#shortcuts">Skróty klawiszowe</a></li><li><a href="#faq">Najczęstsze pytania</a></li><li><a href="#build">Budowanie ze źródeł</a></li><li><a href="#license">Licencja</a></li></ol>
+    </details>
+  </aside>
+  <div class="doc-body">
+    <h2>Dokumentacja</h2>
+    <section id="install"><h3 class="sec-title">Instalacja</h3>
+      <p><strong>Wymagania:</strong> Windows 10 lub 11 (64-bitowy). Środowisko WebView2 jest w Windows 11 i w nowszych Windows 10. Jeśli go brakuje, instalator pobierze je sam, więc wtedy potrzebne jest połączenie z internetem.</p>
+      <ol>
+        <li>Pobierz plik <code>FIBO_&lt;wersja&gt;_x64-setup.exe</code> ze strony głównej lub z <a href="https://github.com/pmesznik/fibo/releases/latest">wydań na GitHubie</a>.</li>
+        <li>Uruchom go. Instalacja jest tylko dla Twojego konta i nie wymaga uprawnień administratora.</li>
+        <li>FIBO pojawi się w menu Start.</li>
+      </ol>
+      <div class="note"><strong>Windows ostrzega albo blokuje instalator?</strong> Instalator nie jest jeszcze podpisany certyfikatem, więc:
+        <ul>
+          <li><strong>SmartScreen</strong> („Windows ochronił Twój komputer”): kliknij <em>Więcej informacji</em>, potem <em>Uruchom mimo to</em>.</li>
+          <li><strong>Kontrola aplikacji inteligentnej</strong> (Smart App Control) może zablokować niepodpisany program całkowicie. Wtedy zostaje poczekać na wersję podpisaną albo wyłączyć tę funkcję w Zabezpieczeniach Windows. Pamiętaj, że po wyłączeniu nie da się jej włączyć z powrotem bez przywracania systemu, więc to Twoja decyzja.</li>
+        </ul>
+      </div>
+      <p><strong>Odinstalowanie:</strong> Ustawienia → Aplikacje → FIBO → Odinstaluj. Biblioteka i miniatury zostają w folderze danych (patrz „Dane i prywatność”), więc po ponownej instalacji niczego nie tracisz.</p></section>
+    <section id="start"><h3 class="sec-title">Pierwsze kroki</h3>
+      <ol>
+        <li>Dotknij <strong>+</strong> w prawym górnym rogu i wskaż folder ze zdjęciami. FIBO przeszuka go razem z podfolderami.</li>
+        <li>Zdjęcia pojawiają się w trakcie skanowania. Duże biblioteki skanują się partiami, więc widać postęp.</li>
+        <li>Dwuklik na zdjęciu otwiera podgląd na cały ekran z edytorem.</li>
+      </ol>
+      <p>Obsługiwane formaty: JPG, PNG, WebP, GIF, BMP i TIFF. Pliki RAW, HEIC i wideo nie są jeszcze obsługiwane.</p>
+      <p><strong>Układ ekranu.</strong> Główny ekran jest czysty: przycisk menu (☰) w lewym górnym rogu, przycisk <strong>+</strong> w prawym i pływający pasek widoków u góry (Biblioteka, Albumy, Ulubione, Ludzie, Mapa). Narzędzia są w menu po lewej: szukanie, szybkie akcje, filtry, tagi, foldery i wygląd.</p></section>
+    <section id="library"><h3 class="sec-title">Biblioteka i albumy</h3>
+      <ul>
+        <li><strong>Grupowanie według daty.</strong> Zdjęcia są ułożone według daty zrobienia (z danych EXIF, a gdy ich brak, z daty pliku). Nagłówki pokazują lata albo miesiące, a chipy „Rok” przewijają do wybranego roku. Przełączasz to w menu → Wygląd → Grupowanie.</li>
+        <li><strong>Siatka.</strong> Domyślnie wiersze o równej wysokości, w których każde zdjęcie zachowuje swoje proporcje. Możesz przejść na równe kafelki 4:3 i zmienić rozmiar miniatur w menu → Wygląd.</li>
+        <li><strong>Albumy</strong> to foldery ze zdjęciami pogrupowane według roku, od najnowszych. Rok albumu to rok jego najnowszego zdjęcia.</li>
+        <li><strong>Ulubione</strong> pokazują zdjęcia oznaczone sercem.</li>
+        <li><strong>Zaznaczanie wielu zdjęć:</strong> <kbd>Ctrl</kbd> + klik dokłada zdjęcie, <kbd>Shift</kbd> + klik zaznacza zakres. Tryb „Zaznaczanie wielu” w menu zastępuje Ctrl.</li>
+        <li><strong>Pokaz slajdów</strong> uruchamiasz z menu albo w podglądzie (spacja).</li>
+      </ul></section>
+    <section id="search"><h3 class="sec-title">Szukanie i filtry</h3>
+      <p>W menu, w polu <em>Szukaj</em>, wpisz fragment nazwy pliku, aparatu albo tagu. W sekcji <em>Filtry</em>:</p>
+      <ul>
+        <li><strong>Ocena i sortowanie:</strong> minimalna liczba gwiazdek, sortowanie od najnowszych, od najstarszych lub po nazwie (przy sortowaniu po nazwie grupy według dat są wyłączone).</li>
+        <li><strong>Tagi:</strong> wybranie kilku tagów pokazuje zdjęcia, które mają wszystkie z nich.</li>
+        <li><strong>Foldery:</strong> ogranicza bibliotekę do jednego folderu.</li>
+      </ul>
+      <p>Aktywne filtry widać jako chipy nad siatką, a kliknięcie chipa usuwa filtr.</p></section>
+    <section id="tags"><h3 class="sec-title">Tagi, oceny i ulubione</h3>
+      <ul>
+        <li><strong>Tagi:</strong> zaznacz jedno lub kilka zdjęć i dotknij ikony tagu na pasku na dole. Wpisz nazwę i zatwierdź Enterem albo wybierz istniejący tag. Tagi zapisują się małymi literami (do 40 znaków). Przy kilku zdjęciach tag częściowo przypisany pokazuje „2/5”. Ten sam edytor tagów jest w podglądzie w zakładce Info.</li>
+        <li><strong>Usuwanie tagu ze wszystkich zdjęć:</strong> menu → Tagi → wybierz tag → „Usuń tag”. Program prosi o potwierdzenie, a same zdjęcia zostają.</li>
+        <li><strong>Oceny:</strong> od 1 do 5 gwiazdek (klawisze <kbd>1</kbd>–<kbd>5</kbd>, a <kbd>0</kbd> zeruje).</li>
+        <li><strong>Ulubione:</strong> serce lub klawisz <kbd>F</kbd>.</li>
+      </ul></section>
+    <section id="viewer"><h3 class="sec-title">Podgląd zdjęcia</h3>
+      <p>Dwuklik na zdjęciu (albo Enter) otwiera je na cały ekran. U góry są nazwa, ocena, ulubione, cofnij i ponów, pokaz slajdów i pełny ekran, a na dole pasek miniatur. Strzałki przy krawędziach przełączają zdjęcia.</p>
+      <p>Przycisk różdżki (lub klawisz <kbd>E</kbd>) otwiera panel edycji. Zakładka <strong>Info</strong> pokazuje nazwę, folder, wymiary, rozmiar, datę zdjęcia, aparat i tagi.</p></section>
+    <section id="editor"><h3 class="sec-title">Edytor zdjęć</h3>
+      <p>Panel edycji ma cztery zakładki. Zmiany widać na żywo, a cofnąć je można bez ograniczeń w trakcie edycji (<kbd>Ctrl</kbd> + <kbd>Z</kbd> i <kbd>Ctrl</kbd> + <kbd>Y</kbd>).</p>
+      <ul>
+        <li><strong>Podstawowe:</strong> Szczęśliwy traf, Auto kontrast, Auto kolor i Doświetlenie jednym kliknięciem; obrót i odbicie; prostowanie; usuwanie czerwonych oczu (kliknij środek oka); kadrowanie w proporcjach 1:1, 4:3, 3:2, 16:9 i innych, ze zbliżeniem i przesunięciem.</li>
+        <li><strong>Dostrajanie:</strong> doświetlenie, światła, cienie, jasność, kontrast, gamma, temperatura barwowa, nasycenie i wyostrzenie. Dwuklik na suwaku zeruje go.</li>
+        <li><strong>Efekty</strong> (ponad 30, część z suwakiem siły): czarno-białe, sepia, ocieplenie, ziarno filmowe, poświata, Orton, miękki fokus, winieta, Lomo, Polaroid, HDR, mapa cieplna, noktowizor, posteryzacja, pikselizacja, szkic ołówkiem, komiks, neon, ramka i inne. Nakładają się w kolejności wyboru.</li>
+      </ul>
+      <h3>Zapisywanie</h3>
+      <ul>
+        <li><strong>Zapisz zmiany</strong> nadpisuje plik. Wcześniej FIBO kopiuje oryginał do folderu <code>.originals</code> obok zdjęcia (tylko za pierwszym razem).</li>
+        <li><strong>Zapisz jako kopię</strong> tworzy nowy plik z dopiskiem <code>_edit</code>, a oryginał zostaje bez zmian.</li>
+        <li><strong>Przywróć oryginał</strong> cofa nadpisanie z kopii w <code>.originals</code>.</li>
+        <li>GIF, BMP i TIFF zawsze zapisują się jako kopia JPG. Zapis usuwa dane EXIF z pliku, ale data zdjęcia, aparat i współrzędne GPS zostają w bazie FIBO.</li>
+      </ul></section>
+    <section id="collage"><h3 class="sec-title">Kolaże</h3>
+      <p>Zaznacz co najmniej dwa zdjęcia (do 30) i wybierz <strong>Kolaż</strong> z paska na dole albo z menu.</p>
+      <ul>
+        <li><strong>Układy:</strong> Siatka, Mozaika (wiersze wypełniające płótno), Stos zdjęć (rozrzucone, w białych ramkach; przycisk „Przemieszaj” losuje nowy układ) i Kontaktówka (z nazwami plików).</li>
+        <li><strong>Płótno:</strong> proporcje 16:9, 4:3, 3:2, 1:1, 3:4 lub 9:16, cztery tła, odstęp i zaokrąglenie rogów.</li>
+        <li><strong>Zapis:</strong> nowy plik JPG o szerokości 2800 px, <code>kolaz_RRRRMMDD_GGMMSS.jpg</code>, w folderze pierwszego zdjęcia. Oryginały nie są zmieniane.</li>
+      </ul></section>
+    <section id="map"><h3 class="sec-title">Mapa</h3>
+      <p>Zakładka <strong>Mapa</strong> pokazuje globus z pinezkami w miejscach, gdzie zrobiono zdjęcia. Zdjęcia z jednego miejsca łączą się w jedną pinezkę z liczbą, a bliskie pinezki w skupisko. Kliknięcie skupiska przybliża widok, a kliknięcie pinezki otwiera panel z miniaturami. Kliknięcie miniatury otwiera podgląd.</p>
+      <ul>
+        <li>Pozycje pochodzą z danych GPS w zdjęciach (EXIF). Zdjęcia bez GPS nie pojawiają się na mapie, a licznik w rogu pokazuje, ile ich jest.</li>
+        <li>Zdjęcia dodane przed obsługą mapy nie mają zapisanych współrzędnych: wybierz <em>Wczytaj lokalizacje ze zdjęć</em> w zakładce Mapa albo <em>Odśwież dane zdjęć</em> w menu.</li>
+        <li>Mapa pobiera kafelki z darmowej usługi OpenFreeMap, więc <strong>wymaga internetu</strong>. Reszta programu działa offline.</li>
+      </ul></section>
+    <section id="duplicates"><h3 class="sec-title">Duplikaty</h3>
+      <p>Menu → <strong>Duplikaty</strong>. Wybierz poziom i dotknij <em>Szukaj duplikatów</em>:</p>
+      <ul>
+        <li><strong>Identyczne pliki:</strong> ta sama zawartość (taki sam rozmiar i suma kontrolna). Najszybsze i bezpieczne.</li>
+        <li><strong>Bardzo podobne:</strong> ten sam kadr po zmniejszeniu, kompresji lub drobnej korekcie.</li>
+        <li><strong>Podobne:</strong> także serie ujęć. Mogą trafić się różne zdjęcia, więc sprawdzaj przed usunięciem.</li>
+      </ul>
+      <p>Wyniki to grupy zdjęć z wymiarami, rozmiarem, folderem i datą. Zdjęcie z koroną <em>Najlepsze</em> (największa rozdzielczość, potem największy plik) zostaje, a pozostałe są domyślnie zaznaczone do usunięcia. W każdej grupie musi zostać co najmniej jedno zdjęcie. <strong>Przenieś do Kosza</strong> pyta o zgodę i przenosi pliki do Kosza Windows, skąd można je przywrócić.</p></section>
+    <section id="data"><h3 class="sec-title">Dane i prywatność</h3>
+      <ul>
+        <li><strong>Zdjęcia nie opuszczają komputera.</strong> FIBO nie ma kont, nie wysyła zdjęć ani statystyk. Jedyne połączenie z internetem to pobieranie kafelków mapy po otwarciu zakładki Mapa (i ewentualne pobranie WebView2 przy instalacji).</li>
+        <li>Biblioteka (indeks, oceny, tagi, współrzędne) to baza <code>library.db</code> w folderze <code>%APPDATA%\pl.local.menedzerzdjec</code>, a miniatury leżą w jego podfolderze <code>thumbs</code>. Kopię zapasową zrobisz, kopiując ten folder. Folder nazywa się tak ze względów technicznych i nie zmienia się przy aktualizacjach.</li>
+        <li>Kopie oryginałów po edycji leżą w folderach <code>.originals</code> obok zdjęć.</li>
+        <li>Usunięcie programu nie usuwa Twoich zdjęć ani biblioteki.</li>
+      </ul></section>
+    <section id="shortcuts"><h3 class="sec-title">Skróty klawiszowe</h3>
+      <table>
+        <thead><tr><th>Klawisze</th><th>Działanie</th></tr></thead>
+        <tbody>
+          <tr><td>Dwuklik / <kbd>Enter</kbd></td><td>Otwórz zdjęcie w podglądzie</td></tr>
+          <tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>Poprzednie i następne zdjęcie</td></tr>
+          <tr><td><kbd>Spacja</kbd></td><td>Pokaz slajdów: start i stop</td></tr>
+          <tr><td><kbd>E</kbd></td><td>Panel edycji</td></tr>
+          <tr><td><kbd>F</kbd></td><td>Ulubione</td></tr>
+          <tr><td><kbd>0</kbd>–<kbd>5</kbd></td><td>Ocena (0 zeruje)</td></tr>
+          <tr><td><kbd>Ctrl</kbd> + <kbd>Z</kbd> / <kbd>Ctrl</kbd> + <kbd>Y</kbd></td><td>Cofnij / ponów zmianę w edytorze</td></tr>
+          <tr><td><kbd>Ctrl</kbd> + klik / <kbd>Shift</kbd> + klik</td><td>Dodaj zdjęcie do zaznaczenia / zaznacz zakres</td></tr>
+          <tr><td><kbd>Esc</kbd></td><td>Zamyka kolejno: tryb czerwonych oczu, panel edycji, pełny ekran, podgląd, menu</td></tr>
+        </tbody>
+      </table></section>
+    <section id="faq"><h3 class="sec-title">Najczęstsze pytania</h3>
+      <details><summary>Windows blokuje instalator albo program.</summary><p>Program nie jest jeszcze podpisany cyfrowo. Zobacz sekcję „Instalacja”: SmartScreen da się obejść przyciskiem „Uruchom mimo to”, a Kontrola aplikacji inteligentnej może wymagać wyłączenia albo poczekania na wersję podpisaną.</p></details>
+      <details><summary>Mapa jest pusta lub pokazuje błąd.</summary><p>Mapa wymaga internetu. Jeśli jest połączenie, a pinezek brak, wybierz „Wczytaj lokalizacje ze zdjęć”: zdjęcia dodane wcześniej nie mają zapisanych współrzędnych. Zdjęcia bez GPS (np. zrzuty ekranu) nie pojawią się na mapie.</p></details>
+      <details><summary>Pionowe zdjęcia mają złe proporcje w siatce.</summary><p>Dotknij „Odśwież dane zdjęć” w menu. To ponownie czyta wymiary z uwzględnieniem obrotu.</p></details>
+      <details><summary>Czy edycja psuje oryginały?</summary><p>Nie. Przy nadpisaniu FIBO najpierw kopiuje oryginał do folderu <code>.originals</code>, a „Zapisz jako kopię” w ogóle nie rusza pliku. „Przywróć oryginał” cofa nadpisanie.</p></details>
+      <details><summary>Czy usunięte duplikaty da się odzyskać?</summary><p>Tak. Pliki trafiają do Kosza Windows i stamtąd można je przywrócić.</p></details>
+      <details><summary>Gdzie jest moja biblioteka?</summary><p>W <code>%APPDATA%\pl.local.menedzerzdjec</code>. Zobacz „Dane i prywatność”.</p></details></section>
+    <section id="build"><h3 class="sec-title">Budowanie ze źródeł</h3>
+      <p>Wymagania: Node.js 22, Rust (stable) i Visual Studio Build Tools z C++.</p>
+      <pre><code>git clone https://github.com/pmesznik/fibo.git
+cd fibo/app
+npm ci
+npx tauri dev      # tryb deweloperski
+npx tauri build    # instalator w src-tauri/target/release/bundle/nsis</code></pre>
+      <p><strong>Nowa wersja:</strong> <code>node scripts/bump-version.mjs 0.2.0</code> ustawia numer wersji w trzech plikach. Po wypchnięciu tagu <code>v0.2.0</code> GitHub Actions buduje instalator i publikuje wydanie z plikiem <code>FIBO_0.2.0_x64-setup.exe</code>. Strona sama pobiera numer najnowszego wydania.</p></section>
+    <section id="license"><h3 class="sec-title">Licencja</h3>
+      <p>FIBO jest wolnym oprogramowaniem na licencji <a href="https://github.com/pmesznik/fibo/blob/main/LICENSE">GNU GPL w wersji 2 lub nowszej</a>. Możesz go używać, zmieniać i rozpowszechniać na warunkach tej licencji. Program jest dostarczany bez gwarancji. Mapa korzysta z danych © uczestnicy OpenStreetMap i kafelków OpenFreeMap.</p></section>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">FIBO · GPL-2.0-or-later · <span id="foot-version"></span> · <a href="https://github.com/pmesznik/fibo">GitHub</a></div>
+</footer>
+<script src="../assets/site.js" defer></script>
+</body>
+</html>

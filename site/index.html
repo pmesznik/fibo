@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="pl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FIBO</title><link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+<link rel="alternate" hreflang="pl" href="pl/"><link rel="alternate" hreflang="en" href="en/">
+<meta http-equiv="refresh" content="3; url=pl/">
+<script>
+  var saved; try { saved = localStorage.getItem('fibo-lang') } catch (e) {}
+  var lang = saved || ((navigator.language || 'pl').toLowerCase().indexOf('pl') === 0 ? 'pl' : 'en');
+  location.replace(lang + '/' + location.hash);
+</script>
+<style>body{font:16px/1.5 system-ui,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0;background:#1e1b4b;color:#fff}a{color:#ffb627}</style>
+</head><body><p><a href="pl/">Polski</a> · <a href="en/">English</a></p></body></html>

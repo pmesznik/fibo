@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FIBO: photo manager and editor for Windows</title>
+<meta name="description" content="FIBO organizes photos by date, tags and place, with an editor, effects, collages and duplicate finder. Everything stays on your computer. Free software under the GPL.">
+<meta property="og:title" content="FIBO: photo manager and editor for Windows">
+<meta property="og:description" content="FIBO organizes photos by date, tags and place, with an editor, effects, collages and duplicate finder. Everything stays on your computer. Free software under the GPL.">
+<meta property="og:image" content="https://pmesznik.github.io/fibo/assets/fibo-logo.png">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<link rel="alternate" hreflang="pl" href="../pl/">
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body data-lang="en" data-repo="pmesznik/fibo" data-version="0.1.0">
+<a class="skip" href="#docs">Documentation</a>
+<header class="top">
+  <div class="wrap bar">
+    <a class="brand" href="#top" aria-label="FIBO"><img src="../assets/fibo-ikona.svg" alt="" width="36" height="36"><span>FIBO</span></a>
+    <nav aria-label="Documentation">
+      <a href="#features">Features</a>
+      <a href="#docs">Documentation</a>
+      <a href="https://github.com/pmesznik/fibo">Source on GitHub</a>
+      <a class="lang" id="lang-switch" href="../pl/" hreflang="pl" lang="pl">Polski</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+<section class="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <p class="eyebrow">Your photos in the golden ratio</p>
+      <h1>FIBO</h1>
+      <p class="lead">FIBO is a photo manager and editor for Windows, inspired by Picasa 3. It organizes photos by year, tag and place on a globe, fixes them in one click and finds duplicates. Everything happens on your own computer.</p>
+      <div class="dl-box" id="download">
+        <a class="btn primary" id="dl-btn" href="https://github.com/pmesznik/fibo/releases/latest"
+           data-label="Download FIBO {v} for Windows" data-fallback="Download the latest version"
+           data-meta="Windows 10 and 11, 64-bit · {size} installer · {date}" data-meta-fallback="Windows 10 and 11, 64-bit">Download the latest version</a>
+        <p class="meta" id="dl-meta">Windows 10 and 11, 64-bit</p>
+        <p class="meta"><a href="https://github.com/pmesznik/fibo/releases">All versions</a> · <a href="https://github.com/pmesznik/fibo">Source on GitHub</a></p>
+        <p class="meta small" id="dl-name" data-tpl="The file name includes the version number, e.g. FIBO_{v}_x64-setup.exe."></p>
+        <p class="note small"><a href="#install">The installer is not code-signed yet, so Windows may warn you on first launch. See “Installation” for details.</a></p>
+      </div>
+    </div>
+    <div class="hero-art" aria-hidden="true"><img src="../assets/fibo-logo.svg" alt="" width="520"></div>
+  </div>
+</section>
+
+<section class="wrap" id="features">
+  <h2>What FIBO does</h2>
+  <div class="cards">
+    <article class="card"><div class="ico"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="fibo-icon" aria-hidden="true"><path class="fi" d="M14.2 19H2.5A11.7 11.7 0 0 1 14.2 7.3Z" fill="currentColor" fill-opacity=".2" stroke="none"></path><rect x="2.5" y="5" width="19" height="14" rx="2.5"></rect><path d="M14.2 5V19M14.2 12H21.5"></path><path d="M2.5 19A11.7 11.7 0 0 1 14.2 7.3"></path></svg></div><h3>Library by year</h3><p>Photos laid out by the date they were taken, with year and month headings and a grid that keeps original proportions.</p></article>
+    <article class="card"><div class="ico"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="fibo-icon" aria-hidden="true"><path class="fi" d="M3 5A2 2 0 0 1 5 3h6.2a2 2 0 0 1 1.4.6l8.2 8.2a2 2 0 0 1 0 2.8l-6.2 6.2a2 2 0 0 1-2.8 0L3.6 12.6A2 2 0 0 1 3 11.2Z" fill="currentColor" fill-opacity=".2" stroke="none"></path><path d="M3 5A2 2 0 0 1 5 3h6.2a2 2 0 0 1 1.4.6l8.2 8.2a2 2 0 0 1 0 2.8l-6.2 6.2a2 2 0 0 1-2.8 0L3.6 12.6A2 2 0 0 1 3 11.2Z"></path><circle cx="7.7" cy="7.7" r="1.6"></circle></svg></div><h3>Tags, ratings, favorites</h3><p>Label photos with tags and stars, filter and search. No account, no cloud.</p></article>
+    <article class="card"><div class="ico"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="fibo-icon" aria-hidden="true"><path d="M4 20 14.2 9.8"></path><path class="fi" d="M17.6 2.8000000000000003Q18.032 5.968 21.200000000000003 6.4Q18.032 6.832000000000001 17.6 10.0Q17.168000000000003 6.832000000000001 14.000000000000002 6.4Q17.168000000000003 5.968 17.6 2.8000000000000003Z" fill="currentColor" fill-opacity=".2" stroke="none"></path><path d="M17.6 2.8000000000000003Q18.032 5.968 21.200000000000003 6.4Q18.032 6.832000000000001 17.6 10.0Q17.168000000000003 6.832000000000001 14.000000000000002 6.4Q17.168000000000003 5.968 17.6 2.8000000000000003Z"></path><path class="fi" d="M8 3.3000000000000003Q8.228 4.972 9.9 5.2Q8.228 5.428 8 7.1Q7.772 5.428 6.1 5.2Q7.772 4.972 8 3.3000000000000003Z" fill="currentColor" fill-opacity=".2" stroke="none"></path><path d="M8 3.3000000000000003Q8.228 4.972 9.9 5.2Q8.228 5.428 8 7.1Q7.772 5.428 6.1 5.2Q7.772 4.972 8 3.3000000000000003Z"></path><path class="fi" d="M19 13.8Q19.204 15.296 20.7 15.5Q19.204 15.704 19 17.2Q18.796 15.704 17.3 15.5Q18.796 15.296 19 13.8Z" fill="currentColor" fill-opacity=".2" stroke="none"></path><path d="M19 13.8Q19.204 15.296 20.7 15.5Q19.204 15.704 19 17.2Q18.796 15.704 17.3 15.5Q18.796 15.296 19 13.8Z"></path></svg></div><h3>Editor with effects</h3><p>Quick fixes, cropping, light curves and over 30 effects. Your original always stays safe.</p></article>
+    <article class="card"><div class="ico"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="fibo-icon" aria-hidden="true"><rect class="fi" x="2.5" y="2.5" width="11" height="19" rx="2.5" fill="currentColor" fill-opacity=".2" stroke="none"></rect><rect x="2.5" y="2.5" width="11" height="19" rx="2.5"></rect><rect x="16" y="2.5" width="5.5" height="5.5" rx="1.8"></rect><rect x="16" y="10.5" width="5.5" height="11" rx="1.8"></rect></svg></div><h3>Collages</h3><p>Grid, mosaic, photo pile or contact sheet from selected photos, ready to print.</p></article>
+    <article class="card"><div class="ico"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="fibo-icon" aria-hidden="true"><path class="fi" d="M12 21.5s-7-6.1-7-11.5a7 7 0 0 1 14 0c0 5.4-7 11.5-7 11.5Z" fill="currentColor" fill-opacity=".2" stroke="none"></path><path d="M12 21.5s-7-6.1-7-11.5a7 7 0 0 1 14 0c0 5.4-7 11.5-7 11.5Z"></path><circle cx="12" cy="10" r="2.6"></circle></svg></div><h3>Globe of photos</h3><p>Pins where your photos were taken. Click a pin to see the photos from that place.</p></article>
+    <article class="card"><div class="ico"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="fibo-icon" aria-hidden="true"><rect class="fi" x="8.5" y="8.5" width="13" height="13" rx="2.5" fill="currentColor" fill-opacity=".2" stroke="none"></rect><rect x="8.5" y="8.5" width="13" height="13" rx="2.5"></rect><path d="M15.5 8.5V6A2.5 2.5 0 0 0 13 3.5H6A2.5 2.5 0 0 0 3.5 6v7A2.5 2.5 0 0 0 6 15.5h2.5"></path></svg></div><h3>Duplicates</h3><p>Finds identical and similar photos, suggests the best one and moves the rest to the Recycle Bin.</p></article>
+  </div>
+</section>
+
+<section class="wrap docs" id="docs">
+  <aside class="toc">
+    <details open>
+      <summary>Contents</summary>
+      <ol><li><a href="#install">Installation</a></li><li><a href="#start">Getting started</a></li><li><a href="#library">Library and albums</a></li><li><a href="#search">Search and filters</a></li><li><a href="#tags">Tags, ratings and favorites</a></li><li><a href="#viewer">Photo viewer</a></li><li><a href="#editor">Photo editor</a></li><li><a href="#collage">Collages</a></li><li><a href="#map">Map</a></li><li><a href="#duplicates">Duplicates</a></li><li><a href="#data">Data and privacy</a></li><li><a href="#shortcuts">Keyboard shortcuts</a></li><li><a href="#faq">FAQ</a></li><li><a href="#build">Building from source</a></li><li><a href="#license">License</a></li></ol>
+    </details>
+  </aside>
+  <div class="doc-body">
+    <h2>Documentation</h2>
+    <section id="install"><h3 class="sec-title">Installation</h3>
+      <p><strong>Requirements:</strong> Windows 10 or 11 (64-bit). WebView2 ships with Windows 11 and recent Windows 10. If it is missing, the installer downloads it, so an internet connection is needed in that case.</p>
+      <ol>
+        <li>Download <code>FIBO_&lt;version&gt;_x64-setup.exe</code> from the home page or from the <a href="https://github.com/pmesznik/fibo/releases/latest">GitHub releases</a>.</li>
+        <li>Run it. It installs for your user account only and needs no administrator rights.</li>
+        <li>FIBO appears in the Start menu.</li>
+      </ol>
+      <div class="note"><strong>Windows warns or blocks the installer?</strong> The installer is not yet signed with a certificate, so:
+        <ul>
+          <li><strong>SmartScreen</strong> (“Windows protected your PC”): click <em>More info</em>, then <em>Run anyway</em>.</li>
+          <li><strong>Smart App Control</strong> can block an unsigned program entirely. Then you can wait for a signed version or turn the feature off in Windows Security. Note that once turned off it cannot be turned back on without resetting Windows, so that is your call.</li>
+        </ul>
+      </div>
+      <p><strong>Uninstall:</strong> Settings → Apps → FIBO → Uninstall. Your library and thumbnails stay in the data folder (see “Data and privacy”), so reinstalling loses nothing.</p></section>
+    <section id="start"><h3 class="sec-title">Getting started</h3>
+      <ol>
+        <li>Click <strong>+</strong> in the top right corner and choose a folder with photos. FIBO scans it with all subfolders.</li>
+        <li>Photos appear while scanning. Large libraries are scanned in batches, so you can see progress.</li>
+        <li>Double-click a photo to open it full screen with the editor.</li>
+      </ol>
+      <p>Supported formats: JPG, PNG, WebP, GIF, BMP and TIFF. RAW, HEIC and video files are not supported yet.</p>
+      <p><strong>Screen layout.</strong> The main screen is kept clean: the menu button (☰) top left, the <strong>+</strong> button top right and a floating view bar at the top (Library, Albums, Favorites, People, Map). Tools live in the menu on the left: search, quick actions, filters, tags, folders and appearance.</p></section>
+    <section id="library"><h3 class="sec-title">Library and albums</h3>
+      <ul>
+        <li><strong>Grouping by date.</strong> Photos are ordered by the date taken (from EXIF data, or the file date if missing). Headings show years or months, and the “Year” chips scroll to a chosen year. Switch it in the menu → Appearance → Grouping.</li>
+        <li><strong>Grid.</strong> By default, rows of equal height where every photo keeps its own proportions. You can switch to equal 4:3 tiles and change the thumbnail size in the menu → Appearance.</li>
+        <li><strong>Albums</strong> are folders with photos grouped by year, newest first. An album’s year is the year of its newest photo.</li>
+        <li><strong>Favorites</strong> shows photos marked with a heart.</li>
+        <li><strong>Selecting many photos:</strong> <kbd>Ctrl</kbd> + click adds a photo, <kbd>Shift</kbd> + click selects a range. “Select many” mode in the menu replaces Ctrl.</li>
+        <li><strong>Slideshow</strong> starts from the menu or in the viewer (space).</li>
+      </ul></section>
+    <section id="search"><h3 class="sec-title">Search and filters</h3>
+      <p>In the menu, type part of a file name, camera or tag into <em>Search</em>. Under <em>Filters</em>:</p>
+      <ul>
+        <li><strong>Rating and sorting:</strong> minimum number of stars; sort newest first, oldest first or by name (date grouping is off when sorting by name).</li>
+        <li><strong>Tags:</strong> selecting several tags shows photos that have all of them.</li>
+        <li><strong>Folders:</strong> limits the library to one folder.</li>
+      </ul>
+      <p>Active filters appear as chips above the grid; clicking a chip removes the filter.</p></section>
+    <section id="tags"><h3 class="sec-title">Tags, ratings and favorites</h3>
+      <ul>
+        <li><strong>Tags:</strong> select one or more photos and click the tag icon on the bottom bar. Type a name and press Enter, or pick an existing tag. Tags are stored in lowercase (up to 40 characters). With several photos, a partly applied tag shows “2/5”. The same tag editor is in the viewer’s Info tab.</li>
+        <li><strong>Removing a tag from all photos:</strong> menu → Tags → pick the tag → “Remove tag”. The app asks for confirmation, and the photos themselves stay.</li>
+        <li><strong>Ratings:</strong> 1 to 5 stars (keys <kbd>1</kbd>–<kbd>5</kbd>, <kbd>0</kbd> clears).</li>
+        <li><strong>Favorites:</strong> the heart or the <kbd>F</kbd> key.</li>
+      </ul></section>
+    <section id="viewer"><h3 class="sec-title">Photo viewer</h3>
+      <p>Double-click a photo (or press Enter) to open it full screen. The top bar has the name, rating, favorite, undo and redo, slideshow and full screen; the bottom has a thumbnail strip. Arrows at the edges switch photos.</p>
+      <p>The wand button (or the <kbd>E</kbd> key) opens the edit panel. The <strong>Info</strong> tab shows name, folder, dimensions, size, date taken, camera and tags.</p></section>
+    <section id="editor"><h3 class="sec-title">Photo editor</h3>
+      <p>The edit panel has four tabs. Changes show live, and you can undo without limits while editing (<kbd>Ctrl</kbd> + <kbd>Z</kbd> and <kbd>Ctrl</kbd> + <kbd>Y</kbd>).</p>
+      <ul>
+        <li><strong>Basics:</strong> I’m Feeling Lucky, Auto Contrast, Auto Color and Fill Light in one click; rotate and flip; straighten; red-eye removal (click the center of the eye); cropping at 1:1, 4:3, 3:2, 16:9 and more, with zoom and pan.</li>
+        <li><strong>Tuning:</strong> fill light, highlights, shadows, brightness, contrast, gamma, color temperature, saturation and sharpen. Double-click a slider to reset it.</li>
+        <li><strong>Effects</strong> (over 30, some with a strength slider): black and white, sepia, warmify, film grain, glow, Orton, soft focus, vignette, Lomo, Polaroid, HDR, heat map, night vision, posterize, pixelate, pencil sketch, comic, neon, border and more. They stack in the order you pick them.</li>
+      </ul>
+      <h3>Saving</h3>
+      <ul>
+        <li><strong>Save changes</strong> overwrites the file. Before that FIBO copies the original to a <code>.originals</code> folder next to the photo (only the first time).</li>
+        <li><strong>Save as copy</strong> creates a new file with <code>_edit</code> appended and leaves the original untouched.</li>
+        <li><strong>Restore original</strong> undoes an overwrite from the copy in <code>.originals</code>.</li>
+        <li>GIF, BMP and TIFF are always saved as a JPG copy. Saving removes EXIF data from the file, but the date taken, camera and GPS position stay in FIBO’s database.</li>
+      </ul></section>
+    <section id="collage"><h3 class="sec-title">Collages</h3>
+      <p>Select at least two photos (up to 30) and choose <strong>Collage</strong> from the bottom bar or the menu.</p>
+      <ul>
+        <li><strong>Layouts:</strong> Grid, Mosaic (rows that fill the canvas), Photo pile (scattered, in white frames; “Shuffle” rolls a new arrangement) and Contact sheet (with file names).</li>
+        <li><strong>Canvas:</strong> 16:9, 4:3, 3:2, 1:1, 3:4 or 9:16, four backgrounds, spacing and corner rounding.</li>
+        <li><strong>Saving:</strong> a new 2800 px wide JPG, <code>kolaz_YYYYMMDD_HHMMSS.jpg</code>, in the first photo’s folder. Originals are never changed.</li>
+      </ul></section>
+    <section id="map"><h3 class="sec-title">Map</h3>
+      <p>The <strong>Map</strong> tab shows a globe with pins where your photos were taken. Photos from one place share a pin with a count, and nearby pins form a cluster. Click a cluster to zoom in, or a pin to open a panel with thumbnails. Click a thumbnail to open the viewer.</p>
+      <ul>
+        <li>Positions come from the GPS data in your photos (EXIF). Photos without GPS do not appear, and the counter in the corner shows how many there are.</li>
+        <li>Photos added before map support have no stored coordinates: choose <em>Load locations from photos</em> in the Map tab or <em>Refresh photo data</em> in the menu.</li>
+        <li>The map downloads tiles from the free OpenFreeMap service, so it <strong>needs internet</strong>. The rest of the app works offline.</li>
+      </ul></section>
+    <section id="duplicates"><h3 class="sec-title">Duplicates</h3>
+      <p>Menu → <strong>Duplicates</strong>. Pick a level and click <em>Find duplicates</em>:</p>
+      <ul>
+        <li><strong>Identical files:</strong> same content (same size and checksum). Fastest and safe.</li>
+        <li><strong>Very similar:</strong> the same shot after resizing, recompression or a small edit.</li>
+        <li><strong>Similar:</strong> also bursts of shots. Different photos can show up, so check before deleting.</li>
+      </ul>
+      <p>Results are groups of photos with dimensions, size, folder and date. The photo with the crown <em>Best</em> (highest resolution, then largest file) stays, and the others are pre-selected for removal. At least one photo always stays in each group. <strong>Move to Recycle Bin</strong> asks for confirmation and moves files to the Windows Recycle Bin, from where you can restore them.</p></section>
+    <section id="data"><h3 class="sec-title">Data and privacy</h3>
+      <ul>
+        <li><strong>Your photos never leave your computer.</strong> FIBO has no accounts and sends no photos or statistics. The only internet use is downloading map tiles when you open the Map tab (and possibly downloading WebView2 during installation).</li>
+        <li>The library (index, ratings, tags, coordinates) is the <code>library.db</code> database in <code>%APPDATA%\pl.local.menedzerzdjec</code>, and thumbnails are in its <code>thumbs</code> subfolder. Back it up by copying that folder. The folder has that name for technical reasons and does not change across updates.</li>
+        <li>Copies of originals after editing are in <code>.originals</code> folders next to your photos.</li>
+        <li>Uninstalling does not delete your photos or your library.</li>
+      </ul></section>
+    <section id="shortcuts"><h3 class="sec-title">Keyboard shortcuts</h3>
+      <table>
+        <thead><tr><th>Keys</th><th>Action</th></tr></thead>
+        <tbody>
+          <tr><td>Double-click / <kbd>Enter</kbd></td><td>Open photo in viewer</td></tr>
+          <tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>Previous and next photo</td></tr>
+          <tr><td><kbd>Space</kbd></td><td>Slideshow: start and stop</td></tr>
+          <tr><td><kbd>E</kbd></td><td>Edit panel</td></tr>
+          <tr><td><kbd>F</kbd></td><td>Favorite</td></tr>
+          <tr><td><kbd>0</kbd>–<kbd>5</kbd></td><td>Rating (0 clears)</td></tr>
+          <tr><td><kbd>Ctrl</kbd> + <kbd>Z</kbd> / <kbd>Ctrl</kbd> + <kbd>Y</kbd></td><td>Undo / redo an editor change</td></tr>
+          <tr><td><kbd>Ctrl</kbd> + click / <kbd>Shift</kbd> + click</td><td>Add photo to selection / select a range</td></tr>
+          <tr><td><kbd>Esc</kbd></td><td>Closes in turn: red-eye mode, edit panel, full screen, viewer, menu</td></tr>
+        </tbody>
+      </table></section>
+    <section id="faq"><h3 class="sec-title">FAQ</h3>
+      <details><summary>Windows blocks the installer or the program.</summary><p>The program is not signed yet. See “Installation”: SmartScreen can be bypassed with “Run anyway”, while Smart App Control may require turning it off or waiting for a signed version.</p></details>
+      <details><summary>The map is empty or shows an error.</summary><p>The map needs internet. If you are online but there are no pins, choose “Load locations from photos”: photos added earlier have no stored coordinates. Photos without GPS (such as screenshots) do not appear on the map.</p></details>
+      <details><summary>Portrait photos have the wrong proportions in the grid.</summary><p>Click “Refresh photo data” in the menu. It re-reads the dimensions taking rotation into account.</p></details>
+      <details><summary>Does editing damage my originals?</summary><p>No. When overwriting, FIBO first copies the original to the <code>.originals</code> folder, and “Save as copy” does not touch the file at all. “Restore original” undoes an overwrite.</p></details>
+      <details><summary>Can I get deleted duplicates back?</summary><p>Yes. Files go to the Windows Recycle Bin, from where you can restore them.</p></details>
+      <details><summary>Where is my library?</summary><p>In <code>%APPDATA%\pl.local.menedzerzdjec</code>. See “Data and privacy”.</p></details></section>
+    <section id="build"><h3 class="sec-title">Building from source</h3>
+      <p>Requirements: Node.js 22, Rust (stable) and Visual Studio Build Tools with C++.</p>
+      <pre><code>git clone https://github.com/pmesznik/fibo.git
+cd fibo/app
+npm ci
+npx tauri dev      # development mode
+npx tauri build    # installer in src-tauri/target/release/bundle/nsis</code></pre>
+      <p><strong>New version:</strong> <code>node scripts/bump-version.mjs 0.2.0</code> sets the version number in three files. After pushing the tag <code>v0.2.0</code>, GitHub Actions builds the installer and publishes a release with the file <code>FIBO_0.2.0_x64-setup.exe</code>. This site fetches the latest release number by itself.</p></section>
+    <section id="license"><h3 class="sec-title">License</h3>
+      <p>FIBO is free software under the <a href="https://github.com/pmesznik/fibo/blob/main/LICENSE">GNU GPL version 2 or later</a>. You may use, change and redistribute it under the terms of that license. The program comes with no warranty. The map uses data © OpenStreetMap contributors and OpenFreeMap tiles.</p></section>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">FIBO · GPL-2.0-or-later · <span id="foot-version"></span> · <a href="https://github.com/pmesznik/fibo">GitHub</a></div>
+</footer>
+<script src="../assets/site.js" defer></script>
+</body>
+</html>
