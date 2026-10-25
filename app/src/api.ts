@@ -30,6 +30,13 @@ export type DupGroup = { kind: 'exact' | 'similar'; ids: number[] }
 export const findDuplicates = (maxDistance: number | null) => invoke<DupGroup[]>('find_duplicates', { maxDistance })
 export const trashPhotos = (ids: number[]) => invoke<number>('trash_photos', { ids })
 
+export type SidecarReport = { written: number; removed: number; skipped: number; unchanged: number; failed: number }
+export type ImportReport = { files: number; changed: number }
+export const getSidecarEnabled = () => invoke<boolean>('get_sidecar_enabled')
+export const setSidecarEnabled = (enabled: boolean) => invoke('set_sidecar_enabled', { enabled })
+export const exportSidecars = () => invoke<SidecarReport>('export_sidecars')
+export const importSidecars = () => invoke<ImportReport>('import_sidecars')
+
 export const refreshLibrary = () => invoke<number>('refresh_library')
 export const addTag = (ids: number[], tag: string) => invoke<string>('add_tag', { ids, tag })
 export const removeTag = (ids: number[], tag: string) => invoke('remove_tag', { ids, tag })

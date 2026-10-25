@@ -3,6 +3,7 @@ import { listen } from '@tauri-apps/api/event'
 import { MapView } from './MapView'
 import { Duplicates } from './Duplicates'
 import { UpdateDialog, useUpdater } from './Updater'
+import { exportSidecars, getSidecarEnabled, importSidecars, setSidecarEnabled } from './api'
 import { addTag, deleteTag, inTauri, listPhotos, pickFolder, refreshLibrary, removeTag, scanFolder, setFavorite, setRating, type Photo } from './api'
 import { TagEditor, type TagCount } from './TagEditor'
 import { Thumb } from './Thumb'
@@ -12,7 +13,7 @@ import { Justified } from './Justified'
 import { Chip, Sec, Toast } from './ui'
 import {
   Images, FolderOpen, Users, MapPin, Heart, Star, Plus, Play, Maximize2, X,
-  SlidersHorizontal, Search as SearchIcon, ImageUp, Ruler, LayoutDashboard, Check, ListChecks, Tag, CalendarDays, Copy, RefreshCw, Download,
+  SlidersHorizontal, Search as SearchIcon, ImageUp, Ruler, LayoutDashboard, Check, ListChecks, Tag, CalendarDays, Copy, RefreshCw, Download, Save,
 } from './FiboIcons'
 
 type Mode = 'library' | 'albums' | 'favs' | 'people' | 'map'
@@ -92,6 +93,10 @@ export default function App() {
   }, [])
 
   const updater = useUpdater(say)
+  const [sidecarOn, setSidecarOn] = useState(true)
+  const [xmpBusy, setXmpBusy] = useState(false)
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
+  useEffect(() => { if (inTauri) getSidecarEnabled().then(setSidecarOn).catch(() => {}) }, [])
 
   const reload = useCallback(async () => { if (inTauri) setAll(await listPhotos()) }, [])
   useEffect(() => { reload() }, [reload])
@@ -244,6 +249,42 @@ export default function App() {
     if (chosen.length < 2) return say('Zaznacz co najmniej dwa zdjęcia: Ctrl lub Shift przy kliknięciu, albo tryb zaznaczania w menu.')
     setCollage(true)
   }
+  // Metadane w plikach XMP obok zdjęć: automatyczny zapis, zapis zbiorczy i wczytanie.
+  const toggleSidecar = async () => {
+    const next = !sidecarOn
+    setSidecarOn(next)
+    try { await setSidecarEnabled(next) } catch (e) { setSidecarOn(!next); say(`Nie udało się zmienić ustawienia: ${e}`, 'err') }
+  }
+  const runExport = async () => {
+    if (!inTauri) return say('Zapis do plików działa tylko w aplikacji.')
+    setXmpBusy(true)
+    try {
+      const r = await exportSidecars()
+      say(`Zapisano pliki XMP: ${r.written}${r.skipped ? `, pominięto ${r.skipped} (pliki innych programów)` : ''}${r.failed ? `, błędy: ${r.failed}` : ''}`, r.failed ? 'err' : 'ok')
+    } catch (e) { say(`Błąd zapisu metadanych: ${e}`, 'err') } finally { setXmpBusy(false) }
+  }
+  const runImport = async () => {
+    if (!inTauri) return say('Wczytywanie działa tylko w aplikacji.')
+    setXmpBusy(true)
+    try {
+      const r = await importSidecars()
+      await reload()
+      say(r.files ? `Wczytano metadane z ${r.files} zdjęć (nowe tagi i oceny: ${r.changed})` : 'Nie znaleziono tagów ani ocen zapisanych w plikach', 'ok')
+    } catch (e) { say(`Błąd wczytywania metadanych: ${e}`, 'err') } finally { setXmpBusy(false) }
+  }
+
+  // Menu kontekstowe (prawy przycisk): działa na całym zaznaczeniu.
+  const rateSelected = (rating: number) => {
+    for (const id of sel) { patch(id, { rating }); if (inTauri && id >= 0) setRating(id, rating) }
+    setMenu(null)
+  }
+  const favSelected = () => {
+    const picked = all.filter((p) => sel.includes(p.id))
+    const value = !picked.every((p) => p.favorite)
+    for (const p of picked) { patch(p.id, { favorite: value }); if (inTauri && p.id >= 0) setFavorite(p.id, value) }
+    setMenu(null)
+  }
+
   const cycleRating = () => {
     if (!current) return
     const rating = (current.rating + 1) % 6
@@ -267,13 +308,14 @@ export default function App() {
     if (viewer) return
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
-      if (confirm) setConfirm(null)
+      if (menu) setMenu(null)
+      else if (confirm) setConfirm(null)
       else if (tagDlg) setTagDlg(false)
       else setDrawer(false)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [viewer, confirm, tagDlg])
+  }, [viewer, confirm, tagDlg, menu])
 
   const multi = sel.length > 1 || selectMode
   const tile = (p: Photo, ratio43: boolean) => {
@@ -283,6 +325,11 @@ export default function App() {
         key={p.id}
         onClick={(e) => pick(p.id, e)}
         onDoubleClick={() => openViewer(p.id)}
+        onContextMenu={(e) => {
+          e.preventDefault()
+          if (!sel.includes(p.id)) { setSel([p.id]); setAnchor(p.id) }
+          setMenu({ x: e.clientX, y: e.clientY })
+        }}
         onKeyDown={(e) => { if (e.key === 'Enter') openViewer(p.id) }}
         aria-label={`${p.name}, ocena ${p.rating}${p.favorite ? ', ulubione' : ''}`}
         aria-pressed={on}
@@ -406,6 +453,17 @@ export default function App() {
                   {activeTags.length > 0 && <button className="wide" onClick={() => setActiveTags([])}>Pokaż wszystkie zdjęcia</button>}
                 </>
               )}
+            </Sec>
+            <Sec id="xmp" icon={<Save size={17} />} title="Metadane w plikach" hint={sidecarOn ? 'Zapis do plików XMP włączony' : 'Zapis do plików XMP wyłączony'}>
+              <p style={{ margin: '0 0 8px', color: 'var(--muted)', fontSize: 13 }}>
+                Tagi, oceny i ulubione trafiają też do plików XMP obok zdjęć (np. <code>foto.jpg.xmp</code>), więc nie zginą razem z biblioteką, a inne programy je odczytają. Zdjęcia nie są zmieniane.
+                Przy dodawaniu folderu FIBO wczytuje tagi i oceny, które zdjęcia już mają (z Eksploratora Windows, Picasy i innych programów).
+              </p>
+              <div className="chips">
+                <Chip on={sidecarOn} onClick={toggleSidecar}>Zapisuj automatycznie</Chip>
+              </div>
+              <button className="wide" disabled={xmpBusy} onClick={runExport}><Save size={17} /> Zapisz wszystko do plików XMP</button>
+              <button className="wide" disabled={xmpBusy} onClick={runImport}><Download size={17} /> Wczytaj tagi i oceny z plików</button>
             </Sec>
             <Sec id="folders" icon={<FolderOpen size={17} />} title="Foldery" hint={folder ? folderName(folder) : `${folders.length} ${pl(folders.length, 'folder', 'foldery', 'folderów')}`}>
               <div className="chips">
@@ -604,6 +662,37 @@ export default function App() {
             <p style={{ margin: '0 0 16px', fontSize: 16 }}>{confirm.text}</p>
             <button className="danger wide" style={{ marginTop: 0 }} onClick={() => { const c = confirm; setConfirm(null); c.run() }}>{confirm.yes}</button>
             <button className="wide" onClick={() => setConfirm(null)}>Anuluj</button>
+          </div>
+        </>
+      )}
+
+      {menu && sel.length > 0 && (
+        <>
+          <div className="fixed inset-0 z-[1890]" onClick={() => setMenu(null)} onContextMenu={(e) => { e.preventDefault(); setMenu(null) }} />
+          <div className="glass fixed z-[1900] flex w-[260px] flex-col p-2" role="menu" aria-label="Akcje dla zaznaczonych zdjęć"
+            style={{ borderRadius: 'var(--r-card)', left: Math.max(8, Math.min(menu.x, window.innerWidth - 268)), top: Math.max(8, Math.min(menu.y, window.innerHeight - 380)) }}>
+            <div style={{ padding: '6px 10px 8px', fontSize: 12.5, color: 'var(--muted)', fontWeight: 600 }}>
+              {sel.length === 1 ? (all.find((p) => p.id === sel[0])?.name ?? '') : `${sel.length} ${pl(sel.length, 'zdjęcie', 'zdjęcia', 'zdjęć')}`}
+            </div>
+            {sel.length === 1 && (
+              <button className="text menu-item" role="menuitem" onClick={() => { setMenu(null); openViewer(sel[0]) }}><Maximize2 size={18} /> Otwórz i edytuj</button>
+            )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 2, padding: '2px 6px' }} role="group" aria-label="Ocena">
+              <span style={{ fontSize: 13, color: 'var(--muted)', width: 52 }}>Ocena</span>
+              {[1, 2, 3, 4, 5].map((n) => (
+                <button key={n} className="ico" style={{ minWidth: 34, minHeight: 36, color: '#f5b301' }} aria-label={`Ocena ${n}`} onClick={() => rateSelected(n)}><Star size={17} /></button>
+              ))}
+              <button className="ico" style={{ minWidth: 34, minHeight: 36 }} aria-label="Wyczyść ocenę" title="Wyczyść ocenę" onClick={() => rateSelected(0)}><X size={16} /></button>
+            </div>
+            <button className="text menu-item" role="menuitem" onClick={favSelected}>
+              <Heart size={18} /> {all.filter((p) => sel.includes(p.id)).every((p) => p.favorite) ? 'Usuń z ulubionych' : 'Dodaj do ulubionych'}
+            </button>
+            <button className="text menu-item" role="menuitem" onClick={() => { setMenu(null); setTagDlg(true) }}><Tag size={18} /> Tagi…</button>
+            {sel.length > 1 && (
+              <button className="text menu-item" role="menuitem" onClick={() => { setMenu(null); startCollage() }}><LayoutDashboard size={18} /> Kolaż z zaznaczonych</button>
+            )}
+            <button className="text menu-item" role="menuitem" onClick={() => { setSel(photos.map((p) => p.id)); setMenu(null) }}><ListChecks size={18} /> Zaznacz wszystkie ({photos.length})</button>
+            <button className="text menu-item" role="menuitem" onClick={() => { setSelected(null); setMenu(null) }}><X size={18} /> Odznacz</button>
           </div>
         </>
       )}

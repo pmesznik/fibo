@@ -13,6 +13,7 @@ export function TagEditor({ photos, allTags, onAdd, onRemove }: {
   onRemove: (tag: string) => void
 }) {
   const [text, setText] = useState('')
+  const [hint, setHint] = useState<string | null>(null)
   const n = photos.length
 
   // Tagi zdjęć wraz z liczbą zdjęć, które je mają (przy wielu zdjęciach bywa "2/5").
@@ -28,7 +29,14 @@ export function TagEditor({ photos, allTags, onAdd, onRemove }: {
     .slice(0, 10)
 
   const submit = (value: string) => {
-    if (!value.trim()) return
+    const norm = value.trim().toLowerCase().replace(/\s+/g, ' ')
+    if (!norm) return
+    // Tag, który wszystkie wybrane zdjęcia już mają, nie jest dodawany drugi raz.
+    if (photos.every((p) => p.tags.includes(norm))) {
+      setHint(`${n > 1 ? 'Wszystkie zdjęcia mają' : 'Zdjęcie ma'} już tag „${norm}”.`)
+      return
+    }
+    setHint(null)
     onAdd(value)
     setText('')
   }
@@ -39,13 +47,15 @@ export function TagEditor({ photos, allTags, onAdd, onRemove }: {
       <div style={{ display: 'flex', gap: 8 }}>
         <input
           id="tag-input" type="text" value={text} maxLength={40} placeholder="np. wakacje"
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => { setText(e.target.value); setHint(null) }}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submit(text) } }}
           autoComplete="off"
         />
         <button className="ico" aria-label="Dodaj tag" disabled={!text.trim()} onClick={() => submit(text)}
           style={{ background: 'var(--accent)', color: '#fff', minWidth: 46, borderRadius: 14 }}><Plus size={20} /></button>
       </div>
+
+      {hint && <p role="status" style={{ margin: '8px 2px 0', fontSize: 13, color: 'var(--muted)' }}>{hint}</p>}
 
       {suggestions.length > 0 && (
         <>

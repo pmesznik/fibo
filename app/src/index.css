@@ -62,6 +62,8 @@ button.primary { min-height:48px; width:100%; background:var(--accent); border-c
 button.wide { display:flex; align-items:center; justify-content:center; gap:8px; width:100%; min-height:var(--touch); margin-top:10px; padding:11px 14px; background:var(--tonal); border:0; border-radius:14px; font-weight:600; }
 button.danger { background:color-mix(in srgb, var(--err) 11%, var(--surface)); border:0; font-weight:600; color:var(--err); }
 button.text { border:0; background:transparent; color:var(--muted); min-height:var(--touch); font-weight:500; }
+button.menu-item { display:flex; align-items:center; gap:10px; width:100%; justify-content:flex-start; text-align:left; min-height:44px; padding:8px 10px; color:var(--text); border-radius:12px; }
+button.menu-item:hover { background:var(--tonal); }
 button.ico { display:grid; place-items:center; min-width:44px; min-height:44px; padding:0; border:0; background:transparent; border-radius:var(--r-sm); color:var(--muted); }
 button.ico:hover { background:var(--tonal); color:var(--text); }
 button.ico.on { background:var(--tonal); color:var(--accent); }

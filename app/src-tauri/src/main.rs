@@ -4,7 +4,10 @@ use std::{
     fs::{self, File},
     io::BufReader,
     path::{Path, PathBuf},
-    sync::Mutex,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Mutex,
+    },
     time::UNIX_EPOCH,
 };
 
@@ -20,6 +23,8 @@ const THUMB_SIZE: u32 = 360;
 struct AppState {
     db: Mutex<Connection>,
     thumbs: PathBuf,
+    /// Czy zapisywać tagi, oceny i ulubione do plików XMP obok zdjęć (ustawienie z bazy).
+    sidecar: AtomicBool,
 }
 
 #[derive(Serialize)]
@@ -64,7 +69,8 @@ fn open_db(path: &Path) -> rusqlite::Result<Connection> {
             tag_id INTEGER NOT NULL,
             PRIMARY KEY (photo_id, tag_id)
         );
-        CREATE INDEX IF NOT EXISTS idx_photo_tags_tag ON photo_tags(tag_id);",
+        CREATE INDEX IF NOT EXISTS idx_photo_tags_tag ON photo_tags(tag_id);
+        CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);",
     )?;
     // Migracja: współrzędne GPS dla mapy. Błąd "duplicate column" oznacza, że kolumny już są.
     for col in ["lat", "lon"] {
@@ -83,6 +89,9 @@ struct ExifInfo {
     orientation: u32,
     lat: Option<f64>,
     lon: Option<f64>,
+    /// Słowa kluczowe i ocena zapisane w EXIF (np. „Tagi” i „Oceny” z Eksploratora Windows).
+    keywords: Vec<String>,
+    rating: i64,
 }
 
 /// Stopnie, minuty i sekundy z EXIF na stopnie dziesiętne; S i W dają wartość ujemną.
@@ -101,7 +110,7 @@ fn gps_coord(exif: &exif::Exif, tag: exif::Tag, ref_tag: exif::Tag) -> Option<f6
 }
 
 fn read_exif(path: &Path) -> ExifInfo {
-    let mut info = ExifInfo { taken: None, camera: None, orientation: 1, lat: None, lon: None };
+    let mut info = ExifInfo { taken: None, camera: None, orientation: 1, lat: None, lon: None, keywords: Vec::new(), rating: 0 };
     let Ok(file) = File::open(path) else { return info };
     let Ok(exif) = exif::Reader::new().read_from_container(&mut BufReader::new(file)) else {
         return info;
@@ -126,6 +135,26 @@ fn read_exif(path: &Path) -> ExifInfo {
             info.lon = Some(lo);
         }
     }
+    // Windows zapisuje „Tagi” jako XPKeywords (UTF-16, rozdzielone średnikami), a „Oceny” jako Rating (1-5)
+    // albo RatingPercent (1, 25, 50, 75, 99).
+    let tiff = |code: u16| exif::Tag(exif::Context::Tiff, code);
+    if let Some(f) = exif.get_field(tiff(0x9C9E), exif::In::PRIMARY) {
+        if let exif::Value::Byte(bytes) = &f.value {
+            let units: Vec<u16> = bytes.chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect();
+            info.keywords = String::from_utf16_lossy(&units)
+                .trim_end_matches('\0')
+                .split(';')
+                .filter_map(norm_tag)
+                .collect();
+        }
+    }
+    let stars = exif.get_field(tiff(0x4746), exif::In::PRIMARY).and_then(|f| f.value.get_uint(0)).map(|v| v as i64);
+    let percent = exif.get_field(tiff(0x4749), exif::In::PRIMARY).and_then(|f| f.value.get_uint(0)).map(|v| v as i64);
+    info.rating = match (stars, percent) {
+        (Some(s), _) if (1..=5).contains(&s) => s,
+        (_, Some(p)) if p >= 1 => match p { 1..=12 => 1, 13..=37 => 2, 38..=62 => 3, 63..=87 => 4, _ => 5 },
+        _ => 0,
+    };
     info
 }
 
@@ -144,6 +173,8 @@ struct Row {
     modified: i64,
     exif: ExifInfo,
     dims: (Option<i64>, Option<i64>),
+    /// Metadane z pliku XMP obok zdjęcia; wczytywane tylko dla zdjęć, których jeszcze nie ma w bibliotece.
+    sidecar: Option<Sidecar>,
 }
 
 /// Folder z kopiami oryginałów obok zdjęć (jak .picasaoriginals w Picasie).
@@ -163,6 +194,8 @@ fn build_row(path: &Path) -> Option<Row> {
     if (5..=8).contains(&exif.orientation) {
         std::mem::swap(&mut w, &mut h);
     }
+    // Metadane już zapisane w zdjęciu lub w pliku XMP (np. z innego programu).
+    let meta = read_metadata(path, Some(&exif));
     Some(Row {
         path: path.to_string_lossy().to_string(),
         folder: path.parent().map(|p| p.to_string_lossy().to_string()).unwrap_or_default(),
@@ -171,6 +204,7 @@ fn build_row(path: &Path) -> Option<Row> {
         modified,
         exif,
         dims: (w, h),
+        sidecar: meta,
     })
 }
 
@@ -181,6 +215,7 @@ fn flush(state: &AppState, rows: &mut Vec<Row>) -> Result<(), String> {
     let mut conn = state.db.lock().map_err(|e| e.to_string())?;
     let tx = conn.transaction().map_err(|e| e.to_string())?;
     for r in rows.drain(..) {
+        let existed = tx.query_row("SELECT 1 FROM photos WHERE path = ?1", [&r.path], |_| Ok(())).is_ok();
         // Ocena i ulubione zostają, gdy zdjęcie jest skanowane ponownie.
         tx.execute(
             "INSERT INTO photos (path, folder, name, size, modified, taken, width, height, camera, lat, lon)
@@ -190,6 +225,13 @@ fn flush(state: &AppState, rows: &mut Vec<Row>) -> Result<(), String> {
             params![r.path, r.folder, r.name, r.size, r.modified, r.exif.taken, r.dims.0, r.dims.1, r.exif.camera, r.exif.lat, r.exif.lon],
         )
         .map_err(|e| e.to_string())?;
+        // Nowe zdjęcie z plikiem XMP: przywracamy jego tagi, ocenę i ulubione (np. po odtworzeniu biblioteki).
+        if !existed {
+            if let Some(sc) = &r.sidecar {
+                let id: i64 = tx.query_row("SELECT id FROM photos WHERE path = ?1", [&r.path], |x| x.get(0)).map_err(|e| e.to_string())?;
+                apply_sidecar(&tx, id, sc).map_err(|e| e.to_string())?;
+            }
+        }
     }
     tx.commit().map_err(|e| e.to_string())
 }
@@ -431,6 +473,396 @@ fn restore_original(state: State<'_, AppState>, id: i64) -> Result<i64, String> 
     reindex(&state, p, taken, camera)
 }
 
+// ---- Metadane w plikach XMP obok zdjęć -----------------------------------
+// Tagi, oceny i ulubione trafiają do pliku `<zdjęcie>.xmp` (standard XMP: dc:subject, xmp:Rating).
+// Oryginalne zdjęcia nie są zmieniane. Pliki XMP innych programów (rozpoznajemy je po braku znacznika FIBO)
+// zostają nietknięte.
+
+const XMP_MARKER: &str = "x:xmptk=\"FIBO\"";
+
+struct Sidecar {
+    rating: i64,
+    favorite: bool,
+    tags: Vec<String>,
+}
+
+fn xmp_path(photo: &Path) -> PathBuf {
+    let mut s = photo.as_os_str().to_os_string();
+    s.push(".xmp");
+    PathBuf::from(s)
+}
+
+fn xml_escape(s: &str) -> String {
+    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;").replace('\'', "&apos;")
+}
+
+fn xml_unescape(s: &str) -> String {
+    s.replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&apos;", "'").replace("&amp;", "&")
+}
+
+fn build_xmp(rating: i64, favorite: bool, tags: &[String]) -> String {
+    let items: String = tags.iter().map(|t| format!("     <rdf:li>{}</rdf:li>\n", xml_escape(t))).collect();
+    let subject = if tags.is_empty() {
+        String::new()
+    } else {
+        format!("   <dc:subject>\n    <rdf:Bag>\n{items}    </rdf:Bag>\n   </dc:subject>\n")
+    };
+    let fav = if favorite { "True" } else { "False" };
+    format!(
+        "<?xpacket begin=\"\u{feff}\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?>\n\
+<x:xmpmeta xmlns:x=\"adobe:ns:meta/\" {XMP_MARKER}>\n\
+ <rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">\n\
+  <rdf:Description rdf:about=\"\"\n\
+    xmlns:xmp=\"http://ns.adobe.com/xap/1.0/\"\n\
+    xmlns:dc=\"http://purl.org/dc/elements/1.1/\"\n\
+    xmlns:fibo=\"https://pmesznik.github.io/fibo/ns/1.0/\"\n\
+    xmp:Rating=\"{rating}\"\n\
+    fibo:Favorite=\"{fav}\">\n\
+{subject}  </rdf:Description>\n\
+ </rdf:RDF>\n\
+</x:xmpmeta>\n\
+<?xpacket end=\"w\"?>\n"
+    )
+}
+
+/// Wartość jako atrybut (`name="3"`) albo element (`<name>3</name>`).
+fn xmp_value(text: &str, name: &str) -> Option<String> {
+    let attr = format!("{name}=\"");
+    if let Some(i) = text.find(&attr) {
+        let rest = &text[i + attr.len()..];
+        return rest.find('"').map(|j| rest[..j].to_string());
+    }
+    let open = format!("<{name}>");
+    let i = text.find(&open)?;
+    let rest = &text[i + open.len()..];
+    rest.find('<').map(|j| rest[..j].to_string())
+}
+
+/// Słowa kluczowe z pakietu XMP (`dc:subject`).
+fn parse_xmp_tags(text: &str) -> Vec<String> {
+    let mut tags: Vec<String> = Vec::new();
+    if let Some(start) = text.find("<dc:subject>") {
+        let rest = &text[start..];
+        let mut seg = &rest[..rest.find("</dc:subject>").unwrap_or(rest.len())];
+        while let Some(i) = seg.find("<rdf:li") {
+            let after = &seg[i..];
+            let Some(gt) = after.find('>') else { break };
+            let body = &after[gt + 1..];
+            let Some(close) = body.find("</rdf:li>") else { break };
+            if let Some(t) = norm_tag(&xml_unescape(&body[..close])) {
+                if !tags.contains(&t) {
+                    tags.push(t);
+                }
+            }
+            seg = &body[close + "</rdf:li>".len()..];
+        }
+    }
+    tags
+}
+
+fn parse_xmp_rating(text: &str) -> i64 {
+    xmp_value(text, "xmp:Rating").and_then(|v| v.trim().parse::<i64>().ok()).unwrap_or(0).clamp(0, 5)
+}
+
+fn read_sidecar(photo: &Path) -> Option<Sidecar> {
+    let bytes = fs::read(xmp_path(photo)).ok()?;
+    let text = String::from_utf8_lossy(&bytes);
+    Some(Sidecar {
+        rating: parse_xmp_rating(&text),
+        favorite: text.to_ascii_lowercase().contains("fibo:favorite=\"true\""),
+        tags: parse_xmp_tags(&text),
+    })
+}
+
+/// Segmenty nagłówka JPEG (znacznik, zawartość) aż do początku danych obrazu.
+fn jpeg_segments(bytes: &[u8]) -> Vec<(u8, &[u8])> {
+    let mut out = Vec::new();
+    if bytes.len() < 4 || bytes[0] != 0xFF || bytes[1] != 0xD8 {
+        return out;
+    }
+    let mut i = 2;
+    while i + 4 <= bytes.len() && bytes[i] == 0xFF {
+        let m = bytes[i + 1];
+        if m == 0xFF {
+            i += 1;
+            continue;
+        }
+        if m == 0xDA || m == 0xD9 {
+            break; // początek danych obrazu albo koniec pliku
+        }
+        if m == 0x01 || (0xD0..=0xD7).contains(&m) {
+            i += 2;
+            continue;
+        }
+        let len = u16::from_be_bytes([bytes[i + 2], bytes[i + 3]]) as usize;
+        if len < 2 || i + 2 + len > bytes.len() {
+            break;
+        }
+        out.push((m, &bytes[i + 4..i + 2 + len]));
+        i += 2 + len;
+    }
+    out
+}
+
+/// Słowa kluczowe IPTC (rekord 2, zbiór 25) z segmentu „Photoshop 3.0” (tak zapisuje m.in. Picasa).
+fn iptc_keywords(app13: &[u8]) -> Vec<String> {
+    let mut tags = Vec::new();
+    let Some(mut rest) = app13.strip_prefix(b"Photoshop 3.0\0") else { return tags };
+    while rest.len() >= 12 && &rest[..4] == b"8BIM" {
+        let id = u16::from_be_bytes([rest[4], rest[5]]);
+        let name_len = rest[6] as usize;
+        let name_total = (1 + name_len + 1) & !1; // bajt długości + nazwa, wyrównane do parzystej liczby
+        if rest.len() < 6 + name_total + 4 {
+            break;
+        }
+        let size_at = 6 + name_total;
+        let size = u32::from_be_bytes([rest[size_at], rest[size_at + 1], rest[size_at + 2], rest[size_at + 3]]) as usize;
+        let data_start = size_at + 4;
+        if rest.len() < data_start + size {
+            break;
+        }
+        if id == 0x0404 {
+            let mut d = &rest[data_start..data_start + size];
+            while d.len() >= 5 && d[0] == 0x1C {
+                let (record, dataset) = (d[1], d[2]);
+                let len = u16::from_be_bytes([d[3], d[4]]) as usize;
+                if len & 0x8000 != 0 || d.len() < 5 + len {
+                    break;
+                }
+                if record == 2 && dataset == 25 {
+                    let raw = &d[5..5 + len];
+                    // IPTC bez deklaracji kodowania bywa w UTF-8 albo w ISO-8859-1.
+                    let text = String::from_utf8(raw.to_vec()).unwrap_or_else(|_| raw.iter().map(|&b| b as char).collect());
+                    if let Some(t) = norm_tag(&text) {
+                        if !tags.contains(&t) {
+                            tags.push(t);
+                        }
+                    }
+                }
+                d = &d[5 + len..];
+            }
+        }
+        let next = data_start + ((size + 1) & !1);
+        if next >= rest.len() {
+            break;
+        }
+        rest = &rest[next..];
+    }
+    tags
+}
+
+/// Tagi i ocena już zapisane w samym zdjęciu: EXIF (Eksplorator Windows), XMP i IPTC w plikach JPEG.
+fn read_embedded(path: &Path, exif: Option<&ExifInfo>) -> Option<Sidecar> {
+    let owned;
+    let ex = match exif {
+        Some(e) => e,
+        None => {
+            owned = read_exif(path);
+            &owned
+        }
+    };
+    let mut rating = ex.rating;
+    let mut tags = ex.keywords.clone();
+    let is_jpeg = path.extension().and_then(|e| e.to_str()).map(|e| matches!(e.to_ascii_lowercase().as_str(), "jpg" | "jpeg")).unwrap_or(false);
+    if is_jpeg {
+        // Nagłówek z metadanymi mieści się w pierwszych kilkuset KB pliku.
+        use std::io::Read;
+        let mut buf = Vec::new();
+        File::open(path).ok()?.take(768 * 1024).read_to_end(&mut buf).ok()?;
+        for (marker, payload) in jpeg_segments(&buf) {
+            let mut extra: Vec<String> = Vec::new();
+            if marker == 0xE1 {
+                if let Some(xml) = payload.strip_prefix(b"http://ns.adobe.com/xap/1.0/\0") {
+                    let text = String::from_utf8_lossy(xml);
+                    if rating == 0 {
+                        rating = parse_xmp_rating(&text);
+                    }
+                    extra = parse_xmp_tags(&text);
+                }
+            } else if marker == 0xED {
+                extra = iptc_keywords(payload);
+            }
+            for t in extra {
+                if !tags.contains(&t) {
+                    tags.push(t);
+                }
+            }
+        }
+    }
+    (rating > 0 || !tags.is_empty()).then_some(Sidecar { rating, favorite: false, tags })
+}
+
+/// Wszystko, co zdjęcie już ma: plik XMP obok (pierwszeństwo) i metadane wewnątrz pliku.
+fn read_metadata(path: &Path, exif: Option<&ExifInfo>) -> Option<Sidecar> {
+    let file = read_sidecar(path);
+    let embedded = read_embedded(path, exif);
+    match (file, embedded) {
+        (None, None) => None,
+        (Some(f), None) => Some(f),
+        (None, Some(e)) => Some(e),
+        (Some(mut f), Some(e)) => {
+            if f.rating == 0 {
+                f.rating = e.rating;
+            }
+            for t in e.tags {
+                if !f.tags.contains(&t) {
+                    f.tags.push(t);
+                }
+            }
+            Some(f)
+        }
+    }
+}
+
+/// Dokłada metadane z pliku XMP do biblioteki, nie nadpisując tego, co użytkownik już ma: ocenę ustawia tylko
+/// gdy była zerowa, ulubione tylko włącza, tagi dodaje. Zwraca liczbę zmienionych wierszy.
+fn apply_sidecar(conn: &Connection, id: i64, sc: &Sidecar) -> rusqlite::Result<usize> {
+    let mut changed = 0;
+    if sc.rating > 0 {
+        changed += conn.execute("UPDATE photos SET rating = ?2 WHERE id = ?1 AND rating = 0", params![id, sc.rating])?;
+    }
+    if sc.favorite {
+        changed += conn.execute("UPDATE photos SET favorite = 1 WHERE id = ?1 AND favorite = 0", [id])?;
+    }
+    for t in &sc.tags {
+        conn.execute("INSERT OR IGNORE INTO tags (name) VALUES (?1)", [t])?;
+        changed += conn.execute(
+            "INSERT OR IGNORE INTO photo_tags (photo_id, tag_id) SELECT ?1, id FROM tags WHERE name = ?2",
+            params![id, t],
+        )?;
+    }
+    Ok(changed)
+}
+
+#[derive(PartialEq, Debug)]
+enum SidecarOutcome {
+    Written,
+    Removed,
+    Skipped,   // istnieje plik XMP innego programu
+    Unchanged,
+}
+
+/// Zapisuje (albo usuwa, gdy nie ma już żadnych metadanych) plik XMP zdjęcia `id`.
+fn write_sidecar(state: &AppState, id: i64) -> Result<SidecarOutcome, String> {
+    let (path, rating, favorite, tags) = {
+        let conn = state.db.lock().map_err(|e| e.to_string())?;
+        let (path, rating, fav): (String, i64, i64) = conn
+            .query_row("SELECT path, rating, favorite FROM photos WHERE id = ?1", [id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            .map_err(|e| e.to_string())?;
+        let mut stmt = conn
+            .prepare("SELECT t.name FROM photo_tags pt JOIN tags t ON t.id = pt.tag_id WHERE pt.photo_id = ?1 ORDER BY t.name")
+            .map_err(|e| e.to_string())?;
+        let tags: Vec<String> = stmt.query_map([id], |r| r.get(0)).map_err(|e| e.to_string())?.filter_map(Result::ok).collect();
+        (path, rating, fav != 0, tags)
+    };
+    let xmp = xmp_path(Path::new(&path));
+    let existing = fs::read(&xmp).ok().map(|b| String::from_utf8_lossy(&b).into_owned());
+    if existing.as_deref().map(|t| !t.contains(XMP_MARKER)).unwrap_or(false) {
+        return Ok(SidecarOutcome::Skipped);
+    }
+    if rating == 0 && !favorite && tags.is_empty() {
+        return match existing {
+            Some(_) => fs::remove_file(&xmp).map(|_| SidecarOutcome::Removed).map_err(|e| e.to_string()),
+            None => Ok(SidecarOutcome::Unchanged),
+        };
+    }
+    let xml = build_xmp(rating, favorite, &tags);
+    if existing.as_deref() == Some(xml.as_str()) {
+        return Ok(SidecarOutcome::Unchanged);
+    }
+    fs::write(&xmp, xml).map_err(|e| e.to_string())?;
+    Ok(SidecarOutcome::Written)
+}
+
+/// Po zmianie metadanych odświeża pliki XMP (jeśli zapisywanie jest włączone); błędy nie przerywają zmiany w bibliotece.
+fn sync_ids(state: &AppState, ids: &[i64]) {
+    if !state.sidecar.load(Ordering::Relaxed) {
+        return;
+    }
+    for &id in ids {
+        let _ = write_sidecar(state, id);
+    }
+}
+
+#[derive(Serialize, Default)]
+struct SidecarReport {
+    written: usize,
+    removed: usize,
+    skipped: usize,
+    unchanged: usize,
+    failed: usize,
+}
+
+#[derive(Serialize, Default)]
+struct ImportReport {
+    files: usize,
+    changed: usize,
+}
+
+#[tauri::command]
+fn get_sidecar_enabled(state: State<'_, AppState>) -> bool {
+    state.sidecar.load(Ordering::Relaxed)
+}
+
+#[tauri::command]
+fn set_sidecar_enabled(state: State<'_, AppState>, enabled: bool) -> Result<(), String> {
+    state.sidecar.store(enabled, Ordering::Relaxed);
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('sidecar', ?1)", [if enabled { "1" } else { "0" }])
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+fn all_photo_ids(state: &AppState) -> Result<Vec<(i64, String)>, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare("SELECT id, path FROM photos").map_err(|e| e.to_string())?;
+    let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?))).map_err(|e| e.to_string())?.filter_map(Result::ok).collect();
+    Ok(rows)
+}
+
+/// Zapisuje metadane wszystkich zdjęć do plików XMP (niezależnie od ustawienia automatycznego zapisu).
+#[tauri::command]
+async fn export_sidecars(app: tauri::AppHandle) -> Result<SidecarReport, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let mut rep = SidecarReport::default();
+        for (n, (id, _)) in all_photo_ids(&state)?.into_iter().enumerate() {
+            match write_sidecar(&state, id) {
+                Ok(SidecarOutcome::Written) => rep.written += 1,
+                Ok(SidecarOutcome::Removed) => rep.removed += 1,
+                Ok(SidecarOutcome::Skipped) => rep.skipped += 1,
+                Ok(SidecarOutcome::Unchanged) => rep.unchanged += 1,
+                Err(_) => rep.failed += 1,
+            }
+            if n % 100 == 0 {
+                let _ = app.emit("scan-progress", n);
+            }
+        }
+        Ok(rep)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Wczytuje metadane z plików XMP do biblioteki (uzupełnia, nie nadpisuje).
+#[tauri::command]
+async fn import_sidecars(app: tauri::AppHandle) -> Result<ImportReport, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let mut rep = ImportReport::default();
+        for (id, path) in all_photo_ids(&state)? {
+            if let Some(sc) = read_metadata(Path::new(&path), None) {
+                rep.files += 1;
+                let conn = state.db.lock().map_err(|e| e.to_string())?;
+                rep.changed += apply_sidecar(&conn, id, &sc).map_err(|e| e.to_string())?;
+            }
+        }
+        Ok(rep)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 // ---- Duplikaty ------------------------------------------------------------
 
 /// Suma kontrolna FNV-1a (64 bity) całej zawartości pliku.
@@ -647,6 +1079,11 @@ fn trash_photos(state: State<'_, AppState>, ids: Vec<i64>) -> Result<usize, Stri
     for id in ids {
         let (path, _, _) = photo_path(&state, id)?;
         trash::delete(&path).map_err(|e| format!("{path}: {e}"))?;
+        // Własny plik XMP zdjęcia też trafia do Kosza (cudzych nie ruszamy).
+        let xmp = xmp_path(Path::new(&path));
+        if fs::read(&xmp).map(|b| String::from_utf8_lossy(&b).contains(XMP_MARKER)).unwrap_or(false) {
+            let _ = trash::delete(&xmp);
+        }
         let conn = state.db.lock().map_err(|e| e.to_string())?;
         conn.execute("DELETE FROM photo_tags WHERE photo_id = ?1", [id]).map_err(|e| e.to_string())?;
         conn.execute("DELETE FROM photos WHERE id = ?1", [id]).map_err(|e| e.to_string())?;
@@ -673,11 +1110,14 @@ fn add_tag(state: State<'_, AppState>, ids: Vec<i64>, tag: String) -> Result<Str
     let tx = conn.transaction().map_err(|e| e.to_string())?;
     tx.execute("INSERT OR IGNORE INTO tags (name) VALUES (?1)", [&name]).map_err(|e| e.to_string())?;
     let tag_id: i64 = tx.query_row("SELECT id FROM tags WHERE name = ?1", [&name], |r| r.get(0)).map_err(|e| e.to_string())?;
-    for id in ids {
+    // INSERT OR IGNORE: tag, który zdjęcie już ma, nie zostanie zdublowany.
+    for &id in &ids {
         tx.execute("INSERT OR IGNORE INTO photo_tags (photo_id, tag_id) VALUES (?1, ?2)", params![id, tag_id])
             .map_err(|e| e.to_string())?;
     }
     tx.commit().map_err(|e| e.to_string())?;
+    drop(conn);
+    sync_ids(&state, &ids);
     Ok(name)
 }
 
@@ -686,7 +1126,7 @@ fn add_tag(state: State<'_, AppState>, ids: Vec<i64>, tag: String) -> Result<Str
 fn remove_tag(state: State<'_, AppState>, ids: Vec<i64>, tag: String) -> Result<(), String> {
     let mut conn = state.db.lock().map_err(|e| e.to_string())?;
     let tx = conn.transaction().map_err(|e| e.to_string())?;
-    for id in ids {
+    for &id in &ids {
         tx.execute(
             "DELETE FROM photo_tags WHERE photo_id = ?1 AND tag_id = (SELECT id FROM tags WHERE name = ?2)",
             params![id, tag],
@@ -694,32 +1134,52 @@ fn remove_tag(state: State<'_, AppState>, ids: Vec<i64>, tag: String) -> Result<
         .map_err(|e| e.to_string())?;
     }
     tx.execute("DELETE FROM tags WHERE id NOT IN (SELECT tag_id FROM photo_tags)", []).map_err(|e| e.to_string())?;
-    tx.commit().map_err(|e| e.to_string())
+    tx.commit().map_err(|e| e.to_string())?;
+    drop(conn);
+    sync_ids(&state, &ids);
+    Ok(())
 }
 
 /// Usuwa tag ze wszystkich zdjęć naraz.
 #[tauri::command]
 fn delete_tag(state: State<'_, AppState>, tag: String) -> Result<(), String> {
     let mut conn = state.db.lock().map_err(|e| e.to_string())?;
+    // Zdjęcia, których plik XMP trzeba będzie odświeżyć po usunięciu tagu.
+    let ids: Vec<i64> = {
+        let mut stmt = conn
+            .prepare("SELECT photo_id FROM photo_tags WHERE tag_id = (SELECT id FROM tags WHERE name = ?1)")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt.query_map([&tag], |r| r.get(0)).map_err(|e| e.to_string())?.filter_map(Result::ok).collect();
+        rows
+    };
     let tx = conn.transaction().map_err(|e| e.to_string())?;
     tx.execute("DELETE FROM photo_tags WHERE tag_id = (SELECT id FROM tags WHERE name = ?1)", [&tag]).map_err(|e| e.to_string())?;
     tx.execute("DELETE FROM tags WHERE name = ?1", [&tag]).map_err(|e| e.to_string())?;
-    tx.commit().map_err(|e| e.to_string())
+    tx.commit().map_err(|e| e.to_string())?;
+    drop(conn);
+    sync_ids(&state, &ids);
+    Ok(())
 }
 
 #[tauri::command]
 fn set_rating(state: State<'_, AppState>, id: i64, rating: i64) -> Result<(), String> {
-    let conn = state.db.lock().map_err(|e| e.to_string())?;
-    conn.execute("UPDATE photos SET rating = ?2 WHERE id = ?1", params![id, rating.clamp(0, 5)])
-        .map_err(|e| e.to_string())?;
+    {
+        let conn = state.db.lock().map_err(|e| e.to_string())?;
+        conn.execute("UPDATE photos SET rating = ?2 WHERE id = ?1", params![id, rating.clamp(0, 5)])
+            .map_err(|e| e.to_string())?;
+    }
+    sync_ids(&state, &[id]);
     Ok(())
 }
 
 #[tauri::command]
 fn set_favorite(state: State<'_, AppState>, id: i64, favorite: bool) -> Result<(), String> {
-    let conn = state.db.lock().map_err(|e| e.to_string())?;
-    conn.execute("UPDATE photos SET favorite = ?2 WHERE id = ?1", params![id, favorite as i64])
-        .map_err(|e| e.to_string())?;
+    {
+        let conn = state.db.lock().map_err(|e| e.to_string())?;
+        conn.execute("UPDATE photos SET favorite = ?2 WHERE id = ?1", params![id, favorite as i64])
+            .map_err(|e| e.to_string())?;
+    }
+    sync_ids(&state, &[id]);
     Ok(())
 }
 
@@ -769,13 +1229,105 @@ mod tests {
         assert!(far > 10, "inne zdjęcie powinno być wyraźnie różne");
     }
 
+    fn jpeg_with_metadata(path: &Path, xmp: &str, keywords: &[&str]) {
+        let img = image::RgbImage::from_fn(64, 48, |x, y| image::Rgb([(x * 4) as u8, (y * 5) as u8, 90]));
+        img.save(path).unwrap();
+        let mut bytes = fs::read(path).unwrap();
+        let segment = |marker: u8, payload: &[u8]| {
+            let mut s = vec![0xFF, marker];
+            s.extend(((payload.len() + 2) as u16).to_be_bytes());
+            s.extend(payload);
+            s
+        };
+        let mut app1 = b"http://ns.adobe.com/xap/1.0/\0".to_vec();
+        app1.extend(xmp.as_bytes());
+        let mut iptc = Vec::new();
+        for kw in keywords {
+            iptc.extend([0x1C, 2, 25]);
+            iptc.extend((kw.len() as u16).to_be_bytes());
+            iptc.extend(kw.as_bytes());
+        }
+        let mut app13 = b"Photoshop 3.0\0".to_vec();
+        app13.extend(b"8BIM");
+        app13.extend([0x04, 0x04, 0x00, 0x00]); // id 0x0404 i pusta nazwa (bajt długości + dopełnienie)
+        app13.extend((iptc.len() as u32).to_be_bytes());
+        app13.extend(&iptc);
+        if iptc.len() % 2 == 1 {
+            app13.push(0);
+        }
+        let mut out = bytes[..2].to_vec();
+        out.extend(segment(0xE1, &app1));
+        out.extend(segment(0xED, &app13));
+        out.extend(&bytes[2..]);
+        bytes = out;
+        fs::write(path, bytes).unwrap();
+    }
+
+    #[test]
+    fn metadata_embedded_and_sidecar() {
+        let dir = std::env::temp_dir().join("mz-meta-test");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("thumbs")).unwrap();
+
+        // Zdjęcie z innego programu: ocena i tagi w XMP oraz słowa kluczowe w IPTC.
+        let p = dir.join("a.jpg");
+        jpeg_with_metadata(&p, &build_xmp(4, false, &["wakacje".into(), "góry".into()]), &["rodzina", "wakacje"]);
+        let found = read_embedded(&p, None).expect("metadane w pliku");
+        assert_eq!(found.rating, 4);
+        for t in ["wakacje", "góry", "rodzina"] {
+            assert!(found.tags.contains(&t.to_string()), "brak tagu {t}: {:?}", found.tags);
+        }
+        assert_eq!(found.tags.len(), 3, "wakacje z XMP i IPTC nie może się zdublować");
+
+        // Nowe zdjęcie trafia do biblioteki razem z tym, co już miało.
+        let state = AppState { db: Mutex::new(open_db(&dir.join("t.db")).unwrap()), thumbs: dir.join("thumbs"), sidecar: AtomicBool::new(true) };
+        flush(&state, &mut vec![build_row(&p).unwrap()]).unwrap();
+        let (id, rating): (i64, i64) = state.db.lock().unwrap().query_row("SELECT id, rating FROM photos", [], |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
+        assert_eq!(rating, 4);
+        let n_tags: i64 = state.db.lock().unwrap().query_row("SELECT COUNT(*) FROM photo_tags WHERE photo_id = ?1", [id], |r| r.get(0)).unwrap();
+        assert_eq!(n_tags, 3);
+
+        // Zapis pliku XMP i odczyt z powrotem.
+        assert_eq!(write_sidecar(&state, id).unwrap(), SidecarOutcome::Written);
+        assert_eq!(write_sidecar(&state, id).unwrap(), SidecarOutcome::Unchanged, "bez zmian nie przepisujemy pliku");
+        let sc = read_sidecar(&p).unwrap();
+        assert_eq!((sc.rating, sc.tags.len()), (4, 3));
+
+        // Cudzy plik XMP nie jest nadpisywany.
+        let p2 = dir.join("b.jpg");
+        image::RgbImage::new(8, 8).save(&p2).unwrap();
+        fs::write(xmp_path(&p2), "<x:xmpmeta>cudzy</x:xmpmeta>").unwrap();
+        flush(&state, &mut vec![build_row(&p2).unwrap()]).unwrap();
+        let id2: i64 = state.db.lock().unwrap().query_row("SELECT id FROM photos WHERE name = 'b.jpg'", [], |r| r.get(0)).unwrap();
+        state.db.lock().unwrap().execute("UPDATE photos SET rating = 3 WHERE id = ?1", [id2]).unwrap();
+        assert_eq!(write_sidecar(&state, id2).unwrap(), SidecarOutcome::Skipped);
+        assert_eq!(fs::read_to_string(xmp_path(&p2)).unwrap(), "<x:xmpmeta>cudzy</x:xmpmeta>");
+
+        // Brak metadanych: nasz plik XMP znika.
+        {
+            let conn = state.db.lock().unwrap();
+            conn.execute("UPDATE photos SET rating = 0 WHERE id = ?1", [id]).unwrap();
+            conn.execute("DELETE FROM photo_tags WHERE photo_id = ?1", [id]).unwrap();
+        }
+        assert_eq!(write_sidecar(&state, id).unwrap(), SidecarOutcome::Removed);
+        assert!(!xmp_path(&p).exists());
+
+        // Import uzupełnia, ale nie nadpisuje: zdjęcie z oceną 5 zachowuje 5.
+        state.db.lock().unwrap().execute("UPDATE photos SET rating = 5 WHERE id = ?1", [id]).unwrap();
+        let sc = read_metadata(&p, None).unwrap();
+        apply_sidecar(&state.db.lock().unwrap(), id, &sc).unwrap();
+        let rating: i64 = state.db.lock().unwrap().query_row("SELECT rating FROM photos WHERE id = ?1", [id], |r| r.get(0)).unwrap();
+        assert_eq!(rating, 5);
+    }
+
     #[test]
     fn scan_and_thumbnail() {
-        let dir = std::env::var("FOTO_DIR").expect("FOTO_DIR");
+        // Test na prawdziwym folderze ze zdjęciami: pomijany, gdy nie podano FOTO_DIR (np. w CI).
+        let Ok(dir) = std::env::var("FOTO_DIR") else { return };
         let tmp = std::env::temp_dir().join("mz-test");
         let _ = fs::remove_dir_all(&tmp);
         fs::create_dir_all(tmp.join("thumbs")).unwrap();
-        let state = AppState { db: Mutex::new(open_db(&tmp.join("t.db")).unwrap()), thumbs: tmp.join("thumbs") };
+        let state = AppState { db: Mutex::new(open_db(&tmp.join("t.db")).unwrap()), thumbs: tmp.join("thumbs"), sidecar: AtomicBool::new(true) };
         let n = scan_blocking(&state, &dir, &|_| {}).unwrap();
         println!("zeskanowano {n}");
         let first: String = state.db.lock().unwrap().query_row("SELECT path FROM photos LIMIT 1", [], |r| r.get(0)).unwrap();
@@ -794,10 +1346,15 @@ fn main() {
             let thumbs = dir.join("thumbs");
             fs::create_dir_all(&thumbs)?;
             let db = open_db(&dir.join("library.db"))?;
-            app.manage(AppState { db: Mutex::new(db), thumbs });
+            // Zapis metadanych do plików XMP jest domyślnie włączony.
+            let sidecar = db
+                .query_row("SELECT value FROM settings WHERE key = 'sidecar'", [], |r| r.get::<_, String>(0))
+                .map(|v| v != "0")
+                .unwrap_or(true);
+            app.manage(AppState { db: Mutex::new(db), thumbs, sidecar: AtomicBool::new(sidecar) });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![scan_folder, refresh_library, find_duplicates, trash_photos, list_photos, thumbnail, set_rating, set_favorite, add_tag, remove_tag, delete_tag, save_edit, save_collage, read_image, has_original, restore_original])
+        .invoke_handler(tauri::generate_handler![get_sidecar_enabled, set_sidecar_enabled, export_sidecars, import_sidecars, scan_folder, refresh_library, find_duplicates, trash_photos, list_photos, thumbnail, set_rating, set_favorite, add_tag, remove_tag, delete_tag, save_edit, save_collage, read_image, has_original, restore_original])
         .run(tauri::generate_context!())
         .expect("błąd uruchomienia aplikacji");
 }

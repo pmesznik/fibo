@@ -1,0 +1,39 @@
+name: Testy FIBO
+
+on:
+  push:
+    branches: [main]
+    paths: ['app/**', '.github/workflows/tests.yml']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  rust-and-types:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app/src-tauri
+
+      - name: Instalacja zależności
+        run: npm ci
+
+      - name: Kontrola typów (TypeScript)
+        run: npx tsc -b
+
+      - name: Testy Rusta (skaner, duplikaty, metadane XMP)
+        working-directory: app/src-tauri
+        run: cargo test
