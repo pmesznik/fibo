@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { listen } from '@tauri-apps/api/event'
 import { MapView } from './MapView'
 import { Duplicates } from './Duplicates'
+import { UpdateDialog, useUpdater } from './Updater'
 import { addTag, deleteTag, inTauri, listPhotos, pickFolder, refreshLibrary, removeTag, scanFolder, setFavorite, setRating, type Photo } from './api'
 import { TagEditor, type TagCount } from './TagEditor'
 import { Thumb } from './Thumb'
@@ -11,7 +12,7 @@ import { Justified } from './Justified'
 import { Chip, Sec, Toast } from './ui'
 import {
   Images, FolderOpen, Users, MapPin, Heart, Star, Plus, Play, Maximize2, X,
-  SlidersHorizontal, Search as SearchIcon, ImageUp, Ruler, LayoutDashboard, Check, ListChecks, Tag, CalendarDays, Copy, RefreshCw,
+  SlidersHorizontal, Search as SearchIcon, ImageUp, Ruler, LayoutDashboard, Check, ListChecks, Tag, CalendarDays, Copy, RefreshCw, Download,
 } from './FiboIcons'
 
 type Mode = 'library' | 'albums' | 'favs' | 'people' | 'map'
@@ -76,6 +77,8 @@ export default function App() {
     setToast({ text, kind })
     window.setTimeout(() => setToast((t) => (t?.text === text ? null : t)), 7000)
   }, [])
+
+  const updater = useUpdater(say)
 
   const reload = useCallback(async () => { if (inTauri) setAll(await listPhotos()) }, [])
   useEffect(() => { reload() }, [reload])
@@ -320,7 +323,7 @@ export default function App() {
         <div className="dr-head">
           <span className="flex items-center gap-3">
             <img src="/brand/fibo-ikona.svg" alt="" width={34} height={34} style={{ borderRadius: 9 }} />
-            FIBO
+            <span>FIBO{updater.current && <small style={{ display: 'block', font: '400 12px system-ui', color: 'var(--muted)' }}>wersja {updater.current}</small>}</span>
           </span>
           <button className="ico" aria-label="Zamknij menu" onClick={() => setDrawer(false)}><X size={22} /></button>
         </div>
@@ -341,6 +344,7 @@ export default function App() {
                 { icon: LayoutDashboard, label: chosen.length > 1 ? `Kolaż (${chosen.length})` : 'Kolaż', fn: () => { setDrawer(false); startCollage() }, on: false },
                 { icon: Copy, label: 'Duplikaty', fn: () => { setDrawer(false); setDupOpen(true) }, on: false },
                 { icon: RefreshCw, label: refreshing ? 'Odświeżanie…' : 'Odśwież dane zdjęć', fn: () => { setDrawer(false); refresh() }, on: false },
+                { icon: Download, label: updater.phase === 'checking' ? 'Sprawdzam…' : 'Sprawdź aktualizacje', fn: () => { setDrawer(false); updater.checkNow(true) }, on: false },
               ].map((a) => (
                 <button key={a.label} onClick={a.fn} aria-pressed={a.on} className="flex flex-col items-center gap-2 text-center"
                   style={{ background: a.on ? 'color-mix(in srgb, var(--accent) 28%, var(--panel))' : 'var(--tonal)', border: 0, minHeight: 84, fontWeight: 600, fontSize: 13.5 }}>
@@ -583,6 +587,8 @@ export default function App() {
           </div>
         </>
       )}
+
+      <UpdateDialog u={updater} />
 
       <Toast text={toast?.text ?? null} kind={toast?.kind} />
 

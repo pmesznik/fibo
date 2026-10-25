@@ -18,8 +18,16 @@
       "assetProtocol": { "enable": true, "scope": ["**"] }
     }
   },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDU5REIxQkIzQkYxMzhBMjgKUldRb2loTy9zeHZiV2NIQTFEOWgrMVZZNXF3d0kzK05XUU8xaGIvdFNEL0Jra3AvbWtIRkFaVS8K",
+      "endpoints": ["https://github.com/pmesznik/fibo/releases/latest/download/latest.json"],
+      "windows": { "installMode": "passive" }
+    }
+  },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "targets": ["nsis"],
     "publisher": "FIBO",
     "shortDescription": "FIBO: menedżer i edytor zdjęć",
