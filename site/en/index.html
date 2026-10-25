@@ -12,7 +12,7 @@
 <link rel="alternate" hreflang="pl" href="../pl/">
 <link rel="stylesheet" href="../assets/site.css">
 </head>
-<body data-lang="en" data-repo="pmesznik/fibo" data-version="0.2.0">
+<body data-lang="en" data-repo="pmesznik/fibo" data-version="0.3.0">
 <a class="skip" href="#docs">Documentation</a>
 <header class="top">
   <div class="wrap bar">
@@ -214,8 +214,8 @@
     <section id="updates"><h3 class="sec-title">Updates</h3>
       <p>Starting with version 0.2.0, FIBO checks GitHub for a newer version by itself:</p>
       <ul>
-        <li>The check runs shortly after launch (silently when offline) and on demand: menu → <strong>Check for updates</strong>.</li>
-        <li>When a new version exists, FIBO asks: <em>Download and install</em>, <em>Later</em> or <em>Skip this version</em>. The release notes are shown in the dialog.</li>
+        <li>The check runs <strong>automatically once a day</strong> (shortly after launch, and when the app stays open for long it checks hourly whether a day has passed; silently when offline) and on demand: menu → <strong>Check for updates</strong>. A manual check always shows its result in a dialog: a new version, you are up to date, or an error.</li>
+        <li>When a new version exists, FIBO asks: <em>Download and install</em>, <em>Later</em> (it will ask again the next day) or <em>Skip this version</em>. The release notes are shown in the dialog.</li>
         <li>If you agree, FIBO downloads the installer with a progress bar, installs it and restarts. <strong>Save any open photo edits first.</strong></li>
         <li>Updates are signed with the author’s key, and the app installs only updates with a valid signature. Your library, ratings and tags are untouched.</li>
         <li>The version number is shown in the menu header. Version 0.1.0 must be updated by hand once, because it does not have this feature yet.</li>

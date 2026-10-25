@@ -97,7 +97,7 @@ export default function App() {
     window.setTimeout(() => setToast((t) => (t?.text === text ? null : t)), 7000)
   }, [])
 
-  const updater = useUpdater(say)
+  const updater = useUpdater()
   const [sidecarOn, setSidecarOn] = useState(true)
   const [xmpBusy, setXmpBusy] = useState(false)
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
@@ -534,6 +534,7 @@ export default function App() {
                 { icon: Copy, label: 'Duplikaty', fn: () => { setDrawer(false); setDupOpen(true) }, on: false },
                 { icon: RefreshCw, label: refreshing ? 'Odświeżanie…' : 'Odśwież dane zdjęć', fn: () => { setDrawer(false); refresh() }, on: false },
                 { icon: Download, label: updater.phase === 'checking' ? 'Sprawdzam…' : 'Sprawdź aktualizacje', fn: () => { setDrawer(false); updater.checkNow(true) }, on: false },
+                // Ręczne sprawdzenie pokazuje wynik w oknie na środku; automatycznie FIBO pyta raz dziennie.
               ].map((a) => (
                 <button key={a.label} onClick={a.fn} aria-pressed={a.on} className="flex flex-col items-center gap-2 text-center"
                   style={{ background: a.on ? 'color-mix(in srgb, var(--accent) 28%, var(--panel))' : 'var(--tonal)', border: 0, minHeight: 84, fontWeight: 600, fontSize: 13.5 }}>

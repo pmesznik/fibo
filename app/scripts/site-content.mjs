@@ -179,8 +179,8 @@ export const PL = {
     { id: 'updates', t: 'Aktualizacje', h: `
       <p>Od wersji 0.2.0 FIBO sam sprawdza, czy na GitHubie jest nowsza wersja:</p>
       <ul>
-        <li>Sprawdzenie następuje krótko po uruchomieniu (po cichu, gdy nie ma internetu) oraz na żądanie: menu → <strong>Sprawdź aktualizacje</strong>.</li>
-        <li>Gdy jest nowa wersja, FIBO pyta: <em>Pobierz i zainstaluj</em>, <em>Później</em> albo <em>Pomiń tę wersję</em>. W oknie widać opis zmian.</li>
+        <li>Sprawdzenie następuje <strong>automatycznie raz na dobę</strong> (krótko po uruchomieniu, a gdy program jest otwarty długo, co godzinę sprawdza, czy minęła doba; po cichu, gdy nie ma internetu) oraz na żądanie: menu → <strong>Sprawdź aktualizacje</strong>. Ręczne sprawdzenie zawsze pokazuje wynik w oknie: jest nowa wersja, masz najnowszą albo błąd.</li>
+        <li>Gdy jest nowa wersja, FIBO pyta: <em>Pobierz i zainstaluj</em>, <em>Później</em> (zapyta ponownie następnego dnia) albo <em>Pomiń tę wersję</em>. W oknie widać opis zmian.</li>
         <li>Po zgodzie FIBO pobiera instalator z paskiem postępu, instaluje go i uruchamia się ponownie. <strong>Zapisz najpierw otwarte edycje zdjęć.</strong></li>
         <li>Aktualizacje są podpisane kluczem autora, a program instaluje tylko te z poprawnym podpisem. Biblioteka, oceny i tagi zostają bez zmian.</li>
         <li>Numer wersji widać w nagłówku menu. Wersję 0.1.0 trzeba zaktualizować raz ręcznie, bo jeszcze nie ma tej funkcji.</li>
@@ -380,8 +380,8 @@ export const EN = {
     { id: 'updates', t: 'Updates', h: `
       <p>Starting with version 0.2.0, FIBO checks GitHub for a newer version by itself:</p>
       <ul>
-        <li>The check runs shortly after launch (silently when offline) and on demand: menu → <strong>Check for updates</strong>.</li>
-        <li>When a new version exists, FIBO asks: <em>Download and install</em>, <em>Later</em> or <em>Skip this version</em>. The release notes are shown in the dialog.</li>
+        <li>The check runs <strong>automatically once a day</strong> (shortly after launch, and when the app stays open for long it checks hourly whether a day has passed; silently when offline) and on demand: menu → <strong>Check for updates</strong>. A manual check always shows its result in a dialog: a new version, you are up to date, or an error.</li>
+        <li>When a new version exists, FIBO asks: <em>Download and install</em>, <em>Later</em> (it will ask again the next day) or <em>Skip this version</em>. The release notes are shown in the dialog.</li>
         <li>If you agree, FIBO downloads the installer with a progress bar, installs it and restarts. <strong>Save any open photo edits first.</strong></li>
         <li>Updates are signed with the author’s key, and the app installs only updates with a valid signature. Your library, ratings and tags are untouched.</li>
         <li>The version number is shown in the menu header. Version 0.1.0 must be updated by hand once, because it does not have this feature yet.</li>
