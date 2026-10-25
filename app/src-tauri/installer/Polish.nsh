@@ -1,4 +1,4 @@
-﻿; Polskie teksty własnych stron instalatora FIBO (Tauri nie dostarcza tłumaczenia na polski, więc bez tego pliku strony są puste).
+; Polskie teksty własnych stron instalatora FIBO (Tauri nie dostarcza tłumaczenia na polski, więc bez tego pliku strony są puste).
 LangString addOrReinstall ${LANG_POLISH} "Dodaj lub zainstaluj ponownie składniki"
 LangString alreadyInstalled ${LANG_POLISH} "Już zainstalowano"
 LangString alreadyInstalledLong ${LANG_POLISH} "${PRODUCTNAME} ${VERSION} jest już zainstalowany. Wybierz operację i kliknij Dalej, aby kontynuować."
