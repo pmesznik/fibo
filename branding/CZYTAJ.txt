@@ -1,0 +1,27 @@
+LOGO: ZŁOTY PODZIAŁ (menedżer zdjęć)
+
+svg/  pliki wektorowe (do druku, stron, dalszej edycji)
+  logo-kolor.svg          główna wersja kolorowa
+  logo-czarne.svg         jednokolorowa czarna
+  logo-biale.svg          jednokolorowa biała (na ciemne i kolorowe tła)
+  logo-fiolet.svg         jednokolorowa w kolorze marki
+  logo-maly-rozmiar.svg   uproszczona wersja do małych rozmiarów (poniżej ok. 48 px)
+  ikona-jasna.svg / ikona-ciemna.svg   ikona aplikacji 1024x1024
+  ikona-android-tlo-pelne.svg          ikona bez zaokrąglenia (system sam przycina)
+  favicon.svg
+
+png/  logo z przezroczystym tłem, 512, 1024 i 2048 px
+ikony/ ikony aplikacji 1024, 512, 192, 180 px, ikona Google Play 512 px, favicon.ico i PNG 16/32/48 px
+
+PALETA
+  Fiolet     #6D5BF0
+  Róż        #FF4D8D
+  Koral      #FF6B4A
+  Bursztyn   #FFB627
+  Morski     #14B8A6
+  Granat tła #1E1B4B
+
+ZASADY
+  Wolne pole wokół znaku: co najmniej szerokość najmniejszego kwadratu (morskiego).
+  Poniżej 48 px używaj wersji logo-maly-rozmiar lub ikon.
+  Nie zmieniaj kolejności kolorów, nie obracaj, nie rozciągaj znaku.

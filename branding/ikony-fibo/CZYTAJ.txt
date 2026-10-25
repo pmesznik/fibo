@@ -1,0 +1,18 @@
+IKONY FIBO
+
+svg/            48 ikon jako osobne pliki SVG (24x24, kolor z currentColor)
+FiboIcons.jsx   komponenty React o tych samych nazwach co w lucide-react
+IKONY_FIBO.html katalog ikon z wyszukiwarką, porównaniem z poprzednimi i podglądem rozmiarów
+
+PODMIANA W APLIKACJI
+  1. Skopiuj FiboIcons.jsx do folderu z komponentami.
+  2. W importach zamień "lucide-react" na ścieżkę do FiboIcons, np.
+     import { Heart, Star } from "lucide-react"  ->  import { Heart, Star } from "./FiboIcons"
+  3. Propsy size, color, strokeWidth i className działają jak w Lucide.
+
+STYL
+  Siatka 24 px, linia 1,8, zaokrąglone końce i narożniki (promień kafelka 2,5).
+  Element wypełniony ma klasę "fi" (domyślnie kolor ikony, krycie 20 procent).
+  Wersja kolorowa: .fi { fill: #FFB627; fill-opacity: .95 }
+
+BEZ ZMIAN: logo FIBO, pinezka na mapie, czerwona kropka.
