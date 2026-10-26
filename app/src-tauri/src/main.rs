@@ -1298,6 +1298,54 @@ async fn move_photos(app: tauri::AppHandle, ids: Vec<i64>, dest: String, copy: b
         .map_err(|e| e.to_string())?
 }
 
+/// Nazwa z szablonu: [data]_[prefiks]_[numer]. Numer ma co najmniej 3 cyfry (więcej, gdy zdjęć jest dużo).
+fn batch_stem(prefix: &str, date: Option<&str>, n: u32, width: usize) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    if let Some(d) = date {
+        parts.push(d.to_string());
+    }
+    let p = prefix.trim();
+    if !p.is_empty() {
+        parts.push(p.to_string());
+    }
+    parts.push(format!("{n:0width$}"));
+    parts.join("_")
+}
+
+/// Zmienia nazwy wielu zdjęć naraz według szablonu. Każda nazwa przechodzi tę samą walidację co pojedyncza zmiana nazwy,
+/// nic nie jest nadpisywane, a błędy są zgłaszane osobno dla zdjęć, których nie udało się zmienić.
+fn rename_batch_core(state: &AppState, ids: &[i64], prefix: &str, with_date: bool, start: u32) -> Result<MoveReport, String> {
+    if ids.len() > 100_000 {
+        return Err("Zbyt wiele zdjęć".into());
+    }
+    let last = start.checked_add(ids.len() as u32).ok_or("Zbyt duży numer początkowy")?;
+    let width = last.to_string().len().max(3);
+    let mut rep = MoveReport::default();
+    for (i, &id) in ids.iter().enumerate() {
+        let date = if with_date {
+            let taken: Option<String> = state.db.lock().map_err(|e| e.to_string())?
+                .query_row("SELECT COALESCE(taken, datetime(modified,'unixepoch')) FROM photos WHERE id = ?1", [id], |r| r.get(0))
+                .map_err(|e| e.to_string())?;
+            taken.map(|t| t.chars().take(10).map(|c| if c == ':' { '-' } else { c }).collect::<String>())
+        } else {
+            None
+        };
+        let stem = batch_stem(prefix, date.as_deref(), start + i as u32, width);
+        match rename_photo_core(state, id, &stem) {
+            Ok(_) => rep.done += 1,
+            Err(e) => rep.errors.push(format!("{stem}: {e}")),
+        }
+    }
+    Ok(rep)
+}
+
+#[tauri::command]
+async fn rename_batch(app: tauri::AppHandle, ids: Vec<i64>, prefix: String, with_date: bool, start: u32) -> Result<MoveReport, String> {
+    tauri::async_runtime::spawn_blocking(move || rename_batch_core(&app.state::<AppState>(), &ids, &prefix, with_date, start))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 /// Ustawia lokalizację zdjęć ręcznie (None = brak lokalizacji). Zapisuje tylko w bibliotece FIBO, plików zdjęć nie zmienia.
 fn set_location_core(conn: &Connection, ids: &[i64], loc: Option<(f64, f64)>) -> Result<usize, String> {
     if let Some((la, lo)) = loc {
@@ -1958,6 +2006,29 @@ mod tests {
     }
 
     #[test]
+    fn batch_rename_uses_template_and_reports_conflicts() {
+        assert_eq!(batch_stem("Wakacje", Some("2024-07-01"), 7, 3), "2024-07-01_Wakacje_007");
+        assert_eq!(batch_stem("  ", None, 12, 3), "012");
+        let dir = std::env::temp_dir().join("mz-batchrename-test");
+        let state = test_state(&dir);
+        let lib = dir.join("lib");
+        fs::create_dir_all(&lib).unwrap();
+        for n in ["a.jpg", "b.jpg", "c.jpg"] {
+            image::RgbImage::new(8, 8).save(lib.join(n)).unwrap();
+        }
+        scan_blocking(&state, lib.to_str().unwrap(), &|_| {}).unwrap();
+        let ids: Vec<i64> = ["a.jpg", "b.jpg", "c.jpg"].iter().map(|n| photo_id(&state, n)).collect();
+        // Istniejący plik o docelowej nazwie nie jest nadpisany: to jedno zdjęcie dostaje błąd, reszta jest zmieniona.
+        image::RgbImage::new(8, 8).save(lib.join("Ola_002.jpg")).unwrap();
+        let rep = rename_batch_core(&state, &ids, "Ola", false, 1).unwrap();
+        assert_eq!((rep.done, rep.errors.len()), (2, 1), "{rep:?}");
+        assert!(lib.join("Ola_001.jpg").exists() && lib.join("Ola_003.jpg").exists() && lib.join("b.jpg").exists());
+        // Niebezpieczny prefiks jest odrzucony przez walidację nazw.
+        let rep = rename_batch_core(&state, &ids[..1], "../x", false, 1).unwrap();
+        assert_eq!(rep.done, 0);
+    }
+
+    #[test]
     fn hiding_and_safe_deletion() {
         let dir = std::env::temp_dir().join("mz-delete-test");
         let state = test_state(&dir);
@@ -2442,7 +2513,7 @@ fn main() {
             app.manage(AppState { db: Mutex::new(db), thumbs, sidecar: AtomicBool::new(sidecar) });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![list_roots, remove_root, rescan_roots, list_albums, create_album, rename_album, delete_album, add_to_album, remove_from_album, rename_photo, move_photos, get_sidecar_enabled, set_sidecar_enabled, export_sidecars, import_sidecars, scan_folder, refresh_library, find_duplicates, trash_photos, export_photos, set_location, hide_photos, hidden_count, restore_hidden, people::faces_status, people::set_faces_enabled, people::faces_start, people::faces_stop, people::faces_delete_all, people::list_people, people::person_photos, people::person_faces, people::set_person_cover, people::rename_person, people::merge_people, people::ignore_person, list_photos, thumbnail, thumbnail_data, people::face_crop, set_rating, set_favorite, add_tag, remove_tag, delete_tag, save_edit, save_collage, read_image, has_original, restore_original])
+        .invoke_handler(tauri::generate_handler![list_roots, remove_root, rescan_roots, list_albums, create_album, rename_album, delete_album, add_to_album, remove_from_album, rename_photo, move_photos, get_sidecar_enabled, set_sidecar_enabled, export_sidecars, import_sidecars, scan_folder, refresh_library, find_duplicates, trash_photos, export_photos, set_location, rename_batch, hide_photos, hidden_count, restore_hidden, people::faces_status, people::set_faces_enabled, people::faces_start, people::faces_stop, people::faces_delete_all, people::list_people, people::person_photos, people::person_faces, people::set_person_cover, people::rename_person, people::merge_people, people::ignore_person, list_photos, thumbnail, thumbnail_data, people::face_crop, set_rating, set_favorite, add_tag, remove_tag, delete_tag, save_edit, save_collage, read_image, has_original, restore_original])
         .run(tauri::generate_context!())
         .expect("błąd uruchomienia aplikacji");
 }

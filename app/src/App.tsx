@@ -4,6 +4,7 @@ import { MapView } from './MapView'
 import { People } from './People'
 import { ExportDialog } from './ExportDialog'
 import { LocationDialog } from './LocationDialog'
+import { RenameDialog } from './RenameDialog'
 import { Duplicates } from './Duplicates'
 import { UpdateDialog, useUpdater } from './Updater'
 import { exportSidecars, getSidecarEnabled, importSidecars, setSidecarEnabled } from './api'
@@ -121,6 +122,7 @@ export default function App() {
   useEffect(() => { reload() }, [reload])
   const reloadAlbums = useCallback(async () => { if (inTauri) setAlbums(await listAlbums()) }, [])
   const reloadRoots = useCallback(async () => { if (inTauri) setRoots(await listRoots()) }, [])
+  const [renameIds, setRenameIds] = useState<number[] | null>(null)
   const [locIds, setLocIds] = useState<number[] | null>(null)
   const [exportIds, setExportIds] = useState<number[] | null>(null)
   const [person, setPerson] = useState<{ name: string; ids: Set<number> } | null>(null)
@@ -955,6 +957,9 @@ export default function App() {
             {sel.length === 1 && (
               <button className="text menu-item" role="menuitem" onClick={renameSelected}><Pencil size={18} /> Zmień nazwę pliku…</button>
             )}
+            {sel.length > 1 && (
+              <button className="text menu-item" role="menuitem" onClick={() => { setMenu(null); setRenameIds(realIds()) }}><Pencil size={18} /> Zmień nazwy zaznaczonych…</button>
+            )}
             <button className="text menu-item" role="menuitem" onClick={() => moveSelected(false)}><ImageUp size={18} /> Przenieś do folderu…</button>
             <button className="text menu-item" role="menuitem" onClick={() => moveSelected(true)}><Copy size={18} /> Kopiuj do folderu…</button>
             <button className="text menu-item" role="menuitem" onClick={() => { setMenu(null); setLocIds(realIds()) }}><MapPin size={18} /> Ustaw lokalizację…</button>
@@ -971,6 +976,10 @@ export default function App() {
       {picker && sel.length > 0 && (
         <AlbumPicker albums={albums} count={realIds().length} onPick={pickAlbum} onClose={() => setPicker(false)}
           onCreate={() => { setPicker(false); newAlbum(true) }} />
+      )}
+      {renameIds && renameIds.length > 1 && (
+        <RenameDialog photos={renameIds.map((id) => all.find((p) => p.id === id)).filter((p): p is Photo => !!p)} say={say}
+          onDone={() => { setSel([]); reload() }} onClose={() => setRenameIds(null)} />
       )}
       {locIds && locIds.length > 0 && (() => {
         const first = all.find((p) => p.id === locIds[0] && p.lat != null && p.lon != null)
