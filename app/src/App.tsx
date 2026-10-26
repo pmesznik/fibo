@@ -81,6 +81,10 @@ export default function App() {
   const [toast, setToast] = useState<{ text: string; kind?: 'ok' | 'err' } | null>(null)
   const [folder, setFolder] = useState<string | null>(null)
   const [minStars, setMinStars] = useState(0)
+  // Filtry dodatkowe: zakres dat (RRRR-MM-DD) oraz zdjęcia, którym czegoś brakuje (porządkowanie biblioteki).
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+  const [missing, setMissing] = useState<'' | 'tags' | 'geo' | 'rating'>('')
   const [sort, setSort] = useState<Sort>('date-desc')
   const [activeTags, setActiveTags] = useState<string[]>([])
   const [tagDlg, setTagDlg] = useState(false)
@@ -232,13 +236,16 @@ export default function App() {
       (!person || person.ids.has(p.id)) &&
       (!onlyFav || p.favorite) &&
       p.rating >= minStars &&
+      (!dateFrom || whenOf(p).slice(0, 10).replace(/:/g, '-') >= dateFrom) &&
+      (!dateTo || whenOf(p).slice(0, 10).replace(/:/g, '-') <= dateTo) &&
+      (missing === '' || (missing === 'tags' ? p.tags.length === 0 : missing === 'geo' ? p.lat == null || p.lon == null : p.rating === 0)) &&
       activeTags.every((t) => p.tags.includes(t)) &&
       (!q || `${p.name} ${p.camera ?? ''} ${p.tags.join(' ')}`.toLowerCase().includes(q)),
     )
     if (sort === 'name') list.sort((a, b) => a.name.localeCompare(b.name, 'pl', { numeric: true }))
     else list.sort((a, b) => (sort === 'date-desc' ? whenOf(b).localeCompare(whenOf(a)) : whenOf(a).localeCompare(whenOf(b))))
     return list
-  }, [all, query, folder, albumId, person, onlyFav, minStars, sort, activeTags])
+  }, [all, query, folder, albumId, person, onlyFav, minStars, dateFrom, dateTo, missing, sort, activeTags])
 
   // Foldery od najnowszego; rok albumu to rok jego najnowszego zdjęcia (jak w Picasie).
   const folders = useMemo(() => {
@@ -560,7 +567,7 @@ export default function App() {
     )
   }
 
-  const filtersOn = minStars > 0 || sort !== 'date-desc' || !!folder || activeTags.length > 0
+  const filtersOn = minStars > 0 || !!dateFrom || !!dateTo || missing !== '' || sort !== 'date-desc' || !!folder || activeTags.length > 0
   const subtitle = busy ? `Skanowanie… ${progress}` : `${photos.length} z ${all.length} ${pl(all.length, 'zdjęcia', 'zdjęć', 'zdjęć')}`
 
   return (
@@ -633,6 +640,17 @@ export default function App() {
                   <Chip key={n} on={minStars === n} onClick={() => setMinStars(n)} label={n ? `Co najmniej ${n} gwiazdek` : 'Dowolna ocena'}>
                     {n === 0 ? 'Wszystkie' : <>{n} <Star size={12} fill="currentColor" /></>}
                   </Chip>
+                ))}
+              </div>
+              <label>Zakres dat zdjęć</label>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <div style={{ flex: 1 }}><label htmlFor="date-from" style={{ marginTop: 0, fontSize: 12 }}>Od</label><input id="date-from" type="date" value={dateFrom} max={dateTo || undefined} onChange={(e) => setDateFrom(e.target.value)} /></div>
+                <div style={{ flex: 1 }}><label htmlFor="date-to" style={{ marginTop: 0, fontSize: 12 }}>Do</label><input id="date-to" type="date" value={dateTo} min={dateFrom || undefined} onChange={(e) => setDateTo(e.target.value)} /></div>
+              </div>
+              <label>Pokaż tylko zdjęcia</label>
+              <div className="chips">
+                {([['', 'Wszystkie'], ['tags', 'Bez tagów'], ['geo', 'Bez lokalizacji'], ['rating', 'Bez oceny']] as ['' | 'tags' | 'geo' | 'rating', string][]).map(([v, l]) => (
+                  <Chip key={v} on={missing === v} onClick={() => setMissing(v)}>{l}</Chip>
                 ))}
               </div>
               <label>Sortowanie</label>
@@ -759,13 +777,15 @@ export default function App() {
                   {years.map((y) => <Chip key={y} onClick={() => jumpToYear(y)}>{y}</Chip>)}
                 </div>
               )}
-              {(query || folder || albumId !== null || person || minStars > 0 || activeTags.length > 0) && (
+              {(query || folder || albumId !== null || person || minStars > 0 || dateFrom || dateTo || missing || activeTags.length > 0) && (
                 <div className="chips" style={{ marginTop: 10 }}>
                   {activeTags.map((t) => <Chip key={t} on onClick={() => toggleTagFilter(t)} label={`Usuń filtr tagu ${t}`}><Tag size={13} /> {t} <X size={13} /></Chip>)}
                   {query && <Chip on onClick={() => setQuery('')} label="Usuń szukanie"><SearchIcon size={13} /> {query} <X size={13} /></Chip>}
                   {albumId !== null && <Chip on onClick={() => setAlbumId(null)} label="Pokaż całą bibliotekę"><FolderOpen size={13} /> Album: {albums.find((a) => a.id === albumId)?.name ?? '…'} <X size={13} /></Chip>}
                   {person && <Chip on onClick={() => setPerson(null)} label="Pokaż całą bibliotekę"><Users size={13} /> {person.name} <X size={13} /></Chip>}
                   {folder && <Chip on onClick={() => setFolder(null)} label="Usuń filtr folderu"><FolderOpen size={13} /> {folderName(folder)} <X size={13} /></Chip>}
+                  {(dateFrom || dateTo) && <Chip on onClick={() => { setDateFrom(''); setDateTo('') }} label="Usuń filtr dat"><CalendarDays size={13} /> {dateFrom || '…'} – {dateTo || '…'} <X size={13} /></Chip>}
+                  {missing && <Chip on onClick={() => setMissing('')} label="Usuń filtr braków">{missing === 'tags' ? 'Bez tagów' : missing === 'geo' ? 'Bez lokalizacji' : 'Bez oceny'} <X size={13} /></Chip>}
                   {minStars > 0 && <Chip on onClick={() => setMinStars(0)} label="Usuń filtr oceny">≥ {minStars} <Star size={12} fill="currentColor" /> <X size={13} /></Chip>}
                 </div>
               )}
