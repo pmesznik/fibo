@@ -20,7 +20,7 @@ image = { version = "0.25", default-features = false, features = ["jpeg", "png",
 kamadak-exif = "0.6"
 trash = "5"
 # Rozpoznawanie twarzy: czysty Rust, wszystko liczone lokalnie (bez bibliotek sieciowych).
-tract-onnx = "0.21"
+tract-onnx = "0.23"
 sha2 = "0.10"
 
 # Dekodowanie obrazów w trybie dev jest bez optymalizacji bardzo wolne.

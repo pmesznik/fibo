@@ -1,0 +1,11 @@
+# Wyjatki audytu zaleznosci. Kazdy ma uzasadnienie i jest przegladany przy aktualizacji tauri-plugin-updater.
+[advisories]
+ignore = [
+  # Biblioteka zip 4.x jest zalezonoscia tauri-plugin-updater i nie da sie jej zaktualizowac do 9.x bez nowej wersji wtyczki.
+  # Podatnosci dotycza rozpakowywania archiwum zip (ZipArchive::extract) z dowiazaniami i bitami SUID/SGID.
+  # FIBO instaluje aktualizacje tylko po weryfikacji podpisu minisign kluczem autora, a na Windows uruchamia podpisany instalator
+  # NSIS, wiec nie rozpakowuje zadnych niezaufanych archiwow zip.
+  "RUSTSEC-2026-0367",
+  "RUSTSEC-2026-0368",
+  "RUSTSEC-2026-0369",
+]

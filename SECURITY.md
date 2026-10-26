@@ -36,7 +36,7 @@ i poproś o kontakt). Najnowsza wydana wersja jest jedyną wspieraną.
 
 ## Testy bezpieczeństwa
 Uruchamiane automatycznie w GitHub Actions przy każdej zmianie (`Testy FIBO`) oraz co tydzień dla zależności
-(`Audyt zależności FIBO`). Lokalnie:
+(`Audyt zaleznosci FIBO`). Lokalnie:
 
 ```bash
 cd app

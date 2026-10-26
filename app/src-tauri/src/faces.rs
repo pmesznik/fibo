@@ -7,7 +7,7 @@
 use image::{imageops::FilterType, RgbImage};
 use tract_onnx::prelude::*;
 
-type Plan = TypedRunnableModel<TypedModel>;
+type Plan = std::sync::Arc<TypedRunnableModel>;
 
 /// Rozmiar kwadratowego wejścia detektora; zdjęcie jest do niego skalowane z zachowaniem proporcji.
 const DET_SIZE: usize = 640;
@@ -71,7 +71,7 @@ impl Engine {
             return Err(format!("nieoczekiwana liczba wyjść detektora: {}", out.len()));
         }
         let get = |i: usize| -> Result<Vec<f32>, String> {
-            Ok(out[i].to_array_view::<f32>().map_err(|e| e.to_string())?.iter().copied().collect())
+            Ok(out[i].to_plain_array_view::<f32>().map_err(|e| e.to_string())?.iter().copied().collect())
         };
         let mut found: Vec<Detection> = Vec::new();
         for (k, &s) in STRIDES.iter().enumerate() {
@@ -111,7 +111,7 @@ impl Engine {
             }
         }
         let out = self.embedder.run(tvec!(Tensor::from(input).into())).map_err(|e| e.to_string())?;
-        let mut v: Vec<f32> = out[0].to_array_view::<f32>().map_err(|e| e.to_string())?.iter().copied().collect();
+        let mut v: Vec<f32> = out[0].to_plain_array_view::<f32>().map_err(|e| e.to_string())?.iter().copied().collect();
         if v.len() != EMB_LEN {
             return Err(format!("nieoczekiwana długość wektora twarzy: {}", v.len()));
         }

@@ -405,3 +405,16 @@ describe('Instalator', () => {
     assert.ok(existsSync(join(APP, 'src-tauri', rel)))
   })
 })
+
+describe('Audyt zależności: wyjątki', () => {
+  test('każdy wyjątek audytu Rusta ma uzasadnienie w komentarzu', () => {
+    const t = readFileSync(new URL('../src-tauri/.cargo/audit.toml', import.meta.url), 'utf8')
+    const lines = t.split(/\r?\n/)
+    lines.forEach((l, i) => {
+      if (/^\s*"RUSTSEC-\d+-\d+"/.test(l)) {
+        const before = lines.slice(Math.max(0, i - 6), i).filter((x) => x.trim().startsWith('#'))
+        assert.ok(before.length >= 2, `${l.trim()}: brak uzasadnienia`)
+      }
+    })
+  })
+})
