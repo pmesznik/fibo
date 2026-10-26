@@ -387,7 +387,7 @@ pub struct Person {
     name: Option<String>,
     count: i64,
     photos: i64,
-    cover: Option<String>,
+    cover: Option<i64>,
     ignored: bool,
 }
 
@@ -402,23 +402,28 @@ pub fn list_people(state: State<'_, AppState>) -> Result<Vec<Person>, String> {
              GROUP BY p.id ORDER BY (p.name IS NULL), COUNT(DISTINCT f.photo_id) DESC",
         )
         .map_err(|e| e.to_string())?;
-    let dir = crops_dir(&state.thumbs);
     let rows = stmt
         .query_map([], |r| {
-            let cover: Option<i64> = r.get(5)?;
             Ok(Person {
                 id: r.get(0)?,
                 name: r.get(1)?,
                 ignored: r.get::<_, i64>(2)? != 0,
                 count: r.get(3)?,
                 photos: r.get(4)?,
-                cover: cover.map(|c| dir.join(format!("{c}.jpg")).to_string_lossy().to_string()),
+                cover: r.get(5)?,
             })
         })
         .map_err(|e| e.to_string())?
         .filter_map(Result::ok)
         .collect();
     Ok(rows)
+}
+
+/// Wycinek twarzy (JPEG) przez IPC; id jest liczbą, więc nie da się wskazać dowolnego pliku.
+#[tauri::command]
+pub fn face_crop(state: State<'_, AppState>, id: i64) -> Result<tauri::ipc::Response, String> {
+    let bytes = fs::read(crops_dir(&state.thumbs).join(format!("{id}.jpg"))).map_err(|e| e.to_string())?;
+    Ok(tauri::ipc::Response::new(bytes))
 }
 
 #[tauri::command]

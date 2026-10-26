@@ -2,10 +2,20 @@ import { useCallback, useEffect, useState } from 'react'
 import { listen } from '@tauri-apps/api/event'
 import { EyeOff, Eye, Pencil, Pause, Play, Trash2, Users, X } from './FiboIcons'
 import {
-  facesDeleteAll, facesStart, facesStatus, facesStop, faceUrl, ignorePerson, listPeople, mergePeople, personPhotos,
+  facesDeleteAll, facesStart, facesStatus, facesStop, faceBlob, ignorePerson, listPeople, mergePeople, personPhotos,
   renamePerson, setFacesEnabled, type FacesProgress, type FacesStatus, type Person,
 } from './api'
 import { PromptDialog } from './Dialogs'
+
+function FaceImg({ id }: { id: number }) {
+  const [src, setSrc] = useState<string | null>(null)
+  useEffect(() => {
+    let url: string | null = null, dead = false
+    faceBlob(id).then((b) => { if (dead) return; url = URL.createObjectURL(b); setSrc(url) }).catch(() => {})
+    return () => { dead = true; if (url) URL.revokeObjectURL(url) }
+  }, [id])
+  return src ? <img src={src} alt="" width={120} height={120} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : null
+}
 
 const pl = (n: number, one: string, few: string, many: string) =>
   n === 1 ? one : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? few : many
@@ -142,7 +152,7 @@ export function People({ say, ask, onOpenPerson, onChanged }: {
           <div key={p.id} style={{ opacity: p.ignored ? 0.55 : 1 }}>
             <button className="bare block w-full text-center" aria-label={`${p.name ?? 'Nieznana osoba'}, ${p.photos} zdjęć`} onClick={() => open(p)}>
               <div style={{ width: 120, height: 120, margin: '0 auto', borderRadius: '50%', overflow: 'hidden', boxShadow: 'var(--elev-1)', background: 'var(--tonal)' }}>
-                {p.cover && <img src={faceUrl(p.cover)} alt="" width={120} height={120} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+                {p.cover !== null && <FaceImg id={p.cover} />}
               </div>
               <div className="mt-2 truncate" style={{ fontWeight: 600 }}>{p.name ?? 'Nieznana osoba'}</div>
               <div style={{ color: 'var(--muted)', fontSize: 13 }}>{p.photos} {pl(p.photos, 'zdjęcie', 'zdjęcia', 'zdjęć')}</div>

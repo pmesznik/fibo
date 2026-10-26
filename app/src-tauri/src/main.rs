@@ -427,6 +427,13 @@ async fn thumbnail(state: State<'_, AppState>, id: i64) -> Result<String, String
     Ok(dst.to_string_lossy().to_string())
 }
 
+/// Bajty miniatury przez IPC (bez protokołu asset i bez dostępu okna do plików na dysku).
+#[tauri::command]
+async fn thumbnail_data(state: State<'_, AppState>, id: i64) -> Result<tauri::ipc::Response, String> {
+    let path = thumbnail(state.clone(), id).await?;
+    Ok(tauri::ipc::Response::new(fs::read(path).map_err(|e| e.to_string())?))
+}
+
 fn photo_path(state: &AppState, id: i64) -> Result<(String, Option<String>, Option<String>), String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     conn.query_row("SELECT path, taken, camera FROM photos WHERE id = ?1", [id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
@@ -2309,7 +2316,7 @@ fn main() {
             app.manage(AppState { db: Mutex::new(db), thumbs, sidecar: AtomicBool::new(sidecar) });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![list_roots, remove_root, rescan_roots, list_albums, create_album, rename_album, delete_album, add_to_album, remove_from_album, rename_photo, move_photos, get_sidecar_enabled, set_sidecar_enabled, export_sidecars, import_sidecars, scan_folder, refresh_library, find_duplicates, trash_photos, hide_photos, hidden_count, restore_hidden, people::faces_status, people::set_faces_enabled, people::faces_start, people::faces_stop, people::faces_delete_all, people::list_people, people::person_photos, people::rename_person, people::merge_people, people::ignore_person, list_photos, thumbnail, set_rating, set_favorite, add_tag, remove_tag, delete_tag, save_edit, save_collage, read_image, has_original, restore_original])
+        .invoke_handler(tauri::generate_handler![list_roots, remove_root, rescan_roots, list_albums, create_album, rename_album, delete_album, add_to_album, remove_from_album, rename_photo, move_photos, get_sidecar_enabled, set_sidecar_enabled, export_sidecars, import_sidecars, scan_folder, refresh_library, find_duplicates, trash_photos, hide_photos, hidden_count, restore_hidden, people::faces_status, people::set_faces_enabled, people::faces_start, people::faces_stop, people::faces_delete_all, people::list_people, people::person_photos, people::rename_person, people::merge_people, people::ignore_person, list_photos, thumbnail, thumbnail_data, people::face_crop, set_rating, set_favorite, add_tag, remove_tag, delete_tag, save_edit, save_collage, read_image, has_original, restore_original])
         .run(tauri::generate_context!())
         .expect("błąd uruchomienia aplikacji");
 }

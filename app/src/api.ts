@@ -1,4 +1,4 @@
-import { convertFileSrc, invoke } from '@tauri-apps/api/core'
+import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
 
 export type Photo = {
@@ -77,14 +77,18 @@ export const saveCollage = (id: number, bytes: ArrayBuffer, name: string) =>
 
 export const readImage = (id: number) => invoke<ArrayBuffer>('read_image', { id })
 
-export async function thumbnailUrl(id: number) {
-  return convertFileSrc(await invoke<string>('thumbnail', { id }))
+/** Miniatura jako Blob (bajty przez IPC); wywołujący tworzy i zwalnia adres blob:. */
+export async function thumbnailBlob(id: number) {
+  return new Blob([await invoke<ArrayBuffer>('thumbnail_data', { id })], { type: 'image/jpeg' })
+}
+export async function faceBlob(id: number) {
+  return new Blob([await invoke<ArrayBuffer>('face_crop', { id })], { type: 'image/jpeg' })
 }
 
 // ---- Rozpoznawanie twarzy (wszystko lokalnie) ----
 export type FacesStatus = { enabled: boolean; models_ok: boolean; running: boolean; photos: number; scanned: number; faces: number; people: number }
 export type FacesProgress = { done: number; total: number; faces: number; finished: boolean; error: string | null }
-export type Person = { id: number; name: string | null; count: number; photos: number; cover: string | null; ignored: boolean }
+export type Person = { id: number; name: string | null; count: number; photos: number; cover: number | null; ignored: boolean }
 export const facesStatus = () => invoke<FacesStatus>('faces_status')
 export const setFacesEnabled = (on: boolean) => invoke('set_faces_enabled', { on })
 export const facesStart = () => invoke<boolean>('faces_start')
@@ -95,7 +99,6 @@ export const personPhotos = (id: number) => invoke<number[]>('person_photos', { 
 export const renamePerson = (id: number, name: string) => invoke('rename_person', { id, name })
 export const mergePeople = (from: number, into: number) => invoke('merge_people', { from, into })
 export const ignorePerson = (id: number, ignored: boolean) => invoke('ignore_person', { id, ignored })
-export const faceUrl = (path: string) => convertFileSrc(path)
 
 export async function pickFolder(title = 'Wybierz folder ze zdjęciami') {
   const dir = await open({ directory: true, multiple: false, title })

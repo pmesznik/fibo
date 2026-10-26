@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { inTauri, thumbnailUrl, type Photo } from './api'
+import { inTauri, thumbnailBlob, type Photo } from './api'
 
 /** Miniatura ładowana dopiero, gdy kafel pojawi się na ekranie. */
 export function Thumb({ photo, fit = 'cover' }: { photo: Photo; fit?: 'cover' | 'contain' }) {
@@ -12,13 +12,14 @@ export function Thumb({ photo, fit = 'cover' }: { photo: Photo; fit?: 'cover' | 
     const el = ref.current
     if (!el) return
     let cancelled = false
+    let url: string | null = null
     const io = new IntersectionObserver(([e]) => {
       if (!e.isIntersecting) return
       io.disconnect()
-      thumbnailUrl(photo.id).then((u) => !cancelled && setSrc(u)).catch(() => {})
+      thumbnailBlob(photo.id).then((b) => { if (cancelled) return; url = URL.createObjectURL(b); setSrc(url) }).catch(() => {})
     }, { rootMargin: '300px' })
     io.observe(el)
-    return () => { cancelled = true; io.disconnect() }
+    return () => { cancelled = true; io.disconnect(); if (url) URL.revokeObjectURL(url) }
   }, [photo.id, photo.modified])
 
   const hue = Math.abs(photo.id * 37) % 360

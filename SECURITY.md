@@ -11,7 +11,7 @@ i poproś o kontakt). Najnowsza wydana wersja jest jedyną wspieraną.
   pobranie WebView2 przy instalacji.
 - **Polityka CSP** w oknie programu: skrypty tylko własne, połączenia tylko do IPC aplikacji i serwera map,
   brak ramek, obiektów i formularzy.
-- **Protokół zasobów** (`asset:`) ma zakres tylko folderu miniatur w danych aplikacji, nie całego dysku.
+- **Brak protokołu zasobów (`asset:`):** miniatury i wycinki twarzy trafiają do okna jako bajty przez IPC, więc okno nie ma dostępu do plików na dysku.
 - **Minimalne uprawnienia okna:** `core`, okno wyboru folderu, aktualizacje i restart. Brak wtyczek plików, powłoki i HTTP.
 - **Aktualizacje podpisane** kluczem autora (minisign). Program instaluje wyłącznie aktualizację z poprawnym podpisem,
   pobraną po HTTPS z wydań tego repozytorium. Klucz prywatny jest tylko u autora i jako sekret GitHub Actions,

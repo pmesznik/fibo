@@ -70,21 +70,12 @@ describe('Polityka CSP', () => {
 })
 
 describe('Protokół zasobów i uprawnienia', () => {
-  const scope = conf.app.security.assetProtocol.scope
-  test('zakres plików protokołu asset nie jest globalny', () => {
-    assert.ok(Array.isArray(scope) && scope.length > 0)
-    for (const s of scope) {
-      assert.notEqual(s, '**')
-      assert.notEqual(s, '*')
-      assert.ok(s.includes('thumbs'), `zakres powinien wskazywać tylko miniatury: ${s}`)
-      assert.ok(/^\$APP(LOCAL)?DATA\//.test(s), `zakres powinien zaczynać się od folderu danych aplikacji: ${s}`)
-    }
-  })
-  test('front używa protokołu asset tylko do miniatur', () => {
+  test('protokół asset jest wyłączony: miniatury i wycinki twarzy idą przez IPC jako bajty', () => {
+    assert.equal(conf.app.security.assetProtocol, undefined)
+    assert.ok(!/asset/.test(conf.app.security.csp), 'CSP nie powinna wspominać o asset')
+    assert.ok(!/protocol-asset/.test(readTracked('app/src-tauri/Cargo.toml')))
     const uses = textFiles.filter((f) => f.startsWith('app/src/') && /convertFileSrc/.test(readTracked(f)))
-    assert.deepEqual(uses, ['app/src/api.ts'])
-    const api = readTracked('app/src/api.ts')
-    assert.equal((api.match(/convertFileSrc\(/g) ?? []).length, 2, 'convertFileSrc ma być użyte tylko dla miniatur i wycinków twarzy (oba w folderze miniatur)')
+    assert.deepEqual(uses, [])
   })
   test('uprawnienia okna: tylko to, co potrzebne', () => {
     const allowed = new Set(['core:default', 'dialog:default', 'updater:default', 'process:allow-restart'])
