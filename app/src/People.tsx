@@ -33,6 +33,10 @@ export function People({ say, ask, onOpenPerson, onChanged }: {
   const [renaming, setRenaming] = useState<Person | null>(null)
   const [mergeFrom, setMergeFrom] = useState<Person | null>(null)
   const [showIgnored, setShowIgnored] = useState(false)
+  // Łączenie przez przeciągnięcie: upuszczenie jednej osoby na drugą tylko proponuje połączenie, dopiero „Zatwierdź” je wykonuje.
+  const [dragId, setDragId] = useState<number | null>(null)
+  const [overId, setOverId] = useState<number | null>(null)
+  const [pending, setPending] = useState<{ from: Person; into: Person } | null>(null)
 
   const refresh = useCallback(async () => {
     try {
@@ -68,6 +72,10 @@ export function People({ say, ask, onOpenPerson, onChanged }: {
     yes: 'Usuń dane twarzy',
     run: async () => { try { await facesDeleteAll(); setProg(null); await refresh(); say('Dane twarzy usunięte', 'ok') } catch (e) { say(`Błąd: ${e}`, 'err') } },
   })
+  const confirmMerge = async () => {
+    if (!pending) return
+    try { await mergePeople(pending.from.id, pending.into.id); setPending(null); await refresh(); say('Osoby połączone', 'ok') } catch (e) { say(`Błąd: ${e}`, 'err') }
+  }
   const open = async (p: Person) => {
     if (mergeFrom) {
       if (mergeFrom.id === p.id) { setMergeFrom(null); return }
@@ -109,7 +117,7 @@ export function People({ say, ask, onOpenPerson, onChanged }: {
     <div>
       <div style={{ marginBottom: 14 }}>
         <h1 style={{ margin: 0, font: '700 22px/1.2 system-ui' }}>Ludzie</h1>
-        <div style={{ color: 'var(--muted)', fontSize: 13 }}>{st.people} {pl(st.people, 'osoba', 'osoby', 'osób')} · {st.faces} {pl(st.faces, 'twarz', 'twarze', 'twarzy')}</div>
+        <div style={{ color: 'var(--muted)', fontSize: 13 }}>{st.people} {pl(st.people, 'osoba', 'osoby', 'osób')} · {st.faces} {pl(st.faces, 'twarz', 'twarze', 'twarzy')} · przeciągnij osobę na inną, żeby je połączyć</div>
         <div className="glass" style={{ borderRadius: 'var(--r-lg)', padding: '10px 14px', marginTop: 10, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <div style={{ flex: '1 1 220px', minWidth: 0 }}>
             <div style={{ fontSize: 13.5 }}>
@@ -126,6 +134,13 @@ export function People({ say, ask, onOpenPerson, onChanged }: {
           )}
           <button className="chip" onClick={wipe}><Trash2 size={15} /> Usuń dane twarzy</button>
         </div>
+        {pending && (
+          <div role="group" aria-label="Potwierdzenie połączenia osób" className="glass" style={{ borderRadius: 'var(--r-lg)', padding: '10px 14px', marginTop: 10, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <span style={{ flex: '1 1 240px', fontSize: 14 }}>Połączyć „{pending.from.name ?? 'Nieznana osoba'}” z „{pending.into.name ?? 'Nieznana osoba'}”? To ta sama osoba.</span>
+            <button className="primary" style={{ width: 'auto', padding: '0 18px' }} onClick={confirmMerge}>Zatwierdź</button>
+            <button className="chip" onClick={() => setPending(null)}><X size={14} /> Anuluj</button>
+          </div>
+        )}
         {mergeFrom && (
           <div role="status" className="chips" style={{ marginTop: 10 }}>
             <span style={{ fontSize: 13.5 }}>Wybierz osobę, z którą połączyć „{mergeFrom.name ?? 'Nieznana osoba'}”.</span>
@@ -149,7 +164,18 @@ export function People({ say, ask, onOpenPerson, onChanged }: {
       )}
       <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))' }}>
         {shown.map((p) => (
-          <div key={p.id} style={{ opacity: p.ignored ? 0.55 : 1 }}>
+          <div key={p.id} draggable aria-grabbed={dragId === p.id}
+            onDragStart={(e) => { setDragId(p.id); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(p.id)) }}
+            onDragEnd={() => { setDragId(null); setOverId(null) }}
+            onDragOver={(e) => { if (dragId !== null && dragId !== p.id) { e.preventDefault(); setOverId(p.id) } }}
+            onDragLeave={() => setOverId((o) => (o === p.id ? null : o))}
+            onDrop={(e) => {
+              e.preventDefault()
+              const from = people.find((x) => x.id === dragId)
+              setDragId(null); setOverId(null)
+              if (from && from.id !== p.id) setPending({ from, into: p })
+            }}
+            style={{ opacity: p.ignored ? 0.55 : dragId === p.id ? 0.4 : 1, borderRadius: 'var(--r-lg)', outline: overId === p.id ? '3px solid var(--accent)' : 'none', outlineOffset: 4, cursor: 'grab' }}>
             <button className="bare block w-full text-center" aria-label={`${p.name ?? 'Nieznana osoba'}, ${p.photos} zdjęć`} onClick={() => open(p)}>
               <div style={{ width: 120, height: 120, margin: '0 auto', borderRadius: '50%', overflow: 'hidden', boxShadow: 'var(--elev-1)', background: 'var(--tonal)' }}>
                 {p.cover !== null && <FaceImg id={p.cover} />}

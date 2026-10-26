@@ -19,7 +19,7 @@ import { Justified } from './Justified'
 import { Chip, Sec, Toast } from './ui'
 import {
   Images, FolderOpen, Users, MapPin, Heart, Star, Plus, Play, Maximize2, X,
-  SlidersHorizontal, Search as SearchIcon, ImageUp, Ruler, LayoutDashboard, Check, ListChecks, Tag, CalendarDays, Copy, RefreshCw, Download, Save, Pencil, Trash2, Eye, EyeOff,
+  SlidersHorizontal, Search as SearchIcon, ImageUp, Ruler, LayoutDashboard, Check, ListChecks, Tag, CalendarDays, Copy, RefreshCw, Download, Save, Pencil, Trash2, Eye, EyeOff, ChevronLeft,
 } from './FiboIcons'
 
 type Mode = 'library' | 'albums' | 'favs' | 'people' | 'map'
@@ -721,6 +721,11 @@ export default function App() {
         {(mode === 'library' || mode === 'favs') && (
           <>
             <div style={{ marginBottom: 14 }}>
+              {person && (
+                <button className="chip" style={{ marginBottom: 8 }} aria-label="Wróć do listy osób" onClick={() => { setPerson(null); setMode('people') }}>
+                  <ChevronLeft size={15} /> Ludzie
+                </button>
+              )}
               <h1 style={{ margin: 0, font: '700 22px/1.2 system-ui' }}>{mode === 'favs' ? 'Ulubione' : person ? person.name : albumId !== null ? (albums.find((a) => a.id === albumId)?.name ?? 'Album') : folder ? folderName(folder) : 'Biblioteka'}</h1>
               <div style={{ color: 'var(--muted)', fontSize: 13 }}>{subtitle}</div>
               {years.length > 1 && (
