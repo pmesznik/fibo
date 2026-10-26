@@ -1298,6 +1298,98 @@ async fn move_photos(app: tauri::AppHandle, ids: Vec<i64>, dest: String, copy: b
         .map_err(|e| e.to_string())?
 }
 
+#[derive(Serialize, Default, Debug)]
+struct PhotoImportReport {
+    copied: usize,
+    skipped: usize,
+    errors: Vec<String>,
+}
+
+/// Importuje zdjęcia z karty pamięci lub folderu do biblioteki: kopiuje je do `dest/RRRR/RRRR-MM-DD/` według daty wykonania.
+/// Pliki źródłowe nie są zmieniane ani usuwane. Zdjęcie już zaimportowane (ta sama nazwa i rozmiar w folderze dnia) jest pomijane,
+/// a inny plik o tej samej nazwie dostaje końcówkę _1, _2, nic nie jest nadpisywane.
+fn import_blocking(src: &Path, dest: &Path, progress: &dyn Fn(usize)) -> Result<PhotoImportReport, String> {
+    if !src.is_dir() || !dest.is_dir() {
+        return Err("Folder źródłowy i docelowy muszą istnieć".into());
+    }
+    let (cs, cd) = (fs::canonicalize(src).map_err(|e| e.to_string())?, fs::canonicalize(dest).map_err(|e| e.to_string())?);
+    if cs == cd || cd.starts_with(&cs) {
+        return Err("Folder docelowy nie może być tym samym folderem ani leżeć w folderze źródłowym".into());
+    }
+    let mut rep = PhotoImportReport::default();
+    let walker = WalkDir::new(src).into_iter().filter_entry(|e| e.file_name() != ORIGINALS_DIR);
+    for entry in walker.filter_map(Result::ok) {
+        let path = entry.path();
+        if !entry.file_type().is_file() || !is_photo(path) {
+            continue;
+        }
+        let Ok(meta) = entry.metadata() else { continue };
+        let day: String = read_exif(path)
+            .taken
+            .map(|t| t.chars().take(10).map(|c| if c == ':' { '-' } else { c }).collect::<String>())
+            .filter(|d| d.len() == 10 && d.chars().all(|c| c.is_ascii_digit() || c == '-') && !d.starts_with("0000"))
+            .unwrap_or_else(|| {
+                let secs = mtime_secs(&meta).max(0);
+                let (y, m, d) = civil_from_days(secs / 86400);
+                format!("{y:04}-{m:02}-{d:02}")
+            });
+        let target_dir = dest.join(&day[..4]).join(&day);
+        let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+        let existing = target_dir.join(&name);
+        if existing.is_file() && fs::metadata(&existing).map(|m| m.len() == meta.len()).unwrap_or(false) {
+            rep.skipped += 1;
+            continue;
+        }
+        let result = fs::create_dir_all(&target_dir).map_err(|e| e.to_string()).and_then(|_| {
+            let target = unique_target(&target_dir, &name);
+            fs::copy(path, &target).map_err(|e| e.to_string())?;
+            if fs::metadata(&target).map(|m| m.len()).unwrap_or(0) != meta.len() {
+                let _ = fs::remove_file(&target);
+                return Err("rozmiar kopii się nie zgadza".to_string());
+            }
+            // Plik XMP zdjęcia (tagi, oceny) idzie razem z nim.
+            let xmp = xmp_path(path);
+            if xmp.is_file() {
+                let _ = fs::copy(&xmp, xmp_path(&target));
+            }
+            Ok(())
+        });
+        match result {
+            Ok(()) => {
+                rep.copied += 1;
+                progress(rep.copied);
+            }
+            Err(e) => rep.errors.push(format!("{}: {e}", path.display())),
+        }
+    }
+    Ok(rep)
+}
+
+/// Data (rok, miesiąc, dzień) z liczby dni od 1970-01-01 (algorytm Howarda Hinnanta).
+fn civil_from_days(z: i64) -> (i64, i64, i64) {
+    let z = z + 719468;
+    let era = z.div_euclid(146097);
+    let doe = z.rem_euclid(146097);
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    (yoe + era * 400 + i64::from(m <= 2), m, d)
+}
+
+#[tauri::command]
+async fn import_photos(app: tauri::AppHandle, src: String, dest: String) -> Result<PhotoImportReport, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let emitter = app.clone();
+        import_blocking(Path::new(&src), Path::new(&dest), &move |n| {
+            let _ = emitter.emit("scan-progress", n);
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// Nazwa z szablonu: [data]_[prefiks]_[numer]. Numer ma co najmniej 3 cyfry (więcej, gdy zdjęć jest dużo).
 fn batch_stem(prefix: &str, date: Option<&str>, n: u32, width: usize) -> String {
     let mut parts: Vec<String> = Vec::new();
@@ -2029,6 +2121,34 @@ mod tests {
     }
 
     #[test]
+    fn import_sorts_by_date_skips_known_and_never_touches_source() {
+        assert_eq!(civil_from_days(0), (1970, 1, 1));
+        assert_eq!(civil_from_days(19723), (2024, 1, 1));
+        let dir = std::env::temp_dir().join("mz-import-test");
+        let _ = fs::remove_dir_all(&dir);
+        let (src, dest) = (dir.join("karta"), dir.join("biblioteka"));
+        fs::create_dir_all(src.join("DCIM")).unwrap();
+        fs::create_dir_all(&dest).unwrap();
+        image::RgbImage::new(8, 8).save(src.join("DCIM").join("a.jpg")).unwrap();
+        image::RgbImage::new(9, 9).save(src.join("b.jpg")).unwrap();
+        fs::write(src.join("notatki.txt"), "nie zdjecie").unwrap();
+        let rep = import_blocking(&src, &dest, &|_| {}).unwrap();
+        assert_eq!((rep.copied, rep.skipped, rep.errors.len()), (2, 0, 0), "{rep:?}");
+        // Zdjęcia bez EXIF trafiają do folderu z datą pliku, a nie do pustej nazwy.
+        let days: Vec<_> = WalkDir::new(&dest).min_depth(2).max_depth(2).into_iter().filter_map(Result::ok).filter(|e| e.file_type().is_dir()).collect();
+        assert_eq!(days.len(), 1);
+        assert!(days[0].file_name().to_string_lossy().len() == 10);
+        // Ponowny import nic nie kopiuje; źródło zostaje nietknięte.
+        let rep = import_blocking(&src, &dest, &|_| {}).unwrap();
+        assert_eq!((rep.copied, rep.skipped), (0, 2));
+        assert!(src.join("DCIM").join("a.jpg").exists() && src.join("b.jpg").exists() && src.join("notatki.txt").exists());
+        // Folder docelowy w źródłowym i ten sam folder są odrzucane.
+        assert!(import_blocking(&src, &src, &|_| {}).is_err());
+        assert!(import_blocking(&src, &src.join("DCIM"), &|_| {}).is_err());
+        assert!(import_blocking(&dir.join("brak"), &dest, &|_| {}).is_err());
+    }
+
+    #[test]
     fn hiding_and_safe_deletion() {
         let dir = std::env::temp_dir().join("mz-delete-test");
         let state = test_state(&dir);
@@ -2513,7 +2633,7 @@ fn main() {
             app.manage(AppState { db: Mutex::new(db), thumbs, sidecar: AtomicBool::new(sidecar) });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![list_roots, remove_root, rescan_roots, list_albums, create_album, rename_album, delete_album, add_to_album, remove_from_album, rename_photo, move_photos, get_sidecar_enabled, set_sidecar_enabled, export_sidecars, import_sidecars, scan_folder, refresh_library, find_duplicates, trash_photos, export_photos, set_location, rename_batch, hide_photos, hidden_count, restore_hidden, people::faces_status, people::set_faces_enabled, people::faces_start, people::faces_stop, people::faces_delete_all, people::list_people, people::person_photos, people::person_faces, people::set_person_cover, people::rename_person, people::merge_people, people::ignore_person, list_photos, thumbnail, thumbnail_data, people::face_crop, set_rating, set_favorite, add_tag, remove_tag, delete_tag, save_edit, save_collage, read_image, has_original, restore_original])
+        .invoke_handler(tauri::generate_handler![list_roots, remove_root, rescan_roots, list_albums, create_album, rename_album, delete_album, add_to_album, remove_from_album, rename_photo, move_photos, get_sidecar_enabled, set_sidecar_enabled, export_sidecars, import_sidecars, scan_folder, refresh_library, find_duplicates, trash_photos, export_photos, set_location, rename_batch, import_photos, hide_photos, hidden_count, restore_hidden, people::faces_status, people::set_faces_enabled, people::faces_start, people::faces_stop, people::faces_delete_all, people::list_people, people::person_photos, people::person_faces, people::set_person_cover, people::rename_person, people::merge_people, people::ignore_person, list_photos, thumbnail, thumbnail_data, people::face_crop, set_rating, set_favorite, add_tag, remove_tag, delete_tag, save_edit, save_collage, read_image, has_original, restore_original])
         .run(tauri::generate_context!())
         .expect("błąd uruchomienia aplikacji");
 }

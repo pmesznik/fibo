@@ -50,6 +50,8 @@ export type DupGroup = { kind: 'exact' | 'similar'; ids: number[] }
 export const findDuplicates = (maxDistance: number | null) => invoke<DupGroup[]>('find_duplicates', { maxDistance })
 export const setLocation = (ids: number[], lat: number | null, lon: number | null) => invoke<number>('set_location', { ids, lat, lon })
 export const renameBatch = (ids: number[], prefix: string, withDate: boolean, start: number) => invoke<MoveReport>('rename_batch', { ids, prefix, withDate, start })
+export type PhotoImportReport = { copied: number; skipped: number; errors: string[] }
+export const importPhotos = (src: string, dest: string) => invoke<PhotoImportReport>('import_photos', { src, dest })
 export const exportPhotos = (ids: number[], dest: string, maxSide: number, quality: number) => invoke<MoveReport>('export_photos', { ids, dest, maxSide, quality })
 export const trashPhotos = (ids: number[], confirm?: string) => invoke<number>('trash_photos', { ids, confirm })
 export const hidePhotos = (ids: number[]) => invoke<number>('hide_photos', { ids })

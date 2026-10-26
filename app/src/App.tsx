@@ -10,7 +10,7 @@ import { UpdateDialog, useUpdater } from './Updater'
 import { exportSidecars, getSidecarEnabled, importSidecars, setSidecarEnabled } from './api'
 import {
   addToAlbum, createAlbum, deleteAlbum, listAlbums, listRoots, movePhotos, removeFromAlbum, removeRoot,
-  renameAlbum, renamePhoto, rescanRoots, trashPhotos, facesStart, facesStatus, hidePhotos, hiddenCount, restoreHidden, type Album,
+  renameAlbum, renamePhoto, rescanRoots, trashPhotos, importPhotos, facesStart, facesStatus, hidePhotos, hiddenCount, restoreHidden, type Album,
 } from './api'
 import { AlbumPicker, PromptDialog } from './Dialogs'
 import { addTag, deleteTag, inTauri, listPhotos, pickFolder, refreshLibrary, removeTag, scanFolder, setFavorite, setRating, type Photo } from './api'
@@ -188,6 +188,24 @@ export default function App() {
     } finally {
       setBusy(false)
     }
+  }
+
+  /** Import z karty pamięci: kopiuje zdjęcia do folderu biblioteki według daty (RRRR/RRRR-MM-DD), a potem dodaje je do biblioteki. */
+  const importFromCard = async () => {
+    try {
+      const src = await pickFolder('Wskaż kartę pamięci lub folder ze zdjęciami do zaimportowania')
+      if (!src) return
+      const dest = await pickFolder('Wskaż folder biblioteki, do którego skopiować zdjęcia')
+      if (!dest) return
+      setDrawer(false); setBusy(true); setProgress(0)
+      const r = await importPhotos(src, dest)
+      const n = await scanFolder(dest)
+      await reload(); await reloadRoots()
+      say(r.errors.length
+        ? `Zaimportowano ${r.copied}, pominięto ${r.skipped}, błędy: ${r.errors.length} (${r.errors[0]})`
+        : `Zaimportowano ${r.copied} ${pl(r.copied, 'zdjęcie', 'zdjęcia', 'zdjęć')}${r.skipped ? `, pominięto ${r.skipped} już zaimportowanych` : ''} (do biblioteki dodano ${n}). Karta nie została zmieniona`,
+        r.errors.length ? 'err' : 'ok')
+    } catch (e) { say(`Błąd importu: ${e}`, 'err') } finally { setBusy(false) }
   }
 
   const [refreshing, setRefreshing] = useState(false)
@@ -588,6 +606,7 @@ export default function App() {
             <div className="grid grid-cols-2 gap-2">
               {[
                 { icon: ImageUp, label: 'Dodaj folder', fn: addFolder, on: false },
+                { icon: Download, label: 'Importuj z karty', fn: importFromCard, on: false },
                 { icon: Play, label: 'Pokaz slajdów', fn: slideshow, on: false },
                 { icon: ListChecks, label: selectMode ? 'Zaznaczanie włączone' : 'Zaznaczanie wielu', fn: () => { setSelectMode((v) => !v); setDrawer(false) }, on: selectMode },
                 { icon: LayoutDashboard, label: chosen.length > 1 ? `Kolaż (${chosen.length})` : 'Kolaż', fn: () => { setDrawer(false); startCollage() }, on: false },
