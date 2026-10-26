@@ -1296,6 +1296,56 @@ async fn move_photos(app: tauri::AppHandle, ids: Vec<i64>, dest: String, copy: b
         .map_err(|e| e.to_string())?
 }
 
+/// Eksport kopii zdjęć do folderu: opcjonalnie pomniejszonych (dłuższy bok `max_side`, 0 = bez zmiany rozmiaru), jako JPEG.
+/// Kopie nie zawierają metadanych EXIF (w tym lokalizacji GPS), więc nadają się do wysłania znajomym. Oryginały nie są ruszane,
+/// a istniejące pliki nie są nadpisywane.
+fn export_photos_blocking(state: &AppState, ids: &[i64], dest: &Path, max_side: u32, quality: u8) -> Result<MoveReport, String> {
+    if !dest.is_dir() {
+        return Err("Folder docelowy nie istnieje".into());
+    }
+    if max_side > 20000 {
+        return Err("Zbyt duży rozmiar".into());
+    }
+    let quality = quality.clamp(1, 100);
+    let mut rep = MoveReport::default();
+    for &id in ids {
+        let (path, _, _) = photo_path(state, id)?;
+        let src = PathBuf::from(&path);
+        let result = (|| -> Result<(), String> {
+            let orientation = read_exif(&src).orientation;
+            let mut img = image::open(&src).map_err(|e| e.to_string())?;
+            if max_side > 0 && img.width().max(img.height()) > max_side {
+                img = img.resize(max_side, max_side, FilterType::Lanczos3);
+            }
+            img = match orientation {
+                2 => img.fliph(),
+                3 => img.rotate180(),
+                4 => img.flipv(),
+                6 => img.rotate90(),
+                8 => img.rotate270(),
+                _ => img,
+            };
+            let stem = src.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "zdjecie".into());
+            let target = unique_target(dest, &format!("{stem}.jpg"));
+            let file = File::create(&target).map_err(|e| e.to_string())?;
+            let mut enc = image::codecs::jpeg::JpegEncoder::new_with_quality(std::io::BufWriter::new(file), quality);
+            enc.encode_image(&img.to_rgb8()).map_err(|e| e.to_string())
+        })();
+        match result {
+            Ok(()) => rep.done += 1,
+            Err(e) => rep.errors.push(format!("{path}: {e}")),
+        }
+    }
+    Ok(rep)
+}
+
+#[tauri::command]
+async fn export_photos(app: tauri::AppHandle, ids: Vec<i64>, dest: String, max_side: u32, quality: u8) -> Result<MoveReport, String> {
+    tauri::async_runtime::spawn_blocking(move || export_photos_blocking(&app.state::<AppState>(), &ids, Path::new(&dest), max_side, quality))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 // ---- Duplikaty ------------------------------------------------------------
 
 /// Suma kontrolna FNV-1a (64 bity) całej zawartości pliku.
@@ -1832,6 +1882,29 @@ mod tests {
     }
 
     #[test]
+    fn export_resizes_strips_metadata_and_never_overwrites() {
+        let dir = std::env::temp_dir().join("mz-export-test");
+        let state = test_state(&dir);
+        let lib = dir.join("lib");
+        let out = dir.join("out");
+        fs::create_dir_all(&lib).unwrap();
+        fs::create_dir_all(&out).unwrap();
+        image::RgbImage::new(100, 50).save(lib.join("a.jpg")).unwrap();
+        assert_eq!(scan_blocking(&state, lib.to_str().unwrap(), &|_| {}).unwrap(), 1);
+        let id = photo_id(&state, "a.jpg");
+        let rep = export_photos_blocking(&state, &[id], &out, 40, 80).unwrap();
+        assert_eq!((rep.done, rep.errors.len()), (1, 0));
+        assert_eq!(image::image_dimensions(out.join("a.jpg")).unwrap(), (40, 20));
+        // Drugi eksport nie nadpisuje pierwszego; 0 = bez zmiany rozmiaru.
+        export_photos_blocking(&state, &[id], &out, 0, 90).unwrap();
+        assert_eq!(image::image_dimensions(out.join("a_1.jpg")).unwrap(), (100, 50));
+        assert!(!read_exif(&out.join("a.jpg")).keywords.iter().any(|_| true));
+        assert!(export_photos_blocking(&state, &[id], &dir.join("brak"), 40, 80).is_err());
+        assert!(export_photos_blocking(&state, &[id], &out, 99999, 80).is_err());
+        assert!(lib.join("a.jpg").exists());
+    }
+
+    #[test]
     fn hiding_and_safe_deletion() {
         let dir = std::env::temp_dir().join("mz-delete-test");
         let state = test_state(&dir);
@@ -2316,7 +2389,7 @@ fn main() {
             app.manage(AppState { db: Mutex::new(db), thumbs, sidecar: AtomicBool::new(sidecar) });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![list_roots, remove_root, rescan_roots, list_albums, create_album, rename_album, delete_album, add_to_album, remove_from_album, rename_photo, move_photos, get_sidecar_enabled, set_sidecar_enabled, export_sidecars, import_sidecars, scan_folder, refresh_library, find_duplicates, trash_photos, hide_photos, hidden_count, restore_hidden, people::faces_status, people::set_faces_enabled, people::faces_start, people::faces_stop, people::faces_delete_all, people::list_people, people::person_photos, people::person_faces, people::set_person_cover, people::rename_person, people::merge_people, people::ignore_person, list_photos, thumbnail, thumbnail_data, people::face_crop, set_rating, set_favorite, add_tag, remove_tag, delete_tag, save_edit, save_collage, read_image, has_original, restore_original])
+        .invoke_handler(tauri::generate_handler![list_roots, remove_root, rescan_roots, list_albums, create_album, rename_album, delete_album, add_to_album, remove_from_album, rename_photo, move_photos, get_sidecar_enabled, set_sidecar_enabled, export_sidecars, import_sidecars, scan_folder, refresh_library, find_duplicates, trash_photos, export_photos, hide_photos, hidden_count, restore_hidden, people::faces_status, people::set_faces_enabled, people::faces_start, people::faces_stop, people::faces_delete_all, people::list_people, people::person_photos, people::person_faces, people::set_person_cover, people::rename_person, people::merge_people, people::ignore_person, list_photos, thumbnail, thumbnail_data, people::face_crop, set_rating, set_favorite, add_tag, remove_tag, delete_tag, save_edit, save_collage, read_image, has_original, restore_original])
         .run(tauri::generate_context!())
         .expect("błąd uruchomienia aplikacji");
 }

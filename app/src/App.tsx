@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { listen } from '@tauri-apps/api/event'
 import { MapView } from './MapView'
 import { People } from './People'
+import { ExportDialog } from './ExportDialog'
 import { Duplicates } from './Duplicates'
 import { UpdateDialog, useUpdater } from './Updater'
 import { exportSidecars, getSidecarEnabled, importSidecars, setSidecarEnabled } from './api'
@@ -119,6 +120,7 @@ export default function App() {
   useEffect(() => { reload() }, [reload])
   const reloadAlbums = useCallback(async () => { if (inTauri) setAlbums(await listAlbums()) }, [])
   const reloadRoots = useCallback(async () => { if (inTauri) setRoots(await listRoots()) }, [])
+  const [exportIds, setExportIds] = useState<number[] | null>(null)
   const [person, setPerson] = useState<{ name: string; ids: Set<number> } | null>(null)
   const [hiddenN, setHiddenN] = useState(0)
   const reloadHidden = useCallback(async () => { if (inTauri) setHiddenN(await hiddenCount()) }, [])
@@ -953,6 +955,7 @@ export default function App() {
             )}
             <button className="text menu-item" role="menuitem" onClick={() => moveSelected(false)}><ImageUp size={18} /> Przenieś do folderu…</button>
             <button className="text menu-item" role="menuitem" onClick={() => moveSelected(true)}><Copy size={18} /> Kopiuj do folderu…</button>
+            <button className="text menu-item" role="menuitem" onClick={() => { setMenu(null); setExportIds(realIds()) }}><Download size={18} /> Eksportuj pomniejszone…</button>
             <button className="text menu-item" role="menuitem" onClick={hideSelected}><EyeOff size={18} /> Usuń z biblioteki (pliki zostają)…</button>
             <button className="text menu-item" role="menuitem" style={{ color: 'var(--err)' }} onClick={trashSelected}><Trash2 size={18} /> Przenieś do Kosza…</button>
             <div style={{ height: 1, background: 'var(--glass-line)', margin: '4px 6px' }} />
@@ -966,6 +969,7 @@ export default function App() {
         <AlbumPicker albums={albums} count={realIds().length} onPick={pickAlbum} onClose={() => setPicker(false)}
           onCreate={() => { setPicker(false); newAlbum(true) }} />
       )}
+      {exportIds && exportIds.length > 0 && <ExportDialog ids={exportIds} say={say} onClose={() => setExportIds(null)} />}
       {prompt && <PromptDialog {...prompt} onClose={() => setPrompt(null)} />}
 
       <UpdateDialog u={updater} />
