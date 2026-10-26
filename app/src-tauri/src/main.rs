@@ -96,6 +96,8 @@ fn open_db(path: &Path) -> rusqlite::Result<Connection> {
     // Migracja: zdjęcia ukryte w bibliotece (pliki zostają na dysku, skan ich nie dodaje ponownie).
     let _ = conn.execute("ALTER TABLE photos ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0", []);
     people::init_schema(&conn)?;
+    // Migracja: lokalizacja ustawiona ręcznie ma pierwszeństwo przed danymi GPS z pliku.
+    let _ = conn.execute("ALTER TABLE photos ADD COLUMN geo_manual INTEGER NOT NULL DEFAULT 0", []);
     Ok(conn)
 }
 
@@ -237,7 +239,7 @@ fn flush(state: &AppState, rows: &mut Vec<Row>) -> Result<(), String> {
             "INSERT INTO photos (path, folder, name, size, modified, taken, width, height, camera, lat, lon)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
              ON CONFLICT(path) DO UPDATE SET size=?4, modified=?5, taken=?6, width=?7, height=?8, camera=?9,
-                 lat=COALESCE(?10, lat), lon=COALESCE(?11, lon)",
+                 lat=CASE WHEN geo_manual = 1 THEN lat ELSE COALESCE(?10, lat) END, lon=CASE WHEN geo_manual = 1 THEN lon ELSE COALESCE(?11, lon) END",
             params![r.path, r.folder, r.name, r.size, r.modified, r.exif.taken, r.dims.0, r.dims.1, r.exif.camera, r.exif.lat, r.exif.lon],
         )
         .map_err(|e| e.to_string())?;
@@ -1296,6 +1298,33 @@ async fn move_photos(app: tauri::AppHandle, ids: Vec<i64>, dest: String, copy: b
         .map_err(|e| e.to_string())?
 }
 
+/// Ustawia lokalizację zdjęć ręcznie (None = brak lokalizacji). Zapisuje tylko w bibliotece FIBO, plików zdjęć nie zmienia.
+fn set_location_core(conn: &Connection, ids: &[i64], loc: Option<(f64, f64)>) -> Result<usize, String> {
+    if let Some((la, lo)) = loc {
+        if !(la.is_finite() && lo.is_finite() && (-90.0..=90.0).contains(&la) && (-180.0..=180.0).contains(&lo)) {
+            return Err("Nieprawidłowe współrzędne".into());
+        }
+    }
+    let mut n = 0;
+    for &id in ids {
+        n += conn
+            .execute("UPDATE photos SET lat = ?2, lon = ?3, geo_manual = 1 WHERE id = ?1", params![id, loc.map(|l| l.0), loc.map(|l| l.1)])
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(n)
+}
+
+#[tauri::command]
+fn set_location(state: State<'_, AppState>, ids: Vec<i64>, lat: Option<f64>, lon: Option<f64>) -> Result<usize, String> {
+    let loc = match (lat, lon) {
+        (Some(a), Some(b)) => Some((a, b)),
+        (None, None) => None,
+        _ => return Err("Podaj obie współrzędne".into()),
+    };
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    set_location_core(&conn, &ids, loc)
+}
+
 /// Eksport kopii zdjęć do folderu: opcjonalnie pomniejszonych (dłuższy bok `max_side`, 0 = bez zmiany rozmiaru), jako JPEG.
 /// Kopie nie zawierają metadanych EXIF (w tym lokalizacji GPS), więc nadają się do wysłania znajomym. Oryginały nie są ruszane,
 /// a istniejące pliki nie są nadpisywane.
@@ -1905,6 +1934,30 @@ mod tests {
     }
 
     #[test]
+    fn manual_location_survives_rescan_and_is_validated() {
+        let dir = std::env::temp_dir().join("mz-geo-test");
+        let state = test_state(&dir);
+        let lib = dir.join("lib");
+        fs::create_dir_all(&lib).unwrap();
+        image::RgbImage::new(10, 10).save(lib.join("g.jpg")).unwrap();
+        scan_blocking(&state, lib.to_str().unwrap(), &|_| {}).unwrap();
+        let id = photo_id(&state, "g.jpg");
+        let get = || -> (Option<f64>, Option<f64>) { state.db.lock().unwrap().query_row("SELECT lat, lon FROM photos WHERE id = ?1", [id], |r| Ok((r.get(0)?, r.get(1)?))).unwrap() };
+        assert_eq!(get(), (None, None));
+        assert_eq!(set_location_core(&state.db.lock().unwrap(), &[id], Some((52.2, 21.0))).unwrap(), 1);
+        assert_eq!(get(), (Some(52.2), Some(21.0)));
+        // Odświeżenie danych z plików (plik nie ma GPS) nie kasuje ręcznej lokalizacji.
+        let row = build_row(&lib.join("g.jpg")).unwrap();
+        flush(&state, &mut vec![row]).unwrap();
+        assert_eq!(get(), (Some(52.2), Some(21.0)));
+        for bad in [(91.0, 0.0), (0.0, 181.0), (f64::NAN, 1.0)] {
+            assert!(set_location_core(&state.db.lock().unwrap(), &[id], Some(bad)).is_err());
+        }
+        set_location_core(&state.db.lock().unwrap(), &[id], None).unwrap();
+        assert_eq!(get(), (None, None));
+    }
+
+    #[test]
     fn hiding_and_safe_deletion() {
         let dir = std::env::temp_dir().join("mz-delete-test");
         let state = test_state(&dir);
@@ -2389,7 +2442,7 @@ fn main() {
             app.manage(AppState { db: Mutex::new(db), thumbs, sidecar: AtomicBool::new(sidecar) });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![list_roots, remove_root, rescan_roots, list_albums, create_album, rename_album, delete_album, add_to_album, remove_from_album, rename_photo, move_photos, get_sidecar_enabled, set_sidecar_enabled, export_sidecars, import_sidecars, scan_folder, refresh_library, find_duplicates, trash_photos, export_photos, hide_photos, hidden_count, restore_hidden, people::faces_status, people::set_faces_enabled, people::faces_start, people::faces_stop, people::faces_delete_all, people::list_people, people::person_photos, people::person_faces, people::set_person_cover, people::rename_person, people::merge_people, people::ignore_person, list_photos, thumbnail, thumbnail_data, people::face_crop, set_rating, set_favorite, add_tag, remove_tag, delete_tag, save_edit, save_collage, read_image, has_original, restore_original])
+        .invoke_handler(tauri::generate_handler![list_roots, remove_root, rescan_roots, list_albums, create_album, rename_album, delete_album, add_to_album, remove_from_album, rename_photo, move_photos, get_sidecar_enabled, set_sidecar_enabled, export_sidecars, import_sidecars, scan_folder, refresh_library, find_duplicates, trash_photos, export_photos, set_location, hide_photos, hidden_count, restore_hidden, people::faces_status, people::set_faces_enabled, people::faces_start, people::faces_stop, people::faces_delete_all, people::list_people, people::person_photos, people::person_faces, people::set_person_cover, people::rename_person, people::merge_people, people::ignore_person, list_photos, thumbnail, thumbnail_data, people::face_crop, set_rating, set_favorite, add_tag, remove_tag, delete_tag, save_edit, save_collage, read_image, has_original, restore_original])
         .run(tauri::generate_context!())
         .expect("błąd uruchomienia aplikacji");
 }
