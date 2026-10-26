@@ -121,6 +121,7 @@ export const PL = {
       <ul>
         <li><strong>Podstawowe:</strong> Szczęśliwy traf, Auto kontrast, Auto kolor i Doświetlenie jednym kliknięciem; obrót i odbicie; prostowanie; usuwanie czerwonych oczu (kliknij środek oka); kadrowanie w proporcjach 1:1, 4:3, 3:2, 16:9 i innych, ze zbliżeniem i przesunięciem.</li>
         <li><strong>Dostrajanie:</strong> doświetlenie, światła, cienie, jasność, kontrast, gamma, temperatura barwowa, nasycenie i wyostrzenie. Dwuklik na suwaku zeruje go.</li>
+        <li><strong>Tekst na zdjęciu</strong> (zakładka Efekty): wpisz napis i dodaj go, potem ustaw rozmiar, położenie poziome i pionowe, kolor oraz pogrubienie. Można dodać kilka napisów. Napis jest wypalany w zapisanym zdjęciu (zapis jako kopia zostawia oryginał nietknięty), a przed zapisem można go cofnąć.</li>
         <li><strong>Efekty</strong> (ponad 30, część z suwakiem siły): czarno-białe, sepia, ocieplenie, ziarno filmowe, poświata, Orton, miękki fokus, winieta, Lomo, Polaroid, HDR, mapa cieplna, noktowizor, posteryzacja, pikselizacja, szkic ołówkiem, komiks, neon, ramka i inne. Nakładają się w kolejności wyboru.</li>
       </ul>
       <h3>Zapisywanie</h3>
@@ -334,6 +335,7 @@ export const EN = {
       <ul>
         <li><strong>Basics:</strong> I’m Feeling Lucky, Auto Contrast, Auto Color and Fill Light in one click; rotate and flip; straighten; red-eye removal (click the center of the eye); cropping at 1:1, 4:3, 3:2, 16:9 and more, with zoom and pan.</li>
         <li><strong>Tuning:</strong> fill light, highlights, shadows, brightness, contrast, gamma, color temperature, saturation and sharpen. Double-click a slider to reset it.</li>
+        <li><strong>Text on photo</strong> (Effects tab): type a caption and add it, then set size, horizontal and vertical position, colour and bold. You can add several captions. The text is burned into the saved photo (saving as a copy leaves the original untouched) and can be undone before saving.</li>
         <li><strong>Effects</strong> (over 30, some with a strength slider): black and white, sepia, warmify, film grain, glow, Orton, soft focus, vignette, Lomo, Polaroid, HDR, heat map, night vision, posterize, pixelate, pencil sketch, comic, neon, border and more. They stack in the order you pick them.</li>
       </ul>
       <h3>Saving</h3>

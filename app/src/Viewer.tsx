@@ -2,14 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   X, ChevronLeft, ChevronRight, Star, Heart, Play, Pause, Maximize, Undo2, Redo2,
   RotateCcw, RotateCw, FlipHorizontal, FlipVertical, Eye, Wand2, Save, CopyPlus, History,
-  ZoomIn, ZoomOut, Compare, Sliders, Sparkles, Info, Tag, Crop as CropIcon, Trash2, Sun, Palette, Aperture, Pencil, Zap,
+  ZoomIn, ZoomOut, Compare, Sliders, Sparkles, Info, Tag, Crop as CropIcon, Trash2, Sun, Palette, Aperture, Pencil, Zap, Plus,
 } from './FiboIcons'
 import { hasOriginal, readImage, restoreOriginal, saveEdit, setFavorite, setRating, type Photo } from './api'
 import { Thumb } from './Thumb'
 import { Chip, Sec, Toast } from './ui'
 import { TagEditor, type TagCount } from './TagEditor'
 import {
-  EFFECTS, EMPTY_EDIT, ZERO_ADJUST, isEdited, renderEdit,
+  EFFECTS, EMPTY_EDIT, ZERO_ADJUST, isEdited, renderEdit, MAX_TEXTS, MAX_TEXT_LEN, type TextItem,
   type Adjust, type EditState,
 } from './editor/effects'
 
@@ -46,6 +46,7 @@ const FX_GROUPS: { id: string; title: string; icon: typeof Sun; ids: string[] }[
   { id: 'fx-focus', title: 'Światło i ostrość', icon: Aperture, ids: ['soften', 'glow', 'orton', 'softfocus', 'focalbw', 'vignette', 'gradtint', 'hdr'] },
   { id: 'fx-art', title: 'Kreatywne', icon: Pencil, ids: ['posterize', 'pixelate', 'sketch', 'comic', 'neon'] },
 ]
+const TEXT_COLORS: [string, string][] = [['#ffffff', 'Biały'], ['#111111', 'Czarny'], ['#ffd400', 'Żółty'], ['#ff4d4d', 'Czerwony'], ['#3ea6ff', 'Niebieski'], ['#4cd964', 'Zielony']]
 const fxLabel = (id: string) => EFFECTS.find((e) => e.id === id)?.label ?? id
 
 function Slider({ label, value, min, max, onChange, onStart }: {
@@ -104,7 +105,7 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
   useEffect(() => {
     if (!photo) return
     let dead = false
-    setBitmap(null); setLoadError(null); setEdit(EMPTY_EDIT); setUndo([]); setRedo([]); setRedEyeMode(false)
+    setBitmap(null); setLoadError(null); setEdit(EMPTY_EDIT); setUndo([]); setRedo([]); setRedEyeMode(false); setSelText(null)
     setZoom(1); setPan({ x: 0, y: 0 }); setCompare(false)
     readImage(photo.id)
       .then((buf) => createImageBitmap(new Blob([buf]), { imageOrientation: 'from-image' }))
@@ -178,6 +179,17 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
     setUndo((u) => [...u, edit]); setEdit(r[r.length - 1]); return r.slice(0, -1)
   })
   const change = (fn: (s: EditState) => EditState) => { snap(); setEdit(fn) }
+  const [newText, setNewText] = useState('')
+  const [selText, setSelText] = useState<number | null>(null)
+  const selT = selText !== null ? edit.texts[selText] : undefined
+  const addText = () => {
+    const text = newText.trim()
+    if (!text || edit.texts.length >= MAX_TEXTS) return
+    change((s) => ({ ...s, texts: [...s.texts, { text, x: 0.5, y: 0.88, size: 0.08, color: '#ffffff', bold: true }] }))
+    setSelText(edit.texts.length)
+    setNewText('')
+  }
+  const editText = (p: Partial<TextItem>) => { if (selText !== null) live((s) => ({ ...s, texts: s.texts.map((t, k) => (k === selText ? { ...t, ...p } : t)) })) }
   const live = (fn: (s: EditState) => EditState) => setEdit(fn) // suwaki: snap() robi onPointerDown
 
   const go = useCallback((delta: number) => {
@@ -437,6 +449,39 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
                   ))}
                 </Sec>
               )}
+              <Sec id="fx-text" icon={<Pencil size={17} />} title="Tekst na zdjęciu" hint={edit.texts.length ? `${edit.texts.length} ${edit.texts.length === 1 ? 'napis' : 'napisy'}` : 'Bez napisów'} defaultOpen={edit.texts.length > 0}>
+                <label htmlFor="new-text">Nowy napis</label>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <input id="new-text" type="text" maxLength={MAX_TEXT_LEN} value={newText} placeholder="Wpisz tekst" autoComplete="off"
+                    onChange={(e) => setNewText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addText() } }} />
+                  <button className="chip" disabled={!newText.trim() || edit.texts.length >= MAX_TEXTS} onClick={addText}><Plus size={14} /> Dodaj</button>
+                </div>
+                {edit.texts.length > 0 && (
+                  <div className="chips" style={{ marginTop: 8 }}>
+                    {edit.texts.map((t, i) => <Chip key={i} on={selText === i} onClick={() => setSelText(i)}>{t.text.slice(0, 18) || '…'}</Chip>)}
+                  </div>
+                )}
+                {selT && selText !== null && (
+                  <>
+                    <label htmlFor="sel-text">Treść</label>
+                    <input id="sel-text" type="text" maxLength={MAX_TEXT_LEN} value={selT.text} autoComplete="off"
+                      onFocus={snap} onChange={(e) => editText({ text: e.target.value })} />
+                    <Slider label="Rozmiar" value={Math.round(selT.size * 100)} min={2} max={30} onStart={snap} onChange={(v) => editText({ size: v / 100 })} />
+                    <Slider label="Położenie poziome" value={Math.round(selT.x * 100)} min={0} max={100} onStart={snap} onChange={(v) => editText({ x: v / 100 })} />
+                    <Slider label="Położenie pionowe" value={Math.round(selT.y * 100)} min={0} max={100} onStart={snap} onChange={(v) => editText({ y: v / 100 })} />
+                    <label>Kolor</label>
+                    <div className="chips">
+                      {TEXT_COLORS.map(([c, n]) => (
+                        <button key={c} className={`chip${selT.color === c ? ' on' : ''}`} aria-label={`Kolor ${n}`} aria-pressed={selT.color === c} onClick={() => { snap(); editText({ color: c }) }}>
+                          <span aria-hidden style={{ width: 14, height: 14, borderRadius: '50%', background: c, border: '1px solid var(--glass-line)', display: 'inline-block' }} /> {n}
+                        </button>
+                      ))}
+                      <Chip on={selT.bold} onClick={() => { snap(); editText({ bold: !selT.bold }) }}>Pogrubienie</Chip>
+                    </div>
+                    <button className="wide" style={{ color: 'var(--err)' }} onClick={() => { change((s) => ({ ...s, texts: s.texts.filter((_, k) => k !== selText) })); setSelText(null) }}><Trash2 size={16} /> Usuń ten napis</button>
+                  </>
+                )}
+              </Sec>
               {FX_GROUPS.map((g) => (
                 <Sec key={g.id} id={g.id} icon={<g.icon size={17} />} title={g.title}
                   hint={`${g.ids.filter((i) => fxAmount(i) !== undefined).length} z ${g.ids.length} włączonych`} defaultOpen={g.id === 'fx-color'}>

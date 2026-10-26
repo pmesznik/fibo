@@ -409,3 +409,14 @@ describe('Audyt zależności: wyjątki', () => {
     })
   })
 })
+
+describe('Edytor: napisy na zdjęciu', () => {
+  test('napisy mają limity długości i liczby oraz są rysowane tylko na canvasie', () => {
+    const fx = readFileSync(new URL('../src/editor/effects.ts', import.meta.url), 'utf8')
+    assert.match(fx, /MAX_TEXTS = 20/)
+    assert.match(fx, /MAX_TEXT_LEN = 200/)
+    assert.match(fx, /fillText\(/)
+    assert.ok(!/innerHTML|dangerouslySetInnerHTML/.test(fx))
+    assert.match(fx, /\^#\(\[0-9a-f\]\{6\}\)\$/i, 'kolor jest walidowany')
+  })
+})

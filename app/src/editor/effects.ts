@@ -17,8 +17,12 @@ export const ZERO_GEO: Geometry = { rot: 0, flipH: false, flipV: false, angle: 0
 
 export type EffectInst = { id: string; amount: number }
 export type RedEye = { x: number; y: number; r: number }
-export type EditState = { geo: Geometry; adj: Adjust; fx: EffectInst[]; redeye: RedEye[] }
-export const EMPTY_EDIT: EditState = { geo: ZERO_GEO, adj: ZERO_ADJUST, fx: [], redeye: [] }
+/** Napis na zdjęciu: środek w ułamkach szerokości i wysokości kadru, wysokość tekstu jako ułamek wysokości kadru. */
+export type TextItem = { text: string; x: number; y: number; size: number; color: string; bold: boolean }
+export const MAX_TEXTS = 20
+export const MAX_TEXT_LEN = 200
+export type EditState = { geo: Geometry; adj: Adjust; fx: EffectInst[]; redeye: RedEye[]; texts: TextItem[] }
+export const EMPTY_EDIT: EditState = { geo: ZERO_GEO, adj: ZERO_ADJUST, fx: [], redeye: [], texts: [] }
 
 export const isEdited = (s: EditState) =>
   JSON.stringify(s) !== JSON.stringify(EMPTY_EDIT)
@@ -271,8 +275,33 @@ export function applyColor(canvas: HTMLCanvasElement, st: EditState) {
   ctx.putImageData(data, 0, 0)
 }
 
+/** Rysuje napisy na gotowym kadrze (po korektach i efektach); obrys w kontrastowym kolorze poprawia czytelność. */
+export function drawTexts(canvas: HTMLCanvasElement, texts: TextItem[]) {
+  if (!texts.length) return
+  const ctx = canvas.getContext('2d')!
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.lineJoin = 'round'
+  for (const t of texts.slice(0, MAX_TEXTS)) {
+    const text = t.text.slice(0, MAX_TEXT_LEN)
+    if (!text.trim()) continue
+    const px = Math.max(4, t.size * canvas.height)
+    ctx.font = `${t.bold ? 700 : 500} ${px}px system-ui, "Segoe UI", sans-serif`
+    const m = /^#([0-9a-f]{6})$/i.exec(t.color)
+    const rgb = m ? [0, 2, 4].map((i) => parseInt(m[1].slice(i, i + 2), 16)) : [255, 255, 255]
+    const light = 0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2] > 140
+    const x = t.x * canvas.width, y = t.y * canvas.height
+    ctx.lineWidth = px * 0.12
+    ctx.strokeStyle = light ? 'rgba(0,0,0,.65)' : 'rgba(255,255,255,.75)'
+    ctx.strokeText(text, x, y)
+    ctx.fillStyle = m ? t.color : '#ffffff'
+    ctx.fillText(text, x, y)
+  }
+}
+
 export function renderEdit(src: Source, st: EditState, maxSide: number): HTMLCanvasElement {
   const c = renderGeometry(src, st.geo, maxSide)
   applyColor(c, st)
+  drawTexts(c, st.texts)
   return c
 }
