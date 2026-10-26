@@ -420,3 +420,10 @@ describe('Edytor: napisy na zdjęciu', () => {
     assert.match(fx, /\^#\(\[0-9a-f\]\{6\}\)\$/i, 'kolor jest walidowany')
   })
 })
+
+describe('Okno: przeciąganie', () => {
+  test('wbudowana obsługa upuszczania plików jest wyłączona, żeby działało przeciąganie elementów w interfejsie', () => {
+    const c = JSON.parse(readFileSync(new URL('../src-tauri/tauri.conf.json', import.meta.url), 'utf8'))
+    assert.equal(c.app.windows[0].dragDropEnabled, false)
+  })
+})
