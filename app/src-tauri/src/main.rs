@@ -89,6 +89,8 @@ fn open_db(path: &Path) -> rusqlite::Result<Connection> {
     for col in ["fhash", "dhash", "hashed_mod"] {
         let _ = conn.execute(&format!("ALTER TABLE photos ADD COLUMN {col} INTEGER"), []);
     }
+    // Migracja: zdjęcia ukryte w bibliotece (pliki zostają na dysku, skan ich nie dodaje ponownie).
+    let _ = conn.execute("ALTER TABLE photos ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0", []);
     Ok(conn)
 }
 
@@ -300,6 +302,10 @@ async fn scan_folder(app: tauri::AppHandle, path: String) -> Result<usize, Strin
         let state = app.state::<AppState>();
         // Dodany folder jest od teraz obserwowany: nowe zdjęcia pojawią się same.
         add_root(&state, &path)?;
+        // Ręczne dodanie folderu przywraca jego zdjęcia ukryte wcześniej.
+        state.db.lock().map_err(|e| e.to_string())?
+            .execute("UPDATE photos SET hidden = 0 WHERE hidden = 1 AND substr(path, 1, length(?1)) = ?1", [&path])
+            .map_err(|e| e.to_string())?;
         scan_blocking(&state, &path, &move |n| {
             let _ = emitter.emit("scan-progress", n);
         })
@@ -348,7 +354,7 @@ fn list_photos(state: State<'_, AppState>) -> Result<Vec<Photo>, String> {
                     (SELECT group_concat(t.name, char(31)) FROM photo_tags pt JOIN tags t ON t.id = pt.tag_id
                      WHERE pt.photo_id = photos.id), lat, lon,
                     (SELECT group_concat(album_id) FROM album_photos WHERE photo_id = photos.id)
-             FROM photos ORDER BY COALESCE(taken, datetime(modified,'unixepoch')) DESC",
+             FROM photos WHERE hidden = 0 ORDER BY COALESCE(taken, datetime(modified,'unixepoch')) DESC",
         )
         .map_err(|e| e.to_string())?;
     let rows = stmt
@@ -586,6 +592,9 @@ fn parse_xmp_tags(text: &str) -> Vec<String> {
         let rest = &text[start..];
         let mut seg = &rest[..rest.find("</dc:subject>").unwrap_or(rest.len())];
         while let Some(i) = seg.find("<rdf:li") {
+            if tags.len() >= MAX_TAGS_PER_FILE {
+                break;
+            }
             let after = &seg[i..];
             let Some(gt) = after.find('>') else { break };
             let body = &after[gt + 1..];
@@ -605,8 +614,20 @@ fn parse_xmp_rating(text: &str) -> i64 {
     xmp_value(text, "xmp:Rating").and_then(|v| v.trim().parse::<i64>().ok()).unwrap_or(0).clamp(0, 5)
 }
 
+/// Najwięcej, co wczytujemy z jednego pliku XMP; większy plik nie jest nasz i nie ładujemy go do pamięci.
+const MAX_XMP_BYTES: u64 = 1 << 20;
+/// Najwięcej tagów brane z jednego pliku (zabezpieczenie przed plikiem z milionami wpisów).
+const MAX_TAGS_PER_FILE: usize = 200;
+
+fn read_xmp_limited(p: &Path) -> Option<Vec<u8>> {
+    if fs::metadata(p).ok()?.len() > MAX_XMP_BYTES {
+        return None;
+    }
+    fs::read(p).ok()
+}
+
 fn read_sidecar(photo: &Path) -> Option<Sidecar> {
-    let bytes = fs::read(xmp_path(photo)).ok()?;
+    let bytes = read_xmp_limited(&xmp_path(photo))?;
     let text = String::from_utf8_lossy(&bytes);
     Some(Sidecar {
         rating: parse_xmp_rating(&text),
@@ -797,6 +818,10 @@ fn write_sidecar(state: &AppState, id: i64) -> Result<SidecarOutcome, String> {
         (path, rating, fav != 0, tags)
     };
     let xmp = xmp_path(Path::new(&path));
+    // Zbyt duży plik XMP na pewno nie jest nasz: nie wczytujemy go i nie nadpisujemy.
+    if matches!(fs::metadata(&xmp), Ok(m) if m.len() > MAX_XMP_BYTES) {
+        return Ok(SidecarOutcome::Skipped);
+    }
     let existing = fs::read(&xmp).ok().map(|b| String::from_utf8_lossy(&b).into_owned());
     if existing.as_deref().map(|t| !t.contains(XMP_MARKER)).unwrap_or(false) {
         return Ok(SidecarOutcome::Skipped);
@@ -1117,12 +1142,20 @@ fn valid_stem(s: &str) -> Result<String, String> {
     if t.chars().any(|c| c.is_control() || "\\/:*?\"<>|".contains(c)) {
         return Err("Nazwa nie może zawierać znaków \\ / : * ? \" < > |".into());
     }
+    // Niewidoczne znaki formatujące (zmiana kierunku tekstu, zero-width) pozwalają podszyć się pod inną nazwę.
+    if t.chars().any(|c| matches!(c, '\u{200B}'..='\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2060}'..='\u{2064}' | '\u{2066}'..='\u{2069}' | '\u{FEFF}')) {
+        return Err("Nazwa zawiera niewidoczne znaki sterujące".into());
+    }
     if t.ends_with('.') {
         return Err("Nazwa nie może kończyć się kropką".into());
     }
     let base = t.split('.').next().unwrap_or("").to_uppercase();
-    let reserved = ["CON", "PRN", "AUX", "NUL"].contains(&base.as_str())
-        || ((base.starts_with("COM") || base.starts_with("LPT")) && base.len() == 4 && base.as_bytes()[3].is_ascii_digit());
+    // Nazwy urządzeń Windows: CON, PRN, AUX, NUL, CONIN$, CONOUT$, COM0-9 i LPT0-9 (także z indeksem górnym ¹ ² ³).
+    let numbered = base.strip_prefix("COM").or_else(|| base.strip_prefix("LPT")).map(|r| {
+        let mut it = r.chars();
+        matches!((it.next(), it.next()), (Some(c), None) if c.is_ascii_digit() || matches!(c, '¹' | '²' | '³'))
+    });
+    let reserved = ["CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"].contains(&base.as_str()) || numbered.unwrap_or(false);
     if reserved {
         return Err("Ta nazwa jest zarezerwowana przez Windows".into());
     }
@@ -1323,7 +1356,7 @@ fn find_duplicates_blocking(app: &tauri::AppHandle, max_distance: Option<u32>) -
     {
         let conn = state.db.lock().map_err(|e| e.to_string())?;
         let mut stmt = conn
-            .prepare("SELECT id, path, size, modified, fhash, dhash, hashed_mod FROM photos")
+            .prepare("SELECT id, path, size, modified, fhash, dhash, hashed_mod FROM photos WHERE hidden = 0")
             .map_err(|e| e.to_string())?;
         let rows = stmt
             .query_map([], |r| {
@@ -1459,17 +1492,86 @@ async fn find_duplicates(app: tauri::AppHandle, max_distance: Option<u32>) -> Re
         .map_err(|e| e.to_string())?
 }
 
-/// Przenosi pliki do Kosza Windows (można je stamtąd przywrócić) i usuwa je z biblioteki.
+/// Od tej liczby zdjęć usunięcie z dysku wymaga wpisania słowa potwierdzenia (sprawdzane w backendzie, nie tylko w oknie).
+const TRASH_CONFIRM_FROM: usize = 20;
+const TRASH_CONFIRM_WORD: &str = "USUŃ";
+
+/// Ukrywa zdjęcia w bibliotece. Pliki na dysku zostają nietknięte, a tagi i oceny są zachowane.
 #[tauri::command]
-fn trash_photos(state: State<'_, AppState>, ids: Vec<i64>) -> Result<usize, String> {
+fn hide_photos(state: State<'_, AppState>, ids: Vec<i64>) -> Result<usize, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
     let mut n = 0;
     for id in ids {
-        let (path, _, _) = photo_path(&state, id)?;
-        trash::delete(&path).map_err(|e| format!("{path}: {e}"))?;
+        n += conn.execute("UPDATE photos SET hidden = 1 WHERE id = ?1 AND hidden = 0", [id]).map_err(|e| e.to_string())?;
+    }
+    Ok(n)
+}
+
+#[tauri::command]
+fn hidden_count(state: State<'_, AppState>) -> Result<i64, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    conn.query_row("SELECT COUNT(*) FROM photos WHERE hidden = 1", [], |r| r.get(0)).map_err(|e| e.to_string())
+}
+
+/// Przywraca do biblioteki wszystkie ukryte zdjęcia, których pliki nadal istnieją (reszta jest zapominana).
+#[tauri::command]
+fn restore_hidden(state: State<'_, AppState>) -> Result<usize, String> {
+    let rows: Vec<(i64, String)> = {
+        let conn = state.db.lock().map_err(|e| e.to_string())?;
+        let mut stmt = conn.prepare("SELECT id, path FROM photos WHERE hidden = 1").map_err(|e| e.to_string())?;
+        let v = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?))).map_err(|e| e.to_string())?.filter_map(Result::ok).collect();
+        v
+    };
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let mut n = 0;
+    for (id, path) in rows {
+        if Path::new(&path).is_file() {
+            conn.execute("UPDATE photos SET hidden = 0 WHERE id = ?1", [id]).map_err(|e| e.to_string())?;
+            n += 1;
+        } else {
+            forget_photo(&conn, id).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(n)
+}
+
+/// Przenosi pliki do Kosza Windows (można je stamtąd przywrócić) i usuwa je z biblioteki.
+/// Zabezpieczenia: tylko zdjęcia znane bibliotece, tylko zwykłe pliki zdjęć (nie foldery ani dowiązania),
+/// a od 20 zdjęć trzeba przekazać słowo potwierdzenia. Nigdy nie usuwamy całych folderów.
+#[tauri::command]
+fn trash_photos(state: State<'_, AppState>, ids: Vec<i64>, confirm: Option<String>) -> Result<usize, String> {
+    trash_photos_core(&state, ids, confirm, &|p| trash::delete(p).map_err(|e| e.to_string()))
+}
+
+/// Logika usuwania z wymiennym „usuwaczem” (w programie Kosz Windows, w testach zwykłe usunięcie z katalogu tymczasowego).
+fn trash_photos_core(state: &AppState, ids: Vec<i64>, confirm: Option<String>, del: &dyn Fn(&str) -> Result<(), String>) -> Result<usize, String> {
+    let mut ids = ids;
+    ids.sort_unstable();
+    ids.dedup();
+    if ids.len() >= TRASH_CONFIRM_FROM && confirm.as_deref().map(str::trim) != Some(TRASH_CONFIRM_WORD) {
+        return Err(format!("Usunięcie {} zdjęć wymaga wpisania słowa {TRASH_CONFIRM_WORD}", ids.len()));
+    }
+    // Najpierw sprawdzamy wszystkie ścieżki, żeby błąd nie zostawił połowy operacji.
+    let mut targets = Vec::new();
+    for id in &ids {
+        let (path, _, _) = photo_path(&state, *id)?;
+        let p = Path::new(&path);
+        match std::fs::symlink_metadata(p) {
+            Ok(m) if m.is_file() && is_photo(p) => targets.push((*id, path, true)),
+            Ok(_) => return Err(format!("{path}: to nie jest zwykły plik zdjęcia, nie usuwam")),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => targets.push((*id, path, false)),
+            Err(e) => return Err(format!("{path}: {e}")),
+        }
+    }
+    let mut n = 0;
+    for (id, path, exists) in targets {
+        if exists {
+            del(&path).map_err(|e| format!("{path}: {e}"))?;
+        }
         // Własny plik XMP zdjęcia też trafia do Kosza (cudzych nie ruszamy).
         let xmp = xmp_path(Path::new(&path));
-        if fs::read(&xmp).map(|b| String::from_utf8_lossy(&b).contains(XMP_MARKER)).unwrap_or(false) {
-            let _ = trash::delete(&xmp);
+        if read_xmp_limited(&xmp).map(|b| String::from_utf8_lossy(&b).contains(XMP_MARKER)).unwrap_or(false) {
+            let _ = del(&xmp.to_string_lossy());
         }
         let conn = state.db.lock().map_err(|e| e.to_string())?;
         forget_photo(&conn, id).map_err(|e| e.to_string())?;
@@ -1717,6 +1819,53 @@ mod tests {
     }
 
     #[test]
+    fn hiding_and_safe_deletion() {
+        let dir = std::env::temp_dir().join("mz-delete-test");
+        let state = test_state(&dir);
+        let lib = dir.join("lib");
+        fs::create_dir_all(&lib).unwrap();
+        for i in 0..25 {
+            image::RgbImage::new(8, 8).save(lib.join(format!("z{i}.jpg"))).unwrap();
+        }
+        fs::write(lib.join("notatki.txt"), "nie zdjecie").unwrap();
+        assert_eq!(scan_blocking(&state, lib.to_str().unwrap(), &|_| {}).unwrap(), 25);
+        let ids: Vec<i64> = (0..25).map(|i| photo_id(&state, &format!("z{i}.jpg"))).collect();
+        let count = |sql: &str| -> i64 { state.db.lock().unwrap().query_row(sql, [], |r| r.get(0)).unwrap() };
+        let fake_trash = |p: &str| fs::remove_file(p).map_err(|e| e.to_string());
+
+        // Ukrycie nie rusza plików, a skan nie dodaje ukrytych zdjęć z powrotem.
+        {
+            let conn = state.db.lock().unwrap();
+            conn.execute("UPDATE photos SET hidden = 1 WHERE id = ?1", [ids[0]]).unwrap();
+        }
+        assert!(lib.join("z0.jpg").exists());
+        assert_eq!(scan_blocking(&state, lib.to_str().unwrap(), &|_| {}).unwrap(), 0);
+        assert_eq!(count("SELECT COUNT(*) FROM photos WHERE hidden = 0"), 24);
+
+        // Od 20 zdjęć potrzebne jest słowo potwierdzenia; bez niego nic nie jest usuwane.
+        assert!(trash_photos_core(&state, ids[1..].to_vec(), None, &fake_trash).is_err());
+        assert!(trash_photos_core(&state, ids[1..].to_vec(), Some("tak".into()), &fake_trash).is_err());
+        assert!(lib.join("z1.jpg").exists());
+        assert_eq!(trash_photos_core(&state, ids[1..].to_vec(), Some(TRASH_CONFIRM_WORD.into()), &fake_trash).unwrap(), 24);
+        assert!(!lib.join("z1.jpg").exists() && lib.join("z0.jpg").exists() && lib.join("notatki.txt").exists());
+
+        // Nie usuwamy niczego, co nie jest zwykłym plikiem zdjęcia, nawet jeśli ktoś wpisał to do bazy.
+        state.db.lock().unwrap().execute(
+            "INSERT INTO photos (path, folder, name, size, modified) VALUES (?1, ?2, 'notatki.txt', 1, 1)",
+            params![lib.join("notatki.txt").to_string_lossy(), lib.to_string_lossy()],
+        ).unwrap();
+        let tid = photo_id(&state, "notatki.txt");
+        assert!(trash_photos_core(&state, vec![tid], None, &fake_trash).is_err());
+        state.db.lock().unwrap().execute(
+            "INSERT INTO photos (path, folder, name, size, modified) VALUES (?1, ?2, 'folder.jpg', 1, 1)",
+            params![lib.to_string_lossy(), lib.to_string_lossy()],
+        ).unwrap();
+        let did = photo_id(&state, "folder.jpg");
+        assert!(trash_photos_core(&state, vec![did], None, &fake_trash).is_err());
+        assert!(lib.exists() && lib.join("notatki.txt").exists());
+    }
+
+    #[test]
     fn rename_move_copy_and_rescan() {
         let dir = std::env::temp_dir().join("mz-files-test");
         let state = test_state(&dir);
@@ -1810,6 +1959,314 @@ mod tests {
         assert_eq!(album_error(dup), "Album o takiej nazwie już istnieje", "nazwa albumu jest unikalna bez względu na wielkość liter");
     }
 
+    // ---- Testy bezpieczeństwa i odporności ---------------------------------------
+
+    /// Prosty generator pseudolosowy (xorshift), żeby testy były powtarzalne.
+    struct Rng(u64);
+    impl Rng {
+        fn next(&mut self) -> u64 {
+            self.0 ^= self.0 << 13;
+            self.0 ^= self.0 >> 7;
+            self.0 ^= self.0 << 17;
+            self.0
+        }
+        fn bytes(&mut self, n: usize) -> Vec<u8> {
+            (0..n).map(|_| self.next() as u8).collect()
+        }
+    }
+
+    fn valid_jpeg_with_metadata(dir: &Path) -> Vec<u8> {
+        let p = dir.join("seed.jpg");
+        jpeg_with_metadata(&p, &build_xmp(3, true, &["a".into(), "b".into()]), &["x", "y"]);
+        fs::read(&p).unwrap()
+    }
+
+    #[test]
+    fn parsers_survive_random_and_corrupted_input() {
+        let dir = std::env::temp_dir().join("mz-fuzz-test");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let seed = valid_jpeg_with_metadata(&dir);
+        let mut rng = Rng(0x9E3779B97F4A7C15);
+        let mut runs = 0;
+
+        // 1. Czysto losowe bajty o różnych długościach.
+        for n in (0..64).chain([100, 255, 256, 1000, 4096]) {
+            for _ in 0..40 {
+                let data = rng.bytes(n);
+                let _ = jpeg_segments(&data);
+                let _ = iptc_keywords(&data);
+                let text = String::from_utf8_lossy(&data);
+                let _ = parse_xmp_tags(&text);
+                let _ = parse_xmp_rating(&text);
+                runs += 1;
+            }
+        }
+        // 2. Każde ucięcie prawidłowego JPEG-a w dowolnym miejscu.
+        for cut in 0..seed.len().min(1500) {
+            let _ = jpeg_segments(&seed[..cut]);
+            runs += 1;
+        }
+        // 3. Prawidłowy plik z losowo zmienionymi bajtami (także w nagłówkach segmentów).
+        for _ in 0..1500 {
+            let mut d = seed.clone();
+            for _ in 0..(1 + rng.next() % 6) {
+                let i = (rng.next() as usize) % d.len().min(700);
+                d[i] = rng.next() as u8;
+            }
+            for (marker, payload) in jpeg_segments(&d) {
+                if marker == 0xED {
+                    let _ = iptc_keywords(payload);
+                }
+                if marker == 0xE1 {
+                    if let Some(x) = payload.strip_prefix(b"http://ns.adobe.com/xap/1.0/\0") {
+                        let t = String::from_utf8_lossy(x);
+                        let _ = parse_xmp_tags(&t);
+                    }
+                }
+            }
+            runs += 1;
+        }
+        // 4. Zniekształcony XML: niezamknięte znaczniki, ogromna liczba wpisów, śmieci wewnątrz.
+        for xml in [
+            "<dc:subject><rdf:li>",
+            "<dc:subject><rdf:li></rdf:li>",
+            "<dc:subject>",
+            "</dc:subject><dc:subject><rdf:li",
+            "<dc:subject><rdf:li>&amp;&lt;&#x41;&bogus;</rdf:li></dc:subject>",
+            "xmp:Rating=\"99999999999999999999\"",
+            "xmp:Rating=\"-7\"",
+            "<xmp:Rating>abc</xmp:Rating>",
+            "xmp:Rating=\"",
+            "<xmp:Rating>",
+        ] {
+            let _ = parse_xmp_tags(xml);
+            let r = parse_xmp_rating(xml);
+            assert!((0..=5).contains(&r), "ocena poza zakresem: {r} dla {xml:?}");
+            runs += 1;
+        }
+        assert!(runs > 4000, "test musi wykonać wiele przebiegów: {runs}");
+    }
+
+    #[test]
+    fn iptc_with_lying_lengths_does_not_overrun() {
+        // Zbiór IPTC deklaruje 4 GB, a ma kilka bajtów: parser ma przerwać, nie panikować ani alokować.
+        let mut seg = b"Photoshop 3.0\0".to_vec();
+        seg.extend(b"8BIM");
+        seg.extend([0x04, 0x04, 0x00, 0x00]);
+        seg.extend(0xFFFF_FFF0u32.to_be_bytes());
+        seg.extend([0x1C, 2, 25, 0, 3, b'a', b'b', b'c']);
+        assert!(iptc_keywords(&seg).is_empty());
+        // Słowo kluczowe deklaruje długość większą niż dane.
+        let mut seg2 = b"Photoshop 3.0\0".to_vec();
+        seg2.extend(b"8BIM");
+        seg2.extend([0x04, 0x04, 0x00, 0x00]);
+        seg2.extend(8u32.to_be_bytes());
+        seg2.extend([0x1C, 2, 25, 0xFF, 0xFF, b'x', b'y', b'z']);
+        assert!(iptc_keywords(&seg2).is_empty());
+    }
+
+    #[test]
+    fn hostile_tags_survive_xmp_roundtrip_as_plain_text() {
+        let nasty = [
+            "<script>alert(1)</script>", "a&b", "\"cudzysłów\"", "'apostrof'", "]]>", "&amp;lt;", "<!-- komentarz -->",
+            "</rdf:li><rdf:li>wstrzyknięty", "</dc:subject><x:evil/>", "zażółć gęślą jaźń", "😀 emoji", "tab\there",
+            "'; DROP TABLE photos; --", "\" OR 1=1 --", "%s%s%s%n", "..\\..\\Windows\\System32", "NUL", &"a".repeat(500),
+        ];
+        let tags: Vec<String> = nasty.iter().filter_map(|t| norm_tag(t)).collect();
+        assert!(tags.len() >= nasty.len() - 1);
+        let xml = build_xmp(2, false, &tags);
+        // Dane nie mogą wyjść poza elementy rdf:li: żaden surowy znacznik ani komentarz od użytkownika.
+        assert!(!xml.contains("<script"), "tag stał się znacznikiem XML");
+        assert!(!xml.contains("<x:evil"), "wstrzyknięty znacznik XML");
+        assert!(!xml.contains("<!-- komentarz"), "wstrzyknięty komentarz XML");
+        assert_eq!(xml.matches("<rdf:li>").count(), tags.len(), "liczba wpisów musi się zgadzać");
+        let dir = std::env::temp_dir().join("mz-hostile-tags");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let photo = dir.join("p.jpg");
+        image::RgbImage::new(4, 4).save(&photo).unwrap();
+        fs::write(xmp_path(&photo), &xml).unwrap();
+        let back = read_sidecar(&photo).unwrap();
+        assert_eq!(back.tags, tags, "tagi muszą wrócić bez zmian");
+        assert_eq!(back.rating, 2);
+    }
+
+    #[test]
+    fn sidecar_limits_for_huge_files_and_many_tags() {
+        let dir = std::env::temp_dir().join("mz-limits-test");
+        let state = test_state(&dir);
+        let photo = dir.join("p.jpg");
+        image::RgbImage::new(4, 4).save(&photo).unwrap();
+
+        // 5000 tagów w pliku: bierzemy najwyżej MAX_TAGS_PER_FILE.
+        let many: String = (0..5000).map(|i| format!("<rdf:li>tag{i}</rdf:li>")).collect();
+        fs::write(xmp_path(&photo), format!("<x:xmpmeta><dc:subject><rdf:Bag>{many}</rdf:Bag></dc:subject></x:xmpmeta>")).unwrap();
+        assert_eq!(read_sidecar(&photo).unwrap().tags.len(), MAX_TAGS_PER_FILE);
+
+        // Plik XMP większy niż limit: ignorowany przy odczycie i nigdy nie nadpisywany.
+        let huge = vec![b'x'; (MAX_XMP_BYTES as usize) + 10];
+        fs::write(xmp_path(&photo), &huge).unwrap();
+        assert!(read_sidecar(&photo).is_none());
+        flush(&state, &mut vec![build_row(&photo).unwrap()]).unwrap();
+        let id = photo_id(&state, "p.jpg");
+        state.db.lock().unwrap().execute("UPDATE photos SET rating = 4 WHERE id = ?1", [id]).unwrap();
+        assert_eq!(write_sidecar(&state, id).unwrap(), SidecarOutcome::Skipped);
+        assert_eq!(fs::metadata(xmp_path(&photo)).unwrap().len(), huge.len() as u64, "duży plik XMP został nadpisany");
+    }
+
+    #[test]
+    fn sql_like_text_is_stored_as_data_not_executed() {
+        let dir = std::env::temp_dir().join("mz-sql-test");
+        let state = test_state(&dir);
+        let photo = dir.join("p.jpg");
+        image::RgbImage::new(4, 4).save(&photo).unwrap();
+        flush(&state, &mut vec![build_row(&photo).unwrap()]).unwrap();
+        let id = photo_id(&state, "p.jpg");
+        let evil = ["'; drop table photos; --", "\" or 1=1 --", "x'); delete from tags; --", "robert'); drop table albums;--"];
+        {
+            let conn = state.db.lock().unwrap();
+            let sc = Sidecar { rating: 0, favorite: false, tags: evil.iter().filter_map(|t| norm_tag(t)).collect() };
+            apply_sidecar(&conn, id, &sc).unwrap();
+            for e in evil {
+                let name = clean_album_name(e).unwrap();
+                conn.execute("INSERT INTO albums (name) VALUES (?1)", [&name]).unwrap();
+            }
+        }
+        let conn = state.db.lock().unwrap();
+        for table in ["photos", "tags", "albums", "photo_tags", "settings", "roots"] {
+            let n: i64 = conn.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r.get(0)).unwrap();
+            assert!(table == "settings" || table == "roots" || n >= 1, "tabela {table} została uszkodzona (wierszy: {n})");
+        }
+        let stored: i64 = conn.query_row("SELECT COUNT(*) FROM tags WHERE name LIKE '%drop table%'", [], |r| r.get(0)).unwrap();
+        assert!(stored >= 2, "złośliwy tekst powinien być zapisany jako zwykły tag");
+    }
+
+    #[test]
+    fn file_name_validation_blocks_traversal_and_spoofing() {
+        let bad = [
+            "", " ", "..", ".", "...", "../x", "..\\x", "a/b", "a\\b", "C:\\x", "c:x", "x:", "con", "CON", "Con.txt", "nul", "PRN", "aux.jpg",
+            "com1", "COM9.dat", "lpt1", "LPT9", "com0", "LPT0", "COM¹", "lpt².txt", "conin$", "CONOUT$", "a*b", "a?b", "a\"b", "a<b", "a>b", "a|b", "kropka.", "x\u{0}y", "x\ny", "x\ty",
+            "foto\u{202E}gpj", "a\u{200B}b", "a\u{FEFF}b", "\u{2066}x", &"d".repeat(151),
+        ];
+        for name in bad {
+            assert!(valid_stem(name).is_err(), "powinno odrzucić {name:?}");
+        }
+        let good = ["zdjęcie 1", "IMG_0001", "morze 2024 (kopia)", "a.b.c", "Ünïcödé", "日本語", "x-y_z", &"d".repeat(150), "lpt10", "console", "com12", "coma"];
+        for name in good {
+            assert!(valid_stem(name).is_ok(), "powinno przyjąć {name:?}");
+        }
+    }
+
+    #[test]
+    fn move_and_rename_cannot_escape_or_overwrite() {
+        let dir = std::env::temp_dir().join("mz-escape-test");
+        let state = test_state(&dir);
+        let lib = dir.join("lib");
+        let out = dir.join("out");
+        fs::create_dir_all(&lib).unwrap();
+        fs::create_dir_all(&out).unwrap();
+        let a = lib.join("a.jpg");
+        image::RgbImage::new(4, 4).save(&a).unwrap();
+        fs::write(out.join("a.jpg"), b"CUDZY-PLIK").unwrap();
+        scan_blocking(&state, lib.to_str().unwrap(), &|_| {}).unwrap();
+        let id = photo_id(&state, "a.jpg");
+
+        // Próby wyjścia z folderu przez nazwę.
+        for evil in ["..\\poza", "../poza", "..", "\\\\serwer\\udział\\x", "C:\\Windows\\x"] {
+            assert!(rename_photo_core(&state, id, evil).is_err(), "rename przyjął {evil:?}");
+        }
+        assert!(!dir.join("poza.jpg").exists() && !dir.join("poza").exists());
+
+        // Przenoszenie do folderu z plikiem o tej samej nazwie: cudzy plik zostaje, nasz dostaje _1.
+        let rep = move_photos_blocking(&state, &[id], &out, false).unwrap();
+        assert_eq!(rep.done, 1);
+        assert_eq!(fs::read(out.join("a.jpg")).unwrap(), b"CUDZY-PLIK", "cudzy plik został nadpisany");
+        assert!(out.join("a_1.jpg").exists());
+
+        // Cel, który jest plikiem albo nie istnieje: błąd, nic nie ginie.
+        assert!(move_photos_blocking(&state, &[id], &out.join("a.jpg"), false).is_err());
+        assert!(move_photos_blocking(&state, &[id], &dir.join("nie-ma-takiego"), true).is_err());
+        assert!(out.join("a_1.jpg").exists());
+    }
+
+    #[test]
+    fn broken_and_bomb_images_never_crash_scan_or_thumbnails() {
+        let dir = std::env::temp_dir().join("mz-bad-images");
+        let state = test_state(&dir);
+        let lib = dir.join("lib");
+        fs::create_dir_all(&lib).unwrap();
+        // Pliki udające zdjęcia: puste, śmieci, ucięty JPEG, nagłówek PNG deklarujący ogromne wymiary (bomba dekompresyjna).
+        fs::write(lib.join("pusty.jpg"), b"").unwrap();
+        fs::write(lib.join("smieci.jpg"), Rng(7).bytes(5000)).unwrap();
+        fs::write(lib.join("ucięty.png"), &[0x89, b'P', b'N', b'G', 13, 10, 26, 10]).unwrap();
+        let mut bomb = vec![0x89, b'P', b'N', b'G', 13, 10, 26, 10, 0, 0, 0, 13, b'I', b'H', b'D', b'R'];
+        bomb.extend(100_000u32.to_be_bytes()); // szerokość
+        bomb.extend(100_000u32.to_be_bytes()); // wysokość
+        bomb.extend([8, 2, 0, 0, 0, 0, 0, 0, 0]);
+        fs::write(lib.join("bomba.png"), &bomb).unwrap();
+        let good = lib.join("dobry.jpg");
+        image::RgbImage::new(16, 16).save(&good).unwrap();
+
+        // Skan nie może paść, a dobre zdjęcie musi się dodać mimo zepsutych sąsiadów.
+        scan_blocking(&state, lib.to_str().unwrap(), &|_| {}).unwrap();
+        let names: Vec<String> = {
+            let c = state.db.lock().unwrap();
+            let mut s = c.prepare("SELECT name FROM photos").unwrap();
+            s.query_map([], |r| r.get(0)).unwrap().filter_map(Result::ok).collect()
+        };
+        assert!(names.contains(&"dobry.jpg".to_string()));
+
+        // Miniatury zepsutych plików kończą się błędem, a nie paniką ani wyczerpaniem pamięci.
+        for bad in ["pusty.jpg", "smieci.jpg", "ucięty.png", "bomba.png"] {
+            let r = make_thumb(&lib.join(bad), &dir.join("t.jpg"));
+            assert!(r.is_err(), "{bad}: miniatura nie powinna się udać");
+            assert!(perceptual_hash(&lib.join(bad)).is_none(), "{bad}: hash percepcyjny nie powinien powstać");
+        }
+        assert!(make_thumb(&good, &dir.join("ok.jpg")).is_ok());
+    }
+
+    #[test]
+    fn parallel_metadata_changes_keep_database_and_sidecar_consistent() {
+        use std::sync::Arc;
+        let dir = std::env::temp_dir().join("mz-parallel-test");
+        let state = Arc::new(test_state(&dir));
+        let photo = dir.join("p.jpg");
+        image::RgbImage::new(4, 4).save(&photo).unwrap();
+        flush(&state, &mut vec![build_row(&photo).unwrap()]).unwrap();
+        let id = photo_id(&state, "p.jpg");
+
+        let handles: Vec<_> = (0..8)
+            .map(|t| {
+                let s = Arc::clone(&state);
+                std::thread::spawn(move || {
+                    for i in 0..40 {
+                        {
+                            let conn = s.db.lock().unwrap();
+                            conn.execute("UPDATE photos SET rating = ?2 WHERE id = ?1", params![id, (t + i) % 6]).unwrap();
+                            conn.execute("INSERT OR IGNORE INTO tags (name) VALUES (?1)", [format!("t{t}")]).unwrap();
+                            conn.execute("INSERT OR IGNORE INTO photo_tags (photo_id, tag_id) SELECT ?1, id FROM tags WHERE name = ?2", params![id, format!("t{t}")]).unwrap();
+                        }
+                        write_sidecar(&s, id).unwrap();
+                    }
+                })
+            })
+            .collect();
+        for h in handles {
+            h.join().expect("wątek zakończył się paniką");
+        }
+        write_sidecar(&state, id).unwrap();
+        let sc = read_sidecar(&photo).expect("plik XMP musi być poprawny po wyścigu zapisów");
+        let (rating, tags): (i64, i64) = {
+            let c = state.db.lock().unwrap();
+            (
+                c.query_row("SELECT rating FROM photos WHERE id = ?1", [id], |r| r.get(0)).unwrap(),
+                c.query_row("SELECT COUNT(*) FROM photo_tags WHERE photo_id = ?1", [id], |r| r.get(0)).unwrap(),
+            )
+        };
+        assert_eq!((sc.rating, sc.tags.len() as i64), (rating, tags), "plik XMP i baza się rozjechały");
+    }
+
     #[test]
     fn scan_and_thumbnail() {
         // Test na prawdziwym folderze ze zdjęciami: pomijany, gdy nie podano FOTO_DIR (np. w CI).
@@ -1845,7 +2302,7 @@ fn main() {
             app.manage(AppState { db: Mutex::new(db), thumbs, sidecar: AtomicBool::new(sidecar) });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![list_roots, remove_root, rescan_roots, list_albums, create_album, rename_album, delete_album, add_to_album, remove_from_album, rename_photo, move_photos, get_sidecar_enabled, set_sidecar_enabled, export_sidecars, import_sidecars, scan_folder, refresh_library, find_duplicates, trash_photos, list_photos, thumbnail, set_rating, set_favorite, add_tag, remove_tag, delete_tag, save_edit, save_collage, read_image, has_original, restore_original])
+        .invoke_handler(tauri::generate_handler![list_roots, remove_root, rescan_roots, list_albums, create_album, rename_album, delete_album, add_to_album, remove_from_album, rename_photo, move_photos, get_sidecar_enabled, set_sidecar_enabled, export_sidecars, import_sidecars, scan_folder, refresh_library, find_duplicates, trash_photos, hide_photos, hidden_count, restore_hidden, list_photos, thumbnail, set_rating, set_favorite, add_tag, remove_tag, delete_tag, save_edit, save_collage, read_image, has_original, restore_original])
         .run(tauri::generate_context!())
         .expect("błąd uruchomienia aplikacji");
 }

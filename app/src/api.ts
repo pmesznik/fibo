@@ -48,7 +48,10 @@ export const setFavorite = (id: number, favorite: boolean) => invoke('set_favori
 export type DupGroup = { kind: 'exact' | 'similar'; ids: number[] }
 /** maxDistance: null = tylko identyczne pliki; liczba = także podobne (odległość hashy 0-64, sensownie 4-10). */
 export const findDuplicates = (maxDistance: number | null) => invoke<DupGroup[]>('find_duplicates', { maxDistance })
-export const trashPhotos = (ids: number[]) => invoke<number>('trash_photos', { ids })
+export const trashPhotos = (ids: number[], confirm?: string) => invoke<number>('trash_photos', { ids, confirm })
+export const hidePhotos = (ids: number[]) => invoke<number>('hide_photos', { ids })
+export const hiddenCount = () => invoke<number>('hidden_count')
+export const restoreHidden = () => invoke<number>('restore_hidden')
 
 export type SidecarReport = { written: number; removed: number; skipped: number; unchanged: number; failed: number }
 export type ImportReport = { files: number; changed: number }
@@ -73,7 +76,6 @@ export const saveCollage = (id: number, bytes: ArrayBuffer, name: string) =>
   invoke<number>('save_collage', bytes, { headers: { id: String(id), name } })
 
 export const readImage = (id: number) => invoke<ArrayBuffer>('read_image', { id })
-export const imageUrl = (path: string) => convertFileSrc(path)
 
 export async function thumbnailUrl(id: number) {
   return convertFileSrc(await invoke<string>('thumbnail', { id }))

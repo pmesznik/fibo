@@ -1,0 +1,17 @@
+# Automatyczne propozycje aktualizacji zależności (poprawki bezpieczeństwa trafiają tu najszybciej).
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: npm
+    directory: /app
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+  - package-ecosystem: cargo
+    directory: /app/src-tauri
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5

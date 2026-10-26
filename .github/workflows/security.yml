@@ -1,0 +1,39 @@
+name: Audyt zależności FIBO
+
+on:
+  schedule:
+    - cron: '17 5 * * 1'     # co poniedziałek rano
+  push:
+    branches: [main]
+    paths: ['app/package-lock.json', 'app/src-tauri/Cargo.lock', '.github/workflows/security.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  npm-audit:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
+        with:
+          node-version: 22
+      - name: Audyt zależności npm (próg: wysoki)
+        run: npm audit --audit-level=high
+
+  cargo-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8  # master, kanał ustawiony niżej
+        with:
+          toolchain: stable
+      - name: Instalacja cargo-audit
+        run: cargo install cargo-audit --locked
+      - name: Audyt zależności Rusta (baza RustSec)
+        working-directory: app/src-tauri
+        run: cargo audit

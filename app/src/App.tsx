@@ -6,7 +6,7 @@ import { UpdateDialog, useUpdater } from './Updater'
 import { exportSidecars, getSidecarEnabled, importSidecars, setSidecarEnabled } from './api'
 import {
   addToAlbum, createAlbum, deleteAlbum, listAlbums, listRoots, movePhotos, removeFromAlbum, removeRoot,
-  renameAlbum, renamePhoto, rescanRoots, trashPhotos, type Album,
+  renameAlbum, renamePhoto, rescanRoots, trashPhotos, hidePhotos, hiddenCount, restoreHidden, type Album,
 } from './api'
 import { AlbumPicker, PromptDialog } from './Dialogs'
 import { addTag, deleteTag, inTauri, listPhotos, pickFolder, refreshLibrary, removeTag, scanFolder, setFavorite, setRating, type Photo } from './api'
@@ -18,7 +18,7 @@ import { Justified } from './Justified'
 import { Chip, Sec, Toast } from './ui'
 import {
   Images, FolderOpen, Users, MapPin, Heart, Star, Plus, Play, Maximize2, X,
-  SlidersHorizontal, Search as SearchIcon, ImageUp, Ruler, LayoutDashboard, Check, ListChecks, Tag, CalendarDays, Copy, RefreshCw, Download, Save, Pencil, Trash2,
+  SlidersHorizontal, Search as SearchIcon, ImageUp, Ruler, LayoutDashboard, Check, ListChecks, Tag, CalendarDays, Copy, RefreshCw, Download, Save, Pencil, Trash2, Eye, EyeOff,
 } from './FiboIcons'
 
 type Mode = 'library' | 'albums' | 'favs' | 'people' | 'map'
@@ -118,6 +118,9 @@ export default function App() {
   useEffect(() => { reload() }, [reload])
   const reloadAlbums = useCallback(async () => { if (inTauri) setAlbums(await listAlbums()) }, [])
   const reloadRoots = useCallback(async () => { if (inTauri) setRoots(await listRoots()) }, [])
+  const [hiddenN, setHiddenN] = useState(0)
+  const reloadHidden = useCallback(async () => { if (inTauri) setHiddenN(await hiddenCount()) }, [])
+  useEffect(() => { reloadHidden() }, [reloadHidden])
   useEffect(() => { reloadAlbums(); reloadRoots() }, [reloadAlbums, reloadRoots])
 
   /** Szuka nowych zdjęć w obserwowanych folderach i usuwa z biblioteki zdjęcia, których plików już nie ma. */
@@ -395,22 +398,64 @@ export default function App() {
       say(r.errors.length ? `${copy ? 'Skopiowano' : 'Przeniesiono'} ${r.done}, błędy: ${r.errors.length} (${r.errors[0]})` : `${copy ? 'Skopiowano' : 'Przeniesiono'}: ${r.done}`, r.errors.length ? 'err' : 'ok')
     } catch (e) { say(`Błąd: ${e}`, 'err') }
   }
-  const trashSelected = () => {
-    setMenu(null)
-    const ids = realIds()
+  const sizeText = (list: Photo[]) => {
+    const b = list.reduce((s, p) => s + p.size, 0)
+    return b >= 1073741824 ? `${(b / 1073741824).toFixed(1)} GB` : `${(b / 1048576).toFixed(1)} MB`
+  }
+  /** Usuwa zdjęcia z biblioteki bez ruszania plików. Można je przywrócić z menu. */
+  const askHide = (ids: number[], what: string) => {
     if (!ids.length) return
+    const list = all.filter((p) => ids.includes(p.id))
     setConfirm({
-      text: `Przenieść ${ids.length} ${pl(ids.length, 'zdjęcie', 'zdjęcia', 'zdjęć')} do Kosza Windows? Możesz je stamtąd przywrócić.`, yes: 'Przenieś do Kosza',
+      text: `Ukryć w FIBO ${what}: ${ids.length} ${pl(ids.length, 'zdjęcie', 'zdjęcia', 'zdjęć')} (${sizeText(list)})? Pliki zostają na dysku. Ukryte zdjęcia możesz przywrócić w menu, a ponowne dodanie folderu też je przywraca.`,
+      yes: 'Ukryj w FIBO',
       run: async () => {
         try {
-          const n = await trashPhotos(ids)
+          const n = await hidePhotos(ids)
           setAll((l) => l.filter((p) => !ids.includes(p.id)))
           setSel([])
-          await reloadAlbums()
-          say(`Przeniesiono do Kosza: ${n}`, 'ok')
-        } catch (e) { say(`Nie udało się przenieść do Kosza: ${e}`, 'err'); await reload() }
+          await Promise.all([reloadAlbums(), reloadHidden()])
+          say(`Ukryto w FIBO: ${n} (pliki zostały na dysku)`, 'ok')
+        } catch (e) { say(`Nie udało się ukryć: ${e}`, 'err'); await reload() }
       },
     })
+  }
+  /** Przenosi pliki do Kosza Windows. Od 20 zdjęć albo dla całego folderu trzeba wpisać słowo USUŃ (sprawdza je też backend). */
+  const askTrash = (ids: number[], what: string, forceTyped = false) => {
+    if (!ids.length) return
+    const list = all.filter((p) => ids.includes(p.id))
+    const summary = `${ids.length} ${pl(ids.length, 'zdjęcie', 'zdjęcia', 'zdjęć')} (${sizeText(list)})`
+    const run = async (word?: string) => {
+      const n = await trashPhotos(ids, word)
+      setAll((l) => l.filter((p) => !ids.includes(p.id)))
+      setSel([])
+      await reloadAlbums()
+      say(`Przeniesiono do Kosza: ${n}`, 'ok')
+    }
+    if (ids.length >= 20 || forceTyped) {
+      setPrompt({
+        title: 'Usunąć z dysku?', confirm: 'Przenieś do Kosza', label: 'Aby potwierdzić, wpisz USUŃ',
+        hint: `${what}: ${summary} trafi do Kosza Windows. Folder zostaje, usuwane są tylko zdjęcia znane FIBO, i możesz je stamtąd przywrócić.`,
+        onSubmit: async (v) => {
+          if (v.trim() !== 'USUŃ') return 'Wpisz dokładnie słowo USUŃ.'
+          try { await run(v.trim()) } catch (e) { await reload(); return `Nie udało się przenieść do Kosza: ${e}` }
+        },
+      })
+      return
+    }
+    setConfirm({
+      text: `Przenieść ${what}: ${summary} do Kosza Windows? Możesz je stamtąd przywrócić.`, yes: 'Przenieś do Kosza',
+      run: async () => { try { await run() } catch (e) { say(`Nie udało się przenieść do Kosza: ${e}`, 'err'); await reload() } },
+    })
+  }
+  const trashSelected = () => { setMenu(null); askTrash(realIds(), 'zaznaczone') }
+  const hideSelected = () => { setMenu(null); askHide(realIds(), 'zaznaczone') }
+  const unhideAll = async () => {
+    try {
+      const n = await restoreHidden()
+      await Promise.all([reload(), reloadHidden()])
+      say(`Przywrócono do biblioteki: ${n}`, 'ok')
+    } catch (e) { say(`Błąd: ${e}`, 'err') }
   }
 
   const cycleRating = () => {
@@ -621,6 +666,20 @@ export default function App() {
                 ))}
               </div>
               {folders.length === 0 && <p style={{ color: 'var(--muted)', fontSize: 13 }}>Brak folderów. Dodaj pierwszy przyciskiem Dodaj folder.</p>}
+              {folder && (() => {
+                const list = folders.find(([d]) => d === folder)?.[1] ?? []
+                if (!list.length) return null
+                const ids = list.map((p) => p.id)
+                return (
+                  <>
+                    <button className="wide" onClick={() => { setDrawer(false); askHide(ids, `z folderu „${folderName(folder)}”`) }}><EyeOff size={17} /> Ukryj folder w FIBO (pliki zostają)</button>
+                    <button className="wide" style={{ color: 'var(--err)' }} onClick={() => { setDrawer(false); askTrash(ids, `z folderu „${folderName(folder)}”`, true) }}><Trash2 size={17} /> Zdjęcia z folderu do Kosza…</button>
+                  </>
+                )
+              })()}
+              {hiddenN > 0 && (
+                <button className="wide" onClick={unhideAll}><Eye size={17} /> Przywróć ukryte zdjęcia ({hiddenN})</button>
+              )}
             </Sec>
             <Sec id="look" icon={<Ruler size={17} />} title="Wygląd" defaultOpen
               hint={`${theme === 'auto' ? 'Motyw systemu' : theme === 'light' ? 'Jasny motyw' : 'Ciemny motyw'} · ${original ? 'oryginalne proporcje' : 'równe kafelki'}`}>
@@ -883,6 +942,7 @@ export default function App() {
             )}
             <button className="text menu-item" role="menuitem" onClick={() => moveSelected(false)}><ImageUp size={18} /> Przenieś do folderu…</button>
             <button className="text menu-item" role="menuitem" onClick={() => moveSelected(true)}><Copy size={18} /> Kopiuj do folderu…</button>
+            <button className="text menu-item" role="menuitem" onClick={hideSelected}><EyeOff size={18} /> Usuń z biblioteki (pliki zostają)…</button>
             <button className="text menu-item" role="menuitem" style={{ color: 'var(--err)' }} onClick={trashSelected}><Trash2 size={18} /> Przenieś do Kosza…</button>
             <div style={{ height: 1, background: 'var(--glass-line)', margin: '4px 6px' }} />
             <button className="text menu-item" role="menuitem" onClick={() => { setSel(photos.map((p) => p.id)); setMenu(null) }}><ListChecks size={18} /> Zaznacz wszystkie ({photos.length})</button>

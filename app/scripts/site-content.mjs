@@ -108,7 +108,8 @@ export const PL = {
         <li><strong>Ocena</strong> (gwiazdki), <strong>ulubione</strong>, <strong>Tagi…</strong>, <strong>Dodaj do albumu…</strong>, <strong>Kolaż</strong> (od dwóch zdjęć), <strong>Zaznacz wszystkie</strong>.</li>
         <li><strong>Zmień nazwę pliku…</strong> (jedno zdjęcie): rozszerzenie zostaje, plik XMP zmienia nazwę razem ze zdjęciem. FIBO odrzuca nazwy ze znakami niedozwolonymi w Windows (<code>\\ / : * ? " &lt; &gt; |</code>), zarezerwowane (CON, NUL, COM1…) i nie nadpisuje istniejącego pliku.</li>
         <li><strong>Przenieś do folderu…</strong> i <strong>Kopiuj do folderu…</strong>: nic nie jest nadpisywane, przy zajętej nazwie FIBO dopisuje <code>_1</code>, <code>_2</code>. Plik XMP idzie razem ze zdjęciem. Przenoszenie między dyskami kopiuje, sprawdza rozmiar i dopiero wtedy usuwa źródło.</li>
-        <li><strong>Przenieś do Kosza…</strong> pyta o zgodę i przenosi pliki do Kosza Windows, skąd można je przywrócić.</li>
+        <li><strong>Usuń z biblioteki (pliki zostają)…</strong> ukrywa zdjęcia w FIBO, a pliki na dysku zostają nietknięte. Ukryte zdjęcia wrócą po wybraniu <em>Przywróć ukryte zdjęcia</em> w menu (sekcja Foldery) albo po ponownym dodaniu folderu.</li>
+        <li><strong>Przenieś do Kosza…</strong> pyta o zgodę i przenosi pliki do Kosza Windows, skąd można je przywrócić. Od 20 zdjęć, a także dla zdjęć z całego folderu, trzeba wpisać słowo <em>USUŃ</em>. FIBO usuwa tylko zdjęcia, które zna, nigdy cały folder.</li>
       </ul>` },
     { id: 'viewer', t: 'Podgląd zdjęcia', h: `
       <p>Dwuklik na zdjęciu (albo Enter) otwiera je na cały ekran. U góry są nazwa, ocena, ulubione, cofnij i ponów, pokaz slajdów, powiększanie, porównanie z oryginałem i pełny ekran, a na dole pasek miniatur. Strzałki przy krawędziach przełączają zdjęcia.</p>
@@ -137,6 +138,7 @@ export const PL = {
       </ul>` },
     { id: 'map', t: 'Mapa', h: `
       <p>Zakładka <strong>Mapa</strong> pokazuje globus z pinezkami w miejscach, gdzie zrobiono zdjęcia. Zdjęcia z jednego miejsca łączą się w jedną pinezkę z liczbą, a bliskie pinezki w skupisko. Kliknięcie skupiska przybliża widok, a kliknięcie pinezki otwiera panel z miniaturami. Kliknięcie miniatury otwiera podgląd.</p>
+      <p>Mapa pokazuje, gdzie w tej chwili jest dzień, a gdzie noc, razem ze smugą zmierzchu. Na dole jest zegar, suwak czasu (±12 godzin), przycisk <strong>Teraz</strong> i przycisk <strong>animacji doby</strong>, który w kilkanaście sekund przesuwa cały dzień. Pozycja Słońca jest liczona na komputerze.</p>
       <ul>
         <li>Pozycje pochodzą z danych GPS w zdjęciach (EXIF). Zdjęcia bez GPS nie pojawiają się na mapie, a licznik w rogu pokazuje, ile ich jest.</li>
         <li>Zdjęcia dodane przed obsługą mapy nie mają zapisanych współrzędnych: wybierz <em>Wczytaj lokalizacje ze zdjęć</em> w zakładce Mapa albo <em>Odśwież dane zdjęć</em> w menu.</li>
@@ -309,7 +311,8 @@ export const EN = {
         <li><strong>Rating</strong> (stars), <strong>favorite</strong>, <strong>Tags…</strong>, <strong>Add to album…</strong>, <strong>Collage</strong> (from two photos), <strong>Select all</strong>.</li>
         <li><strong>Rename file…</strong> (one photo): the extension stays and the XMP file is renamed with the photo. FIBO rejects names with characters Windows does not allow (<code>\\ / : * ? " &lt; &gt; |</code>), reserved names (CON, NUL, COM1…) and never overwrites an existing file.</li>
         <li><strong>Move to folder…</strong> and <strong>Copy to folder…</strong>: nothing is overwritten, and when a name is taken FIBO appends <code>_1</code>, <code>_2</code>. The XMP file goes with the photo. Moving across drives copies, checks the size and only then removes the source.</li>
-        <li><strong>Move to Recycle Bin…</strong> asks for confirmation and moves the files to the Windows Recycle Bin, from where you can restore them.</li>
+        <li><strong>Remove from library (files stay)…</strong> hides photos in FIBO and leaves the files on disk untouched. Bring them back with <em>Restore hidden photos</em> in the menu (Folders section) or by adding the folder again.</li>
+        <li><strong>Move to Recycle Bin…</strong> asks for confirmation and moves the files to the Windows Recycle Bin, from where you can restore them. For 20 or more photos, and for all photos of a folder, you must type <em>USUŃ</em>. FIBO only deletes photos it knows about, never a whole folder.</li>
       </ul>` },
     { id: 'viewer', t: 'Photo viewer', h: `
       <p>Double-click a photo (or press Enter) to open it full screen. The top bar has the name, rating, favorite, undo and redo, slideshow, zoom, compare with original and full screen; the bottom has a thumbnail strip. Arrows at the edges switch photos.</p>
@@ -338,6 +341,7 @@ export const EN = {
       </ul>` },
     { id: 'map', t: 'Map', h: `
       <p>The <strong>Map</strong> tab shows a globe with pins where your photos were taken. Photos from one place share a pin with a count, and nearby pins form a cluster. Click a cluster to zoom in, or a pin to open a panel with thumbnails. Click a thumbnail to open the viewer.</p>
+      <p>The map shows where it is day and where it is night right now, with a smooth twilight band. At the bottom are a clock, a time slider (±12 hours), a <strong>Now</strong> button and a <strong>day animation</strong> button that sweeps a whole day in a few seconds. The Sun's position is computed on your computer.</p>
       <ul>
         <li>Positions come from the GPS data in your photos (EXIF). Photos without GPS do not appear, and the counter in the corner shows how many there are.</li>
         <li>Photos added before map support have no stored coordinates: choose <em>Load locations from photos</em> in the Map tab or <em>Refresh photo data</em> in the menu.</li>

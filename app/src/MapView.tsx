@@ -1,26 +1,38 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Map as MapLibre, setWorkerUrl, type GeoJSONSource, type MapLayerMouseEvent } from 'maplibre-gl'
+import { Map as MapLibre, setWorkerUrl, type CanvasSource, type GeoJSONSource, type MapLayerMouseEvent } from 'maplibre-gl'
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url'
 import type { FeatureCollection, Point } from 'geojson'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import { MapPinOff, RefreshCw, X } from './FiboIcons'
+import { MapPinOff, Pause, Play, RefreshCw, Sun, X } from './FiboIcons'
 import type { Photo } from './api'
 import { Thumb } from './Thumb'
+import { MERCATOR_LAT, drawNight } from './daynight'
 
 // Vite przepakowuje bibliotekę i gubi ścieżkę do workera, więc podajemy ją wprost.
 setWorkerUrl(workerUrl)
 
-const STYLE_LIGHT = 'https://tiles.openfreemap.org/styles/liberty'
-const STYLE_DARK = 'https://tiles.openfreemap.org/styles/dark'
+// Mapa jest zawsze "dzienna"; noc rysujemy na niej osobną warstwą, zgodnie z aktualnym położeniem Słońca.
+const STYLE = 'https://tiles.openfreemap.org/styles/liberty'
 
 type Place = { key: string; lat: number; lon: number; photos: Photo[] }
+type Mode = 'live' | 'manual' | 'anim'
 
 const pinSvg = (color: string) =>
   `data:image/svg+xml;utf8,${encodeURIComponent(
     `<svg xmlns="http://www.w3.org/2000/svg" width="48" height="60" viewBox="0 0 48 60"><path d="M24 2C12.4 2 3 11.2 3 22.6 3 38 24 58 24 58s21-20 21-35.4C45 11.2 35.6 2 24 2z" fill="${color}" stroke="#fff" stroke-width="3"/><circle cx="24" cy="23" r="8" fill="#fff"/></svg>`,
   )}`
 
-/** Globus ze zdjęciami: pinezka stoi tam, gdzie zrobiono zdjęcie, a kliknięcie pokazuje zdjęcia z tego miejsca. */
+const MINUTES_PER_SECOND = 60 // animacja doby: godzina na sekundę, doba w 24 sekundy
+const RANGE = 720             // suwak: od -12 do +12 godzin względem teraz
+
+const offsetLabel = (min: number) => {
+  const m = Math.round(Math.abs(min))
+  if (m < 1) return 'teraz'
+  const h = Math.floor(m / 60), r = m % 60
+  return `${min < 0 ? '−' : '+'}${h ? `${h} h ` : ''}${r ? `${r} min` : ''}`.trim() + ' od teraz'
+}
+
+/** Globus ze zdjęciami: pinezka stoi tam, gdzie zrobiono zdjęcie, a kliknięcie pokazuje zdjęcia z tego miejsca. Pokazuje też, gdzie jest dzień, a gdzie noc. */
 export function MapView({ photos, total, refreshing, onRefresh, onOpen }: {
   photos: Photo[]            // zdjęcia z widoku (po filtrach)
   total: number              // wszystkie zdjęcia w bibliotece
@@ -33,6 +45,27 @@ export function MapView({ photos, total, refreshing, onRefresh, onOpen }: {
   const readyRef = useRef(false)
   const [error, setError] = useState<string | null>(null)
   const [picked, setPicked] = useState<Place | null>(null)
+
+  // Dzień i noc: tryb (na żywo, ręczny, animacja doby) i przesunięcie w minutach względem teraz.
+  const nightCanvas = useRef<HTMLCanvasElement | null>(null)
+  const modeRef = useRef<Mode>('live')
+  const offsetRef = useRef(0)
+  const [mode, setModeState] = useState<Mode>('live')
+  const [offset, setOffset] = useState(0)
+  const [clock, setClock] = useState(() => new Date())
+  const setMode = (m: Mode) => { modeRef.current = m; setModeState(m) }
+  const simDate = () => new Date(Date.now() + offsetRef.current * 60000)
+
+  /** Odrysowuje noc dla danej chwili i każe mapie odświeżyć warstwę. */
+  const paint = (date: Date, keepPlaying = false) => {
+    const c = nightCanvas.current
+    if (!c) return
+    drawNight(c, date)
+    const src = mapRef.current?.getSource('night') as CanvasSource | undefined
+    if (!src) return
+    src.play()
+    if (!keepPlaying) window.setTimeout(() => { if (modeRef.current !== 'anim') src.pause() }, 160)
+  }
 
   // Zdjęcia z tego samego miejsca (do ~10 m) tworzą jedną pinezkę.
   const places = useMemo(() => {
@@ -61,18 +94,16 @@ export function MapView({ photos, total, refreshing, onRefresh, onOpen }: {
   // Utworzenie mapy (raz).
   useEffect(() => {
     if (!box.current) return
-    // Styl mapy zgodny z motywem aplikacji (ręcznym albo systemowym).
-    const forced = document.documentElement.getAttribute('data-theme')
-    const dark = forced ? forced === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches
-    const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#e4572e'
+    const accentNow = () => getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#6d5bf0'
     const first = placesRef.current
     const center: [number, number] = first.length
       ? [first.reduce((a, p) => a + p.lon, 0) / first.length, first.reduce((a, p) => a + p.lat, 0) / first.length]
       : [15, 35]
 
+    nightCanvas.current = document.createElement('canvas')
     const map = new MapLibre({
       container: box.current,
-      style: dark ? STYLE_DARK : STYLE_LIGHT,
+      style: STYLE,
       center, zoom: first.length ? 1.9 : 1.4,
       attributionControl: { compact: true },
       maxPitch: 60,
@@ -84,14 +115,30 @@ export function MapView({ photos, total, refreshing, onRefresh, onOpen }: {
       if (!readyRef.current) setError(String(e.error?.message ?? 'Nie można wczytać mapy'))
     })
 
-    map.on('load', async () => {
+    let handlersAdded = false
+    const install = async () => {
+      if (map.getSource('photos')) return
       readyRef.current = true
       setError(null)
       map.setProjection({ type: 'globe' })
 
+      // Warstwa nocy leży pod napisami mapy, więc nazwy miejsc zostają czytelne także po ciemnej stronie.
+      if (nightCanvas.current && !map.getSource('night')) {
+        map.addSource('night', {
+          type: 'canvas', canvas: nightCanvas.current, animate: false,
+          coordinates: [[-180, MERCATOR_LAT], [180, MERCATOR_LAT], [180, -MERCATOR_LAT], [-180, -MERCATOR_LAT]],
+        })
+        const firstSymbol = map.getStyle().layers.find((l) => l.type === 'symbol')?.id
+        map.addLayer({ id: 'night', type: 'raster', source: 'night', paint: { 'raster-fade-duration': 0 } }, firstSymbol)
+        paint(simDate())
+      }
+
+      const accent = accentNow()
       const img = new Image(48, 60)
       img.src = pinSvg(accent)
       await img.decode()
+      if (map.getSource('photos')) return
+      if (map.hasImage('pin')) map.removeImage('pin')
       map.addImage('pin', img, { pixelRatio: 2 })
 
       map.addSource('photos', {
@@ -122,6 +169,8 @@ export function MapView({ photos, total, refreshing, onRefresh, onOpen }: {
         paint: { 'text-color': accent },
       })
 
+      if (handlersAdded) return
+      handlersAdded = true
       map.on('click', 'clusters', async (e: MapLayerMouseEvent) => {
         const f = map.queryRenderedFeatures(e.point, { layers: ['clusters'] })[0]
         if (!f) return
@@ -138,10 +187,64 @@ export function MapView({ photos, total, refreshing, onRefresh, onOpen }: {
         map.on('mouseenter', layer, () => { map.getCanvas().style.cursor = 'pointer' })
         map.on('mouseleave', layer, () => { map.getCanvas().style.cursor = '' })
       }
-    })
+    }
+    map.on('style.load', () => { install() })
 
-    return () => { readyRef.current = false; map.remove(); mapRef.current = null }
+    return () => {
+      readyRef.current = false
+      map.remove()
+      mapRef.current = null
+      nightCanvas.current = null
+    }
   }, [])
+
+  // Na żywo: noc odświeża się co 20 sekund, więc granica dnia i nocy płynnie wędruje razem z zegarem.
+  useEffect(() => {
+    if (mode !== 'live') return
+    offsetRef.current = 0
+    setOffset(0)
+    const tick = () => { const d = new Date(); setClock(d); paint(d) }
+    tick()
+    const every = window.setInterval(tick, 20000)
+    return () => window.clearInterval(every)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode])
+
+  // Animacja doby: czas biegnie godzinę na sekundę w pętli od -12 h do +12 h względem teraz.
+  useEffect(() => {
+    if (mode !== 'anim') return
+    let raf = 0
+    let last = performance.now()
+    let lastDraw = 0
+    let lastUi = 0
+    const step = (now: number) => {
+      offsetRef.current += (now - last) * (MINUTES_PER_SECOND / 1000)
+      last = now
+      if (offsetRef.current > RANGE) offsetRef.current -= 2 * RANGE
+      if (now - lastDraw > 33) {
+        lastDraw = now
+        const d = simDate()
+        paint(d, true)
+        if (now - lastUi > 100) { lastUi = now; setOffset(offsetRef.current); setClock(d) }
+      }
+      raf = requestAnimationFrame(step)
+    }
+    raf = requestAnimationFrame(step)
+    return () => {
+      cancelAnimationFrame(raf)
+      ;(mapRef.current?.getSource('night') as CanvasSource | undefined)?.pause()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode])
+
+  const onSlide = (v: number) => {
+    setMode('manual')
+    offsetRef.current = v
+    setOffset(v)
+    const d = simDate()
+    setClock(d)
+    paint(d)
+  }
 
   // Odświeżenie pinezek po zmianie zdjęć lub filtrów.
   useEffect(() => {
@@ -159,10 +262,11 @@ export function MapView({ photos, total, refreshing, onRefresh, onOpen }: {
   }, [])
 
   const missing = total - geoPhotos
+  const clockText = clock.toLocaleString('pl-PL', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 1 }}>
-      <div ref={box} aria-label="Globus ze zdjęciami" style={{ position: 'absolute', inset: 0 }} />
+      <div ref={box} aria-label="Globus ze zdjęciami, z podziałem na dzień i noc" style={{ position: 'absolute', inset: 0 }} />
 
       {error && (
         <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', pointerEvents: 'none' }}><div className="glass" style={{ width: 'min(92vw,380px)', borderRadius: 'var(--r-lg)', padding: 24, textAlign: 'center', color: 'var(--muted)', pointerEvents: 'auto' }}>
@@ -199,6 +303,23 @@ export function MapView({ photos, total, refreshing, onRefresh, onOpen }: {
           )}
         </div>
       )}
+
+      {/* Dzień i noc: czas na mapie, suwak godziny, powrót do teraz i animacja doby. */}
+      <div className="glass" role="group" aria-label="Dzień i noc na mapie"
+        style={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)', bottom: 'calc(12px + var(--sab))', width: 'min(94vw, 560px)', padding: '8px 12px', borderRadius: 'var(--r-lg)', display: 'flex', alignItems: 'center', gap: 8, zIndex: 5 }}>
+        <span aria-hidden style={{ color: 'var(--accent)', display: 'inline-flex' }}><Sun size={20} /></span>
+        <div style={{ minWidth: 0, flex: '0 0 auto', lineHeight: 1.2 }}>
+          <div style={{ fontWeight: 650, fontSize: 13.5 }} aria-live="off">{clockText}</div>
+          <div style={{ color: 'var(--muted)', fontSize: 11.5 }}>{mode === 'live' ? 'teraz, czas lokalny' : offsetLabel(offset)}</div>
+        </div>
+        <input type="range" min={-RANGE} max={RANGE} step={5} value={Math.round(offset)} aria-label="Godzina na mapie względem teraz"
+          onChange={(e) => onSlide(+e.target.value)} style={{ flex: 1, minWidth: 80 }} />
+        <button className="ico" aria-label={mode === 'anim' ? 'Zatrzymaj animację doby' : 'Animacja doby'} title={mode === 'anim' ? 'Zatrzymaj animację' : 'Animacja doby: godzina na sekundę'}
+          aria-pressed={mode === 'anim'} onClick={() => setMode(mode === 'anim' ? 'manual' : 'anim')} style={{ color: mode === 'anim' ? 'var(--accent)' : undefined }}>
+          {mode === 'anim' ? <Pause size={20} /> : <Play size={20} />}
+        </button>
+        <button className="chip" disabled={mode === 'live'} onClick={() => setMode('live')} aria-label="Pokaż aktualny dzień i noc">Teraz</button>
+      </div>
 
       {picked && (
         <aside className="sheet glass" aria-label="Zdjęcia z tego miejsca" style={{ zIndex: 1200 }}>
