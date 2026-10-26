@@ -1,20 +1,20 @@
 import { useCallback, useEffect, useState } from 'react'
 import { listen } from '@tauri-apps/api/event'
-import { EyeOff, Eye, Pencil, Pause, Play, Trash2, Users, X } from './FiboIcons'
+import { EyeOff, Eye, Pencil, Star, Pause, Play, Trash2, Users, X } from './FiboIcons'
 import {
-  facesDeleteAll, facesStart, facesStatus, facesStop, faceBlob, ignorePerson, listPeople, mergePeople, personPhotos,
+  facesDeleteAll, facesStart, personFaces, setPersonCover, facesStatus, facesStop, faceBlob, ignorePerson, listPeople, mergePeople, personPhotos,
   renamePerson, setFacesEnabled, type FacesProgress, type FacesStatus, type Person,
 } from './api'
 import { PromptDialog } from './Dialogs'
 
-function FaceImg({ id }: { id: number }) {
+function FaceImg({ id, size = 120 }: { id: number; size?: number }) {
   const [src, setSrc] = useState<string | null>(null)
   useEffect(() => {
     let url: string | null = null, dead = false
     faceBlob(id).then((b) => { if (dead) return; url = URL.createObjectURL(b); setSrc(url) }).catch(() => {})
     return () => { dead = true; if (url) URL.revokeObjectURL(url) }
   }, [id])
-  return src ? <img src={src} alt="" width={120} height={120} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : null
+  return src ? <img src={src} alt="" width={size} height={size} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : null
 }
 
 const pl = (n: number, one: string, few: string, many: string) =>
@@ -36,6 +36,8 @@ export function People({ say, ask, onOpenPerson, onChanged }: {
   // Łączenie przez przeciągnięcie: upuszczenie jednej osoby na drugą tylko proponuje połączenie, dopiero „Zatwierdź” je wykonuje.
   const [dragId, setDragId] = useState<number | null>(null)
   const [overId, setOverId] = useState<number | null>(null)
+  const [coverFor, setCoverFor] = useState<Person | null>(null)
+  const [coverFaces, setCoverFaces] = useState<number[]>([])
   const [pending, setPending] = useState<{ from: Person; into: Person } | null>(null)
 
   const refresh = useCallback(async () => {
@@ -72,6 +74,13 @@ export function People({ say, ask, onOpenPerson, onChanged }: {
     yes: 'Usuń dane twarzy',
     run: async () => { try { await facesDeleteAll(); setProg(null); await refresh(); say('Dane twarzy usunięte', 'ok') } catch (e) { say(`Błąd: ${e}`, 'err') } },
   })
+  const pickCover = async (p: Person) => {
+    try { setCoverFaces(await personFaces(p.id)); setCoverFor(p) } catch (e) { say(`Błąd: ${e}`, 'err') }
+  }
+  const chooseCover = async (face: number) => {
+    if (!coverFor) return
+    try { await setPersonCover(coverFor.id, face); setCoverFor(null); await refresh(); say('Okładka osoby zmieniona', 'ok') } catch (e) { say(`Błąd: ${e}`, 'err') }
+  }
   const confirmMerge = async () => {
     if (!pending) return
     try { await mergePeople(pending.from.id, pending.into.id); setPending(null); await refresh(); say('Osoby połączone', 'ok') } catch (e) { say(`Błąd: ${e}`, 'err') }
@@ -185,6 +194,7 @@ export function People({ say, ask, onOpenPerson, onChanged }: {
             </button>
             <div style={{ display: 'flex', gap: 2, justifyContent: 'center', marginTop: 4 }}>
               <button className="ico" style={{ minWidth: 40, minHeight: 36 }} aria-label={`Nazwij osobę ${p.name ?? ''}`} title="Nadaj imię" onClick={() => setRenaming(p)}><Pencil size={16} /></button>
+              <button className="ico" style={{ minWidth: 40, minHeight: 36 }} aria-label={`Wybierz okładkę osoby ${p.name ?? ''}`} title="Wybierz twarz na okładkę" onClick={() => pickCover(p)}><Star size={16} /></button>
               <button className="ico" style={{ minWidth: 40, minHeight: 36 }} aria-label="Połącz z inną osobą" title="To ta sama osoba co inna: połącz" onClick={() => setMergeFrom(p)}><Users size={16} /></button>
               <button className="ico" style={{ minWidth: 40, minHeight: 36 }} aria-label={p.ignored ? 'Przywróć osobę na listę' : 'Pomiń tę osobę'} title={p.ignored ? 'Przywróć' : 'Pomiń (np. przypadkowy przechodzień)'}
                 onClick={async () => { await ignorePerson(p.id, !p.ignored); refresh() }}>{p.ignored ? <Eye size={16} /> : <EyeOff size={16} />}</button>
@@ -192,6 +202,29 @@ export function People({ say, ask, onOpenPerson, onChanged }: {
           </div>
         ))}
       </div>
+
+      {coverFor && (
+        <>
+          <div className="fixed inset-0 z-[1700]" style={{ background: 'rgba(0,0,0,.45)' }} onClick={() => setCoverFor(null)} />
+          <div className="glass fixed left-1/2 top-1/2 z-[1800] flex max-h-[85vh] w-[min(92vw,520px)] -translate-x-1/2 -translate-y-1/2 flex-col" style={{ borderRadius: 'var(--r-lg)' }} role="dialog" aria-label="Wybierz okładkę osoby">
+            <div className="dr-head" style={{ paddingBottom: 0 }}>
+              <span>Okładka: {coverFor.name ?? 'Nieznana osoba'}</span>
+              <button className="ico" aria-label="Zamknij" onClick={() => setCoverFor(null)}><X size={22} /></button>
+            </div>
+            <div style={{ padding: '4px 16px 8px', color: 'var(--muted)', fontSize: 13 }}>Kliknij twarz, która ma być okładką.</div>
+            <div className="sheet-body" style={{ padding: '0 16px 16px' }}>
+              <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(84px, 1fr))' }}>
+                {coverFaces.map((f) => (
+                  <button key={f} className="bare" aria-label="Użyj tej twarzy jako okładki" onClick={() => chooseCover(f)}
+                    style={{ width: 84, height: 84, borderRadius: '50%', overflow: 'hidden', boxShadow: f === coverFor.cover ? '0 0 0 3px var(--accent)' : 'var(--elev-1)' }}>
+                    <FaceImg id={f} size={84} />
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
 
       {renaming && (
         <PromptDialog title="Imię osoby" label="Imię lub nazwa" initial={renaming.name ?? ''} confirm="Zapisz"

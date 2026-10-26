@@ -49,7 +49,10 @@ pub fn init_schema(conn: &Connection) -> rusqlite::Result<()> {
          CREATE INDEX IF NOT EXISTS idx_faces_photo ON faces(photo_id);
          CREATE INDEX IF NOT EXISTS idx_faces_person ON faces(person_id);
          CREATE TABLE IF NOT EXISTS face_scan (photo_id INTEGER PRIMARY KEY, scanned_mod INTEGER NOT NULL);",
-    )
+    )?;
+    // Migracja: twarz wybrana przez użytkownika jako okładka osoby (błąd „duplicate column” oznacza, że kolumna już jest).
+    let _ = conn.execute("ALTER TABLE people ADD COLUMN cover_face INTEGER", []);
+    Ok(())
 }
 
 pub fn crops_dir(thumbs: &Path) -> PathBuf {
@@ -397,7 +400,8 @@ pub fn list_people(state: State<'_, AppState>) -> Result<Vec<Person>, String> {
     let mut stmt = conn
         .prepare(
             "SELECT p.id, p.name, p.ignored, COUNT(f.id), COUNT(DISTINCT f.photo_id),
-                    (SELECT f2.id FROM faces f2 WHERE f2.person_id = p.id ORDER BY f2.score * f2.w DESC LIMIT 1)
+                    COALESCE((SELECT f3.id FROM faces f3 WHERE f3.id = p.cover_face AND f3.person_id = p.id),
+                             (SELECT f2.id FROM faces f2 WHERE f2.person_id = p.id ORDER BY f2.score * f2.w DESC LIMIT 1))
              FROM people p JOIN faces f ON f.person_id = p.id JOIN photos ph ON ph.id = f.photo_id AND ph.hidden = 0
              GROUP BY p.id ORDER BY (p.name IS NULL), COUNT(DISTINCT f.photo_id) DESC",
         )
@@ -424,6 +428,29 @@ pub fn list_people(state: State<'_, AppState>) -> Result<Vec<Person>, String> {
 pub fn face_crop(state: State<'_, AppState>, id: i64) -> Result<tauri::ipc::Response, String> {
     let bytes = fs::read(crops_dir(&state.thumbs).join(format!("{id}.jpg"))).map_err(|e| e.to_string())?;
     Ok(tauri::ipc::Response::new(bytes))
+}
+
+/// Twarze osoby (do wyboru okładki): od najpewniejszych, najwyżej 80.
+#[tauri::command]
+pub fn person_faces(state: State<'_, AppState>, id: i64) -> Result<Vec<i64>, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare("SELECT f.id FROM faces f JOIN photos p ON p.id = f.photo_id AND p.hidden = 0 WHERE f.person_id = ?1 ORDER BY f.score * f.w DESC LIMIT 80")
+        .map_err(|e| e.to_string())?;
+    let v = stmt.query_map([id], |r| r.get(0)).map_err(|e| e.to_string())?.filter_map(Result::ok).collect();
+    Ok(v)
+}
+
+/// Ustawia okładkę osoby; twarz musi należeć do tej osoby.
+#[tauri::command]
+pub fn set_person_cover(state: State<'_, AppState>, id: i64, face: i64) -> Result<(), String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let ok: bool = conn.query_row("SELECT 1 FROM faces WHERE id = ?1 AND person_id = ?2", params![face, id], |_| Ok(())).is_ok();
+    if !ok {
+        return Err("Ta twarz nie należy do tej osoby".into());
+    }
+    conn.execute("UPDATE people SET cover_face = ?1 WHERE id = ?2", params![face, id]).map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 #[tauri::command]

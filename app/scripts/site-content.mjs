@@ -150,7 +150,7 @@ export const PL = {
         <li><strong>Nic nie wychodzi z komputera.</strong> Twarze są wykrywane i porównywane lokalnie (modele YuNet i SFace, dołączone do instalatora, bez pobierania w trakcie działania). Moduł nie ma żadnego kodu sieciowego, a testy to sprawdzają.</li>
         <li><strong>Wektory twarzy są zaszyfrowane</strong> kluczem Twojego konta Windows (DPAPI). Skopiowana baza FIBO ich nie ujawni.</li>
         <li><strong>Imiona zostają w bazie FIBO</strong> i nie trafiają do plików zdjęć ani XMP.</li>
-        <li>Przy osobie możesz <em>nadać imię</em>, <em>połączyć</em> ją z inną (gdy ta sama osoba trafiła do dwóch grup): przeciągnij jedną osobę na drugą i kliknij <em>Zatwierdź</em> albo <em>pominąć</em>. Kliknięcie osoby pokazuje jej zdjęcia.</li>
+        <li>Przy osobie możesz <em>nadać imię</em>, <em>wybrać okładkę</em> (twarz pokazywaną na liście), <em>połączyć</em> ją z inną (gdy ta sama osoba trafiła do dwóch grup): przeciągnij jedną osobę na drugą i kliknij <em>Zatwierdź</em> albo <em>pominąć</em>. Kliknięcie osoby pokazuje jej zdjęcia.</li>
         <li><strong>Usuń dane twarzy</strong> kasuje osoby, wektory i wycinki twarzy oraz wyłącza funkcję. Zdjęcia nie są ruszane.</li>
       </ul>` },
     { id: 'duplicates', t: 'Duplikaty', h: `
@@ -362,7 +362,7 @@ export const EN = {
         <li><strong>Nothing leaves your computer.</strong> Faces are detected and compared locally (YuNet and SFace models shipped inside the installer, nothing is downloaded while the app runs). The module has no network code, and tests verify it.</li>
         <li><strong>Face vectors are encrypted</strong> with your Windows account key (DPAPI). A copied FIBO database does not reveal them.</li>
         <li><strong>Names stay in the FIBO database</strong> and never go into photo files or XMP.</li>
-        <li>For each person you can <em>name</em>, <em>merge</em> (when one person ended up in two groups): drag one person onto another and click <em>Confirm</em> or <em>ignore</em> them. Click a person to see their photos.</li>
+        <li>For each person you can <em>name</em>, <em>pick a cover</em> (the face shown in the list), <em>merge</em> (when one person ended up in two groups): drag one person onto another and click <em>Confirm</em> or <em>ignore</em> them. Click a person to see their photos.</li>
         <li><strong>Delete face data</strong> removes people, vectors and face crops and turns the feature off. Your photos are untouched.</li>
       </ul>` },
     { id: 'duplicates', t: 'Duplicates', h: `
