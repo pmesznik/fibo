@@ -10,7 +10,7 @@ import { UpdateDialog, useUpdater } from './Updater'
 import { exportSidecars, getSidecarEnabled, importSidecars, setSidecarEnabled } from './api'
 import {
   addToAlbum, createAlbum, deleteAlbum, listAlbums, listRoots, movePhotos, removeFromAlbum, removeRoot,
-  renameAlbum, renamePhoto, rescanRoots, trashPhotos, importPhotos, facesStart, facesStatus, hidePhotos, hiddenCount, restoreHidden, type Album,
+  renameAlbum, renamePhoto, rescanRoots, trashPhotos, importPhotos, backupLibrary, restoreLibrary, pickFile, facesStart, facesStatus, hidePhotos, hiddenCount, restoreHidden, type Album,
 } from './api'
 import { AlbumPicker, PromptDialog } from './Dialogs'
 import { addTag, deleteTag, inTauri, listPhotos, pickFolder, refreshLibrary, removeTag, scanFolder, setFavorite, setRating, type Photo } from './api'
@@ -26,7 +26,7 @@ import {
 } from './FiboIcons'
 
 type Mode = 'library' | 'albums' | 'favs' | 'people' | 'map'
-type Sort = 'date-desc' | 'date-asc' | 'name'
+type Sort = 'date-desc' | 'date-asc' | 'name' | 'rating' | 'size'
 type Group = 'year' | 'month' | 'none'
 type Theme = 'auto' | 'light' | 'dark'
 
@@ -212,6 +212,31 @@ export default function App() {
     } catch (e) { say(`Błąd importu: ${e}`, 'err') } finally { setBusy(false) }
   }
 
+  const doBackup = async () => {
+    try {
+      const dir = await pickFolder('Wskaż folder na kopię biblioteki')
+      if (!dir) return
+      const f = await backupLibrary(dir)
+      say(`Kopia biblioteki zapisana: ${f}`, 'ok')
+    } catch (e) { say(`Błąd kopii: ${e}`, 'err') }
+  }
+  const doRestore = async () => {
+    try {
+      const f = await pickFile('Wskaż plik kopii biblioteki FIBO', ['db'])
+      if (!f) return
+      setConfirm({
+        text: 'Przywrócić bibliotekę z kopii? Zdjęcia, tagi, oceny, albumy i foldery zostaną zastąpione danymi z kopii (pliki zdjęć nie są ruszane). Przed zmianą FIBO zapisze kopię bezpieczeństwa obecnej biblioteki. Dane twarzy zostaną policzone od nowa.', yes: 'Przywróć z kopii',
+        run: async () => {
+          try {
+            const n = await restoreLibrary(f)
+            await Promise.all([reload(), reloadAlbums(), reloadRoots(), reloadHidden()])
+            say(`Biblioteka przywrócona z kopii: ${n} ${pl(n, 'zdjęcie', 'zdjęcia', 'zdjęć')}`, 'ok')
+          } catch (e) { say(`Nie udało się przywrócić: ${e}`, 'err') }
+        },
+      })
+    } catch (e) { say(`Błąd: ${e}`, 'err') }
+  }
+
   const [refreshing, setRefreshing] = useState(false)
   const refresh = async () => {
     if (!inTauri) return say('Wczytywanie lokalizacji działa tylko w aplikacji.')
@@ -243,6 +268,8 @@ export default function App() {
       (!q || `${p.name} ${p.camera ?? ''} ${p.tags.join(' ')}`.toLowerCase().includes(q)),
     )
     if (sort === 'name') list.sort((a, b) => a.name.localeCompare(b.name, 'pl', { numeric: true }))
+    else if (sort === 'rating') list.sort((a, b) => b.rating - a.rating || whenOf(b).localeCompare(whenOf(a)))
+    else if (sort === 'size') list.sort((a, b) => b.size - a.size)
     else list.sort((a, b) => (sort === 'date-desc' ? whenOf(b).localeCompare(whenOf(a)) : whenOf(a).localeCompare(whenOf(b))))
     return list
   }, [all, query, folder, albumId, person, onlyFav, minStars, dateFrom, dateTo, missing, sort, activeTags])
@@ -271,7 +298,7 @@ export default function App() {
 
   // Sekcje biblioteki według lat lub miesięcy, tylko przy sortowaniu po dacie.
   const sections = useMemo(() => {
-    if (sort === 'name' || group === 'none') return [{ key: 'all', title: '', year: '', items: photos }]
+    if (sort === 'name' || sort === 'rating' || sort === 'size' || group === 'none') return [{ key: 'all', title: '', year: '', items: photos }]
     const out: { key: string; title: string; year: string; items: Photo[] }[] = []
     for (const p of photos) {
       const w = whenOf(p)
@@ -655,7 +682,7 @@ export default function App() {
               </div>
               <label>Sortowanie</label>
               <div className="chips">
-                {([['date-desc', 'Najnowsze'], ['date-asc', 'Najstarsze'], ['name', 'Nazwa']] as [Sort, string][]).map(([v, l]) => (
+                {([['date-desc', 'Najnowsze'], ['date-asc', 'Najstarsze'], ['name', 'Nazwa'], ['rating', 'Ocena'], ['size', 'Rozmiar pliku']] as [Sort, string][]).map(([v, l]) => (
                   <Chip key={v} on={sort === v} onClick={() => setSort(v)}>{l}</Chip>
                 ))}
               </div>
@@ -691,6 +718,13 @@ export default function App() {
               </div>
               <button className="wide" disabled={xmpBusy} onClick={runExport}><Save size={17} /> Zapisz wszystko do plików XMP</button>
               <button className="wide" disabled={xmpBusy} onClick={runImport}><Download size={17} /> Wczytaj tagi i oceny z plików</button>
+            </Sec>
+            <Sec id="backup" icon={<Save size={17} />} title="Kopia zapasowa biblioteki" hint="Tagi, oceny, albumy i foldery">
+              <p style={{ margin: '0 0 8px', color: 'var(--muted)', fontSize: 13 }}>
+                Kopia zawiera dane biblioteki (nie same zdjęcia): tagi, oceny, albumy, ulubione i listę folderów. Przydaje się przed większymi porządkami albo przy zmianie komputera.
+              </p>
+              <button className="wide" onClick={doBackup}><Save size={17} /> Zapisz kopię biblioteki…</button>
+              <button className="wide" onClick={doRestore}><Download size={17} /> Przywróć z kopii…</button>
             </Sec>
             <Sec id="roots" icon={<RefreshCw size={17} />} title="Obserwowane foldery" hint={roots.length ? `${roots.length} ${pl(roots.length, 'folder', 'foldery', 'folderów')}, nowe zdjęcia dodają się same` : 'Brak obserwowanych folderów'}>
               <p style={{ margin: '0 0 8px', color: 'var(--muted)', fontSize: 13 }}>
@@ -752,7 +786,7 @@ export default function App() {
                   <Chip key={v} on={group === v} onClick={() => setGroup(v)}>{l}</Chip>
                 ))}
               </div>
-              {sort === 'name' && <p style={{ margin: '8px 0 0', fontSize: 12.5, color: 'var(--muted)' }}>Przy sortowaniu po nazwie grupy są wyłączone.</p>}
+              {(sort === 'name' || sort === 'rating' || sort === 'size') && <p style={{ margin: '8px 0 0', fontSize: 12.5, color: 'var(--muted)' }}>Przy tym sortowaniu grupy są wyłączone.</p>}
               <label htmlFor="sz">Rozmiar miniatur</label>
               <input id="sz" type="range" min={120} max={360} value={size} onChange={(e) => setSize(+e.target.value)} />
             </Sec>

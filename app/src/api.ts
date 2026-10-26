@@ -52,6 +52,8 @@ export const setLocation = (ids: number[], lat: number | null, lon: number | nul
 export const renameBatch = (ids: number[], prefix: string, withDate: boolean, start: number) => invoke<MoveReport>('rename_batch', { ids, prefix, withDate, start })
 export type PhotoImportReport = { copied: number; skipped: number; errors: string[] }
 export const importPhotos = (src: string, dest: string) => invoke<PhotoImportReport>('import_photos', { src, dest })
+export const backupLibrary = (dest: string) => invoke<string>('backup_library', { dest })
+export const restoreLibrary = (file: string) => invoke<number>('restore_library', { file })
 export const exportPhotos = (ids: number[], dest: string, maxSide: number, quality: number) => invoke<MoveReport>('export_photos', { ids, dest, maxSide, quality })
 export const trashPhotos = (ids: number[], confirm?: string) => invoke<number>('trash_photos', { ids, confirm })
 export const hidePhotos = (ids: number[]) => invoke<number>('hide_photos', { ids })
@@ -106,6 +108,11 @@ export const setPersonCover = (id: number, face: number) => invoke('set_person_c
 export const renamePerson = (id: number, name: string) => invoke('rename_person', { id, name })
 export const mergePeople = (from: number, into: number) => invoke('merge_people', { from, into })
 export const ignorePerson = (id: number, ignored: boolean) => invoke('ignore_person', { id, ignored })
+
+export async function pickFile(title: string, extensions: string[]) {
+  const f = await open({ directory: false, multiple: false, title, filters: [{ name: 'Kopia biblioteki FIBO', extensions }] })
+  return typeof f === 'string' ? f : null
+}
 
 export async function pickFolder(title = 'Wybierz folder ze zdjęciami') {
   const dir = await open({ directory: true, multiple: false, title })
