@@ -36,6 +36,9 @@ jobs:
       - name: Instalacja zależności (bez skryptów instalacyjnych)
         run: npm ci --ignore-scripts
 
+      - name: Modele rozpoznawania twarzy (pobranie z weryfikacją SHA256)
+        run: node scripts/fetch-models.mjs
+
       - name: Kontrola typów (TypeScript)
         run: npx tsc -b
 

@@ -52,6 +52,10 @@ jobs:
       - name: Instalacja zależności (bez skryptów instalacyjnych)
         run: npm ci --ignore-scripts
 
+      # Modele są pobierane tu, przy budowaniu, z weryfikacją SHA256, i dołączane do instalatora. Program nie pobiera ich sam.
+      - name: Modele rozpoznawania twarzy (pobranie z weryfikacją SHA256)
+        run: node scripts/fetch-models.mjs
+
       # Budowanie bez klucza podpisu: kod zależności (skrypty budowania Rusta, narzędzia npm) nigdy go nie widzi.
       - name: Budowanie instalatora (NSIS), bez podpisu aktualizacji
         shell: bash

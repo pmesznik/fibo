@@ -63,7 +63,7 @@
   <aside class="toc">
     <details open>
       <summary>Spis treści</summary>
-      <ol><li><a href="#install">Instalacja</a></li><li><a href="#start">Pierwsze kroki</a></li><li><a href="#library">Biblioteka i albumy</a></li><li><a href="#search">Szukanie i filtry</a></li><li><a href="#tags">Tagi, oceny i ulubione</a></li><li><a href="#xmp">Metadane w plikach (XMP)</a></li><li><a href="#albums">Własne albumy</a></li><li><a href="#watch">Obserwowane foldery</a></li><li><a href="#files">Operacje na plikach</a></li><li><a href="#viewer">Podgląd zdjęcia</a></li><li><a href="#editor">Edytor zdjęć</a></li><li><a href="#collage">Kolaże</a></li><li><a href="#map">Mapa</a></li><li><a href="#duplicates">Duplikaty</a></li><li><a href="#data">Dane i prywatność</a></li><li><a href="#shortcuts">Skróty klawiszowe</a></li><li><a href="#updates">Aktualizacje</a></li><li><a href="#faq">Najczęstsze pytania</a></li><li><a href="#build">Budowanie ze źródeł</a></li><li><a href="#license">Licencja</a></li></ol>
+      <ol><li><a href="#install">Instalacja</a></li><li><a href="#start">Pierwsze kroki</a></li><li><a href="#library">Biblioteka i albumy</a></li><li><a href="#search">Szukanie i filtry</a></li><li><a href="#tags">Tagi, oceny i ulubione</a></li><li><a href="#xmp">Metadane w plikach (XMP)</a></li><li><a href="#albums">Własne albumy</a></li><li><a href="#watch">Obserwowane foldery</a></li><li><a href="#files">Operacje na plikach</a></li><li><a href="#viewer">Podgląd zdjęcia</a></li><li><a href="#editor">Edytor zdjęć</a></li><li><a href="#collage">Kolaże</a></li><li><a href="#map">Mapa</a></li><li><a href="#people">Ludzie (rozpoznawanie twarzy)</a></li><li><a href="#duplicates">Duplikaty</a></li><li><a href="#data">Dane i prywatność</a></li><li><a href="#shortcuts">Skróty klawiszowe</a></li><li><a href="#updates">Aktualizacje</a></li><li><a href="#faq">Najczęstsze pytania</a></li><li><a href="#build">Budowanie ze źródeł</a></li><li><a href="#license">Licencja</a></li></ol>
     </details>
   </aside>
   <div class="doc-body">
@@ -143,7 +143,8 @@
         <li><strong>Ocena</strong> (gwiazdki), <strong>ulubione</strong>, <strong>Tagi…</strong>, <strong>Dodaj do albumu…</strong>, <strong>Kolaż</strong> (od dwóch zdjęć), <strong>Zaznacz wszystkie</strong>.</li>
         <li><strong>Zmień nazwę pliku…</strong> (jedno zdjęcie): rozszerzenie zostaje, plik XMP zmienia nazwę razem ze zdjęciem. FIBO odrzuca nazwy ze znakami niedozwolonymi w Windows (<code>\ / : * ? " &lt; &gt; |</code>), zarezerwowane (CON, NUL, COM1…) i nie nadpisuje istniejącego pliku.</li>
         <li><strong>Przenieś do folderu…</strong> i <strong>Kopiuj do folderu…</strong>: nic nie jest nadpisywane, przy zajętej nazwie FIBO dopisuje <code>_1</code>, <code>_2</code>. Plik XMP idzie razem ze zdjęciem. Przenoszenie między dyskami kopiuje, sprawdza rozmiar i dopiero wtedy usuwa źródło.</li>
-        <li><strong>Przenieś do Kosza…</strong> pyta o zgodę i przenosi pliki do Kosza Windows, skąd można je przywrócić.</li>
+        <li><strong>Usuń z biblioteki (pliki zostają)…</strong> ukrywa zdjęcia w FIBO, a pliki na dysku zostają nietknięte. Ukryte zdjęcia wrócą po wybraniu <em>Przywróć ukryte zdjęcia</em> w menu (sekcja Foldery) albo po ponownym dodaniu folderu.</li>
+        <li><strong>Przenieś do Kosza…</strong> pyta o zgodę i przenosi pliki do Kosza Windows, skąd można je przywrócić. Od 20 zdjęć, a także dla zdjęć z całego folderu, trzeba wpisać słowo <em>USUŃ</em>. FIBO usuwa tylko zdjęcia, które zna, nigdy cały folder.</li>
       </ul></section>
     <section id="viewer"><h3 class="sec-title">Podgląd zdjęcia</h3>
       <p>Dwuklik na zdjęciu (albo Enter) otwiera je na cały ekran. U góry są nazwa, ocena, ulubione, cofnij i ponów, pokaz slajdów, powiększanie, porównanie z oryginałem i pełny ekran, a na dole pasek miniatur. Strzałki przy krawędziach przełączają zdjęcia.</p>
@@ -172,10 +173,20 @@
       </ul></section>
     <section id="map"><h3 class="sec-title">Mapa</h3>
       <p>Zakładka <strong>Mapa</strong> pokazuje globus z pinezkami w miejscach, gdzie zrobiono zdjęcia. Zdjęcia z jednego miejsca łączą się w jedną pinezkę z liczbą, a bliskie pinezki w skupisko. Kliknięcie skupiska przybliża widok, a kliknięcie pinezki otwiera panel z miniaturami. Kliknięcie miniatury otwiera podgląd.</p>
+      <p>Mapa pokazuje, gdzie w tej chwili jest dzień, a gdzie noc, razem ze smugą zmierzchu. Na dole jest zegar, suwak czasu (±12 godzin), przycisk <strong>Teraz</strong> i przycisk <strong>animacji doby</strong>, który w kilkanaście sekund przesuwa cały dzień. Pozycja Słońca jest liczona na komputerze.</p>
       <ul>
         <li>Pozycje pochodzą z danych GPS w zdjęciach (EXIF). Zdjęcia bez GPS nie pojawiają się na mapie, a licznik w rogu pokazuje, ile ich jest.</li>
         <li>Zdjęcia dodane przed obsługą mapy nie mają zapisanych współrzędnych: wybierz <em>Wczytaj lokalizacje ze zdjęć</em> w zakładce Mapa albo <em>Odśwież dane zdjęć</em> w menu.</li>
         <li>Mapa pobiera kafelki z darmowej usługi OpenFreeMap, więc <strong>wymaga internetu</strong>. Reszta programu działa offline.</li>
+      </ul></section>
+    <section id="people"><h3 class="sec-title">Ludzie (rozpoznawanie twarzy)</h3>
+      <p>Zakładka <strong>Ludzie</strong> grupuje zdjęcia według osób. Funkcja jest <strong>domyślnie wyłączona</strong>: włączasz ją przyciskiem <em>Włącz rozpoznawanie twarzy</em> po przeczytaniu informacji o prywatności. Analiza działa w tle (można ją wstrzymać i wznowić), a nowe zdjęcia są dopisywane same.</p>
+      <ul>
+        <li><strong>Nic nie wychodzi z komputera.</strong> Twarze są wykrywane i porównywane lokalnie (modele YuNet i SFace, dołączone do instalatora, bez pobierania w trakcie działania). Moduł nie ma żadnego kodu sieciowego, a testy to sprawdzają.</li>
+        <li><strong>Wektory twarzy są zaszyfrowane</strong> kluczem Twojego konta Windows (DPAPI). Skopiowana baza FIBO ich nie ujawni.</li>
+        <li><strong>Imiona zostają w bazie FIBO</strong> i nie trafiają do plików zdjęć ani XMP.</li>
+        <li>Przy osobie możesz <em>nadać imię</em>, <em>połączyć</em> ją z inną (gdy ta sama osoba trafiła do dwóch grup) albo <em>pominąć</em>. Kliknięcie osoby pokazuje jej zdjęcia.</li>
+        <li><strong>Usuń dane twarzy</strong> kasuje osoby, wektory i wycinki twarzy oraz wyłącza funkcję. Zdjęcia nie są ruszane.</li>
       </ul></section>
     <section id="duplicates"><h3 class="sec-title">Duplikaty</h3>
       <p>Menu → <strong>Duplikaty</strong>. Wybierz poziom i dotknij <em>Szukaj duplikatów</em>:</p>

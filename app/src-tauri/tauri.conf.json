@@ -33,6 +33,7 @@
     "active": true,
     "createUpdaterArtifacts": true,
     "targets": ["nsis"],
+    "resources": ["models/yunet.onnx", "models/sface.onnx"],
     "publisher": "FIBO",
     "shortDescription": "FIBO: menedżer i edytor zdjęć",
     "longDescription": "FIBO porządkuje zdjęcia według dat, tagów i miejsc, ma edytor z efektami, kolaże i wyszukiwanie duplikatów.",

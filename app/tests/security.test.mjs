@@ -84,7 +84,7 @@ describe('Protokół zasobów i uprawnienia', () => {
     const uses = textFiles.filter((f) => f.startsWith('app/src/') && /convertFileSrc/.test(readTracked(f)))
     assert.deepEqual(uses, ['app/src/api.ts'])
     const api = readTracked('app/src/api.ts')
-    assert.equal((api.match(/convertFileSrc\(/g) ?? []).length, 1, 'convertFileSrc ma być użyte w jednym miejscu (miniatury)')
+    assert.equal((api.match(/convertFileSrc\(/g) ?? []).length, 2, 'convertFileSrc ma być użyte tylko dla miniatur i wycinków twarzy (oba w folderze miniatur)')
   })
   test('uprawnienia okna: tylko to, co potrzebne', () => {
     const allowed = new Set(['core:default', 'dialog:default', 'updater:default', 'process:allow-restart'])
@@ -124,6 +124,7 @@ describe('Aktualizacje', () => {
   })
   test('w repozytorium nie ma klucza prywatnego (ani jego treści)', () => {
     for (const f of textFiles) {
+      if (f === 'app/tests/security.test.mjs') continue // ten plik sam opisuje wzorce kluczy
       const t = readTracked(f)
       assert.ok(!/minisign secret key|rsign encrypted secret key/i.test(t), `${f}: wygląda na klucz prywatny`)
       assert.ok(!t.includes('dW50cnVzdGVkIGNvbW1lbnQ6IHJzaWduIGVuY3J5cHRlZCBzZWNyZXQga2V5'), `${f}: zawiera zakodowany klucz prywatny`)

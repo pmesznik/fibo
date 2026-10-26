@@ -11,6 +11,10 @@ use std::{
     time::UNIX_EPOCH,
 };
 
+mod faces;
+mod people;
+mod secure;
+
 use image::imageops::FilterType;
 use rusqlite::{params, Connection};
 use serde::Serialize;
@@ -91,6 +95,7 @@ fn open_db(path: &Path) -> rusqlite::Result<Connection> {
     }
     // Migracja: zdjęcia ukryte w bibliotece (pliki zostają na dysku, skan ich nie dodaje ponownie).
     let _ = conn.execute("ALTER TABLE photos ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0", []);
+    people::init_schema(&conn)?;
     Ok(conn)
 }
 
@@ -990,6 +995,7 @@ fn remove_root(state: State<'_, AppState>, path: String) -> Result<(), String> {
 }
 
 fn forget_photo(conn: &Connection, id: i64) -> rusqlite::Result<()> {
+    people::forget_faces(conn, id);
     conn.execute("DELETE FROM photo_tags WHERE photo_id = ?1", [id])?;
     conn.execute("DELETE FROM album_photos WHERE photo_id = ?1", [id])?;
     conn.execute("DELETE FROM photos WHERE id = ?1", [id])?;
@@ -2299,10 +2305,11 @@ fn main() {
                 .query_row("SELECT value FROM settings WHERE key = 'sidecar'", [], |r| r.get::<_, String>(0))
                 .map(|v| v != "0")
                 .unwrap_or(true);
+            people::set_thumbs_dir(&thumbs);
             app.manage(AppState { db: Mutex::new(db), thumbs, sidecar: AtomicBool::new(sidecar) });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![list_roots, remove_root, rescan_roots, list_albums, create_album, rename_album, delete_album, add_to_album, remove_from_album, rename_photo, move_photos, get_sidecar_enabled, set_sidecar_enabled, export_sidecars, import_sidecars, scan_folder, refresh_library, find_duplicates, trash_photos, hide_photos, hidden_count, restore_hidden, list_photos, thumbnail, set_rating, set_favorite, add_tag, remove_tag, delete_tag, save_edit, save_collage, read_image, has_original, restore_original])
+        .invoke_handler(tauri::generate_handler![list_roots, remove_root, rescan_roots, list_albums, create_album, rename_album, delete_album, add_to_album, remove_from_album, rename_photo, move_photos, get_sidecar_enabled, set_sidecar_enabled, export_sidecars, import_sidecars, scan_folder, refresh_library, find_duplicates, trash_photos, hide_photos, hidden_count, restore_hidden, people::faces_status, people::set_faces_enabled, people::faces_start, people::faces_stop, people::faces_delete_all, people::list_people, people::person_photos, people::rename_person, people::merge_people, people::ignore_person, list_photos, thumbnail, set_rating, set_favorite, add_tag, remove_tag, delete_tag, save_edit, save_collage, read_image, has_original, restore_original])
         .run(tauri::generate_context!())
         .expect("błąd uruchomienia aplikacji");
 }

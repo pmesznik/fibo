@@ -4,3 +4,4 @@ app/src-tauri/target/
 app/src-tauri/gen/
 app/scripts/.fibo-icons.mjs
 *.log
+app/src-tauri/models/*.onnx

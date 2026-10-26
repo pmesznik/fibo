@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { listen } from '@tauri-apps/api/event'
 import { MapView } from './MapView'
+import { People } from './People'
 import { Duplicates } from './Duplicates'
 import { UpdateDialog, useUpdater } from './Updater'
 import { exportSidecars, getSidecarEnabled, importSidecars, setSidecarEnabled } from './api'
 import {
   addToAlbum, createAlbum, deleteAlbum, listAlbums, listRoots, movePhotos, removeFromAlbum, removeRoot,
-  renameAlbum, renamePhoto, rescanRoots, trashPhotos, hidePhotos, hiddenCount, restoreHidden, type Album,
+  renameAlbum, renamePhoto, rescanRoots, trashPhotos, facesStart, facesStatus, hidePhotos, hiddenCount, restoreHidden, type Album,
 } from './api'
 import { AlbumPicker, PromptDialog } from './Dialogs'
 import { addTag, deleteTag, inTauri, listPhotos, pickFolder, refreshLibrary, removeTag, scanFolder, setFavorite, setRating, type Photo } from './api'
@@ -118,9 +119,16 @@ export default function App() {
   useEffect(() => { reload() }, [reload])
   const reloadAlbums = useCallback(async () => { if (inTauri) setAlbums(await listAlbums()) }, [])
   const reloadRoots = useCallback(async () => { if (inTauri) setRoots(await listRoots()) }, [])
+  const [person, setPerson] = useState<{ name: string; ids: Set<number> } | null>(null)
   const [hiddenN, setHiddenN] = useState(0)
   const reloadHidden = useCallback(async () => { if (inTauri) setHiddenN(await hiddenCount()) }, [])
   useEffect(() => { reloadHidden() }, [reloadHidden])
+  // Włączone rozpoznawanie twarzy dokańcza analizę nowych zdjęć w tle (po chwili od startu, żeby nie spowalniać otwarcia programu).
+  useEffect(() => {
+    if (!inTauri) return
+    const t = window.setTimeout(() => { facesStatus().then((s) => s.enabled && !s.running && facesStart()).catch(() => {}) }, 8000)
+    return () => window.clearTimeout(t)
+  }, [])
   useEffect(() => { reloadAlbums(); reloadRoots() }, [reloadAlbums, reloadRoots])
 
   /** Szuka nowych zdjęć w obserwowanych folderach i usuwa z biblioteki zdjęcia, których plików już nie ma. */
@@ -197,6 +205,7 @@ export default function App() {
     const list = all.filter((p) =>
       (!folder || dirOf(p.path) === folder) &&
       (albumId === null || p.albums.includes(albumId)) &&
+      (!person || person.ids.has(p.id)) &&
       (!onlyFav || p.favorite) &&
       p.rating >= minStars &&
       activeTags.every((t) => p.tags.includes(t)) &&
@@ -205,7 +214,7 @@ export default function App() {
     if (sort === 'name') list.sort((a, b) => a.name.localeCompare(b.name, 'pl', { numeric: true }))
     else list.sort((a, b) => (sort === 'date-desc' ? whenOf(b).localeCompare(whenOf(a)) : whenOf(a).localeCompare(whenOf(b))))
     return list
-  }, [all, query, folder, albumId, onlyFav, minStars, sort, activeTags])
+  }, [all, query, folder, albumId, person, onlyFav, minStars, sort, activeTags])
 
   // Foldery od najnowszego; rok albumu to rok jego najnowszego zdjęcia (jak w Picasie).
   const folders = useMemo(() => {
@@ -540,7 +549,7 @@ export default function App() {
       <nav id="tabs" className="glass" aria-label="Widoki">
         {TABS.map((t) => (
           <button key={t.id} className={mode === t.id ? 'active' : ''} aria-current={mode === t.id ? 'page' : undefined}
-            onClick={() => { setMode(t.id); if (t.id === 'albums') setFolder(null); if (t.id === 'albums' || t.id === 'library') setAlbumId(null) }}>
+            onClick={() => { setMode(t.id); if (t.id === 'albums') setFolder(null); if (t.id === 'albums' || t.id === 'library') { setAlbumId(null); setPerson(null) } }}>
             <t.icon size={19} strokeWidth={1.8} />
             <span>{t.label}</span>
           </button>
@@ -712,7 +721,7 @@ export default function App() {
         {(mode === 'library' || mode === 'favs') && (
           <>
             <div style={{ marginBottom: 14 }}>
-              <h1 style={{ margin: 0, font: '700 22px/1.2 system-ui' }}>{mode === 'favs' ? 'Ulubione' : albumId !== null ? (albums.find((a) => a.id === albumId)?.name ?? 'Album') : folder ? folderName(folder) : 'Biblioteka'}</h1>
+              <h1 style={{ margin: 0, font: '700 22px/1.2 system-ui' }}>{mode === 'favs' ? 'Ulubione' : person ? person.name : albumId !== null ? (albums.find((a) => a.id === albumId)?.name ?? 'Album') : folder ? folderName(folder) : 'Biblioteka'}</h1>
               <div style={{ color: 'var(--muted)', fontSize: 13 }}>{subtitle}</div>
               {years.length > 1 && (
                 <div className="chips" style={{ marginTop: 10 }} role="navigation" aria-label="Przejdź do roku">
@@ -720,11 +729,12 @@ export default function App() {
                   {years.map((y) => <Chip key={y} onClick={() => jumpToYear(y)}>{y}</Chip>)}
                 </div>
               )}
-              {(query || folder || albumId !== null || minStars > 0 || activeTags.length > 0) && (
+              {(query || folder || albumId !== null || person || minStars > 0 || activeTags.length > 0) && (
                 <div className="chips" style={{ marginTop: 10 }}>
                   {activeTags.map((t) => <Chip key={t} on onClick={() => toggleTagFilter(t)} label={`Usuń filtr tagu ${t}`}><Tag size={13} /> {t} <X size={13} /></Chip>)}
                   {query && <Chip on onClick={() => setQuery('')} label="Usuń szukanie"><SearchIcon size={13} /> {query} <X size={13} /></Chip>}
                   {albumId !== null && <Chip on onClick={() => setAlbumId(null)} label="Pokaż całą bibliotekę"><FolderOpen size={13} /> Album: {albums.find((a) => a.id === albumId)?.name ?? '…'} <X size={13} /></Chip>}
+                  {person && <Chip on onClick={() => setPerson(null)} label="Pokaż całą bibliotekę"><Users size={13} /> {person.name} <X size={13} /></Chip>}
                   {folder && <Chip on onClick={() => setFolder(null)} label="Usuń filtr folderu"><FolderOpen size={13} /> {folderName(folder)} <X size={13} /></Chip>}
                   {minStars > 0 && <Chip on onClick={() => setMinStars(0)} label="Usuń filtr oceny">≥ {minStars} <Star size={12} fill="currentColor" /> <X size={13} /></Chip>}
                 </div>
@@ -823,12 +833,8 @@ export default function App() {
         )}
 
         {mode === 'people' && (
-          <div className="empty" style={{ height: '60vh' }}>
-            <div>
-              <h1 style={{ margin: '0 0 6px', font: '700 22px/1.2 system-ui' }}>Ludzie</h1>
-              <p style={{ margin: 0 }}>Rozpoznawanie twarzy pojawi się razem z funkcjami AI.</p>
-            </div>
-          </div>
+          <People say={say} ask={setConfirm} onChanged={() => {}}
+            onOpenPerson={(name, ids) => { setPerson({ name, ids: new Set(ids) }); setAlbumId(null); setFolder(null); setMode('library') }} />
         )}
       </main>
 
