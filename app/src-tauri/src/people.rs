@@ -453,6 +453,42 @@ pub fn set_person_cover(state: State<'_, AppState>, id: i64, face: i64) -> Resul
     Ok(())
 }
 
+/// Przenosi twarze danej osoby na jednym zdjęciu do innej osoby (poprawka błędnego rozpoznania) albo do nowej osoby (`to` = None).
+pub fn reassign_core(conn: &Connection, photo_id: i64, from: i64, to: Option<i64>) -> Result<i64, String> {
+    let target = match to {
+        Some(t) => {
+            if t == from {
+                return Ok(t);
+            }
+            let exists: bool = conn.query_row("SELECT 1 FROM people WHERE id = ?1", [t], |_| Ok(())).is_ok();
+            if !exists {
+                return Err("Nie ma takiej osoby".into());
+            }
+            t
+        }
+        None => {
+            conn.execute("INSERT INTO people (name) VALUES (NULL)", []).map_err(|e| e.to_string())?;
+            conn.last_insert_rowid()
+        }
+    };
+    let n = conn.execute("UPDATE faces SET person_id = ?3 WHERE photo_id = ?1 AND person_id = ?2", params![photo_id, from, target]).map_err(|e| e.to_string())?;
+    if n == 0 {
+        if to.is_none() {
+            let _ = conn.execute("DELETE FROM people WHERE id = ?1", [target]);
+        }
+        return Err("Na tym zdjęciu nie ma twarzy tej osoby".into());
+    }
+    // Osoba bez twarzy znika (razem z imieniem, jeśli nie ma już nic do pokazania).
+    conn.execute("DELETE FROM people WHERE id NOT IN (SELECT person_id FROM faces WHERE person_id IS NOT NULL)", []).map_err(|e| e.to_string())?;
+    Ok(target)
+}
+
+#[tauri::command]
+pub fn reassign_person_faces(state: State<'_, AppState>, photo_id: i64, from: i64, to: Option<i64>) -> Result<i64, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    reassign_core(&conn, photo_id, from, to)
+}
+
 #[derive(Serialize)]
 pub struct PhotoPerson {
     id: i64,
@@ -599,6 +635,30 @@ mod tests {
         assert_eq!(n("SELECT COUNT(*) FROM faces"), 2);
         assert_eq!(fs::read_dir(crops_dir(&tmp)).unwrap().count(), 2);
         assert_eq!(n("SELECT COUNT(*) FROM people"), 1);
+    }
+
+    #[test]
+    fn reassigning_faces_moves_them_and_cleans_up() {
+        let c = db();
+        for id in 1..=2 {
+            c.execute("INSERT INTO photos (id) VALUES (?1)", [id]).unwrap();
+        }
+        c.execute("INSERT INTO people (id, name) VALUES (1, 'Ala'), (2, 'Ola')", []).unwrap();
+        for (fid, photo, person) in [(1, 1, 1), (2, 2, 1), (3, 2, 2)] {
+            c.execute("INSERT INTO faces (id, photo_id, person_id, x, y, w, h, score, emb) VALUES (?1, ?2, ?3, 0, 0, 1, 1, 1, x'00')", params![fid, photo, person]).unwrap();
+        }
+        let n = |sql: &str| -> i64 { c.query_row(sql, [], |r| r.get(0)).unwrap() };
+        // Zdjęcie 2: twarz Ali to naprawdę Ola.
+        assert_eq!(reassign_core(&c, 2, 1, Some(2)).unwrap(), 2);
+        assert_eq!(n("SELECT COUNT(*) FROM faces WHERE person_id = 2"), 2);
+        assert_eq!(n("SELECT COUNT(*) FROM faces WHERE person_id = 1"), 1);
+        // Nowa osoba z jednej twarzy; zła osoba i brak twarzy dają błąd bez skutków ubocznych.
+        let new = reassign_core(&c, 1, 1, None).unwrap();
+        assert!(new > 2);
+        assert_eq!(n("SELECT COUNT(*) FROM people WHERE id = 1"), 0, "Ala nie ma już twarzy, więc znika");
+        assert!(reassign_core(&c, 1, 99, None).is_err());
+        assert_eq!(n("SELECT COUNT(*) FROM people"), 2, "nieudana próba nie zostawia pustej osoby");
+        assert!(reassign_core(&c, 1, new, Some(777)).is_err());
     }
 
     #[test]

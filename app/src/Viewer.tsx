@@ -4,7 +4,7 @@ import {
   RotateCcw, RotateCw, FlipHorizontal, FlipVertical, Eye, Wand2, Save, CopyPlus, History,
   ZoomIn, ZoomOut, Compare, Sliders, Sparkles, Info, Tag, Crop as CropIcon, Trash2, Sun, Palette, Aperture, Pencil, Zap, Plus,
 } from './FiboIcons'
-import { hasOriginal, photoPeople, readImage, restoreOriginal, saveEdit, setCaption, setPersonCover, photoExif, setFavorite, setRating, type Photo, type PhotoPerson } from './api'
+import { pickFile, readAudio, hasOriginal, photoPeople, readImage, restoreOriginal, saveEdit, setCaption, setPersonCover, photoExif, listPeople, reassignPersonFaces, type Person, setFavorite, setRating, type Photo, type PhotoPerson } from './api'
 import { FaceImg } from './People'
 import { copyEdit, getClip } from './editor/batch'
 import { Thumb } from './Thumb'
@@ -94,6 +94,27 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
   const [redEyeMode, setRedEyeMode] = useState(false)
   const [neutralMode, setNeutralMode] = useState(false)
   const [playing, setPlaying] = useState(autoplay)
+  // Muzyka do pokazu slajdów: plik z dysku trafia do odtwarzacza jako blob (bez sieci), gra w pętli tylko podczas pokazu.
+  const [music, setMusic] = useState<{ url: string; name: string } | null>(null)
+  const audioRef = useRef<HTMLAudioElement>(null)
+  useEffect(() => () => { if (music) URL.revokeObjectURL(music.url) }, [music])
+  useEffect(() => {
+    const a = audioRef.current
+    if (!a || !music) return
+    if (playing) a.play().catch(() => {}); else a.pause()
+  }, [playing, music])
+  const chooseMusic = async () => {
+    try {
+      if (music) { setMusic(null); return }
+      const f = await pickFile('Wybierz muzykę do pokazu slajdów', ['mp3', 'm4a', 'aac', 'ogg', 'oga', 'wav', 'flac'], 'Muzyka')
+      if (!f) return
+      const bytes = await readAudio(f)
+      const ext = (f.split('.').pop() ?? '').toLowerCase()
+      const mime = ext === 'mp3' ? 'audio/mpeg' : ext === 'm4a' || ext === 'aac' ? 'audio/mp4' : ext === 'wav' ? 'audio/wav' : ext === 'flac' ? 'audio/flac' : 'audio/ogg'
+      setMusic({ url: URL.createObjectURL(new Blob([bytes], { type: mime })), name: f.split(/[\\/]/).pop() ?? 'muzyka' })
+      say('Muzyka będzie grać podczas pokazu slajdów', 'ok')
+    } catch (e) { say(`Błąd muzyki: ${e}`, 'err') }
+  }
   const [slideSecs, setSlideSecs] = useState(() => { try { const v = +(localStorage.getItem('slide-secs') ?? 4); return [2, 4, 7, 12].includes(v) ? v : 4 } catch { return 4 } })
   const [zoom, setZoom] = useState(1)
   const [pan, setPan] = useState({ x: 0, y: 0 })
@@ -132,9 +153,14 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
       const out = renderEdit(bitmap, compare ? EMPTY_EDIT : edit, renderSide)
       c.width = out.width; c.height = out.height
       c.getContext('2d')!.drawImage(out, 0, 0)
+      if (playing && c.dataset.shown !== String(photo?.id)) {
+        c.style.transition = 'none'; c.style.opacity = '0'
+        requestAnimationFrame(() => { c.style.transition = 'opacity .8s ease'; c.style.opacity = '1' })
+      } else { c.style.transition = ''; c.style.opacity = '' }
+      c.dataset.shown = String(photo?.id)
     })
     return () => cancelAnimationFrame(raf)
-  }, [bitmap, edit, compare, renderSide])
+  }, [bitmap, edit, compare, renderSide, playing, photo?.id])
 
   // Powiększanie kółkiem myszy w miejscu kursora; przy powrocie do 1 obraz wraca na środek.
   const zoomAt = (factor: number, cx = 0, cy = 0) => {
@@ -188,6 +214,7 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
   // Opis zdjęcia (zapis po opuszczeniu pola) i osoby rozpoznane na zdjęciu.
   const [captionDraft, setCaptionDraft] = useState('')
   const [people, setPeople] = useState<PhotoPerson[]>([])
+  const [reassign, setReassign] = useState<{ from: PhotoPerson; options: Person[] } | null>(null)
   const [exifRows, setExifRows] = useState<[string, string][]>([])
   useEffect(() => { setCaptionDraft(photo?.caption ?? '') }, [photo?.id, photo?.caption])
   useEffect(() => {
@@ -370,6 +397,33 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
           style={{ position: 'absolute', right: sheet ? 382 : 12, top: '50%', width: 48, height: 48, padding: 0, borderRadius: '50%', display: 'grid', placeItems: 'center', transition: 'right .3s var(--ease)' }}><ChevronRight size={24} /></button>
       )}
 
+      {music && <audio ref={audioRef} src={music.url} loop />}
+      {reassign && (
+        <>
+          <div className="fixed inset-0 z-[1700]" style={{ background: 'rgba(0,0,0,.45)' }} onClick={() => setReassign(null)} />
+          <div className="glass fixed left-1/2 top-1/2 z-[1800] flex max-h-[85vh] w-[min(92vw,460px)] -translate-x-1/2 -translate-y-1/2 flex-col" style={{ borderRadius: 'var(--r-lg)' }} role="dialog" aria-label="Wskaż właściwą osobę">
+            <div className="dr-head" style={{ paddingBottom: 0 }}>
+              <span>Kto to jest?</span>
+              <button className="ico" aria-label="Zamknij" onClick={() => setReassign(null)}><X size={22} /></button>
+            </div>
+            <div style={{ padding: '4px 16px 8px', color: 'var(--muted)', fontSize: 13 }}>Ta twarz na zdjęciu została rozpoznana jako „{reassign.from.name ?? 'Nieznana osoba'}”. Wskaż właściwą osobę.</div>
+            <div className="sheet-body" style={{ padding: '0 16px 16px' }}>
+              <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(88px, 1fr))' }}>
+                <button className="bare text-center" aria-label="Nowa osoba" onClick={async () => { try { await reassignPersonFaces(photo.id, reassign.from.id, null); setReassign(null); setPeople(await photoPeople(photo.id)); say('Utworzono nową osobę', 'ok') } catch (e) { say(`Błąd: ${e}`, 'err') } }}>
+                  <div style={{ width: 64, height: 64, margin: '0 auto', borderRadius: '50%', display: 'grid', placeItems: 'center', background: 'var(--tonal)', fontSize: 28 }}>+</div>
+                  <div style={{ fontSize: 13, marginTop: 4 }}>Nowa osoba</div>
+                </button>
+                {reassign.options.map((o) => (
+                  <button key={o.id} className="bare text-center" aria-label={o.name ?? 'Nieznana osoba'} onClick={async () => { try { await reassignPersonFaces(photo.id, reassign.from.id, o.id); setReassign(null); setPeople(await photoPeople(photo.id)); say('Zmieniono osobę', 'ok') } catch (e) { say(`Błąd: ${e}`, 'err') } }}>
+                    <div style={{ width: 64, height: 64, margin: '0 auto', borderRadius: '50%', overflow: 'hidden', background: 'var(--tonal)' }}>{o.cover !== null && <FaceImg id={o.cover} size={64} />}</div>
+                    <div className="truncate" style={{ fontSize: 13, marginTop: 4 }}>{o.name ?? 'Nieznana osoba'}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
       {playing && photo.caption && (
         <div className="glass" role="status" style={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)', bottom: 'calc(40px + var(--sab))', maxWidth: 'min(80%, 720px)', padding: '10px 18px', borderRadius: 'var(--r-lg)', textAlign: 'center', fontSize: 16, zIndex: 3 }}>
           {photo.caption}
@@ -383,6 +437,12 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
               onClick={() => onOpenPerson(p.id, p.name)}>
               <span style={{ width: 26, height: 26, borderRadius: '50%', overflow: 'hidden', display: 'inline-block', background: 'var(--tonal)' }}><FaceImg id={p.face} size={26} /></span>
               {p.name ?? 'Nieznana osoba'}
+            </button>
+          ))}
+          {people.map((p) => (
+            <button key={`r${p.id}`} className="chip glass" style={{ gap: 6 }} aria-label={`To nie jest ${p.name ?? 'ta osoba'}: wskaż właściwą osobę`} title="Źle rozpoznana twarz: przenieś ją do innej osoby"
+              onClick={async () => { try { setReassign({ from: p, options: (await listPeople()).filter((o) => o.id !== p.id && !o.ignored) }) } catch (e) { say(`Błąd: ${e}`, 'err') } }}>
+              <Pencil size={13} /> To inna osoba
             </button>
           ))}
           {people.map((p) => (
@@ -415,6 +475,7 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
         <button className="ico" aria-label="Cofnij" title="Cofnij (Ctrl+Z)" disabled={!undo.length} onClick={doUndo}><Undo2 size={19} /></button>
         <button className="ico" aria-label="Ponów" title="Ponów (Ctrl+Y)" disabled={!redo.length} onClick={doRedo}><Redo2 size={19} /></button>
         <button className={`ico ${playing ? 'on' : ''}`} aria-label="Pokaz slajdów" aria-pressed={playing} title="Pokaz slajdów (spacja)" onClick={() => setPlaying((p) => !p)}>{playing ? <Pause size={19} /> : <Play size={19} />}</button>
+        <button className={`ico ${music ? 'on' : ''}`} aria-label={music ? `Wyłącz muzykę: ${music.name}` : 'Dodaj muzykę do pokazu slajdów'} aria-pressed={!!music} title={music ? `Muzyka: ${music.name} (kliknij, aby wyłączyć)` : 'Muzyka do pokazu slajdów'} onClick={chooseMusic}><Sparkles size={19} /></button>
         <button className="chip" aria-label={`Czas slajdu: ${slideSecs} sekund. Kliknij, aby zmienić`} title="Czas jednego slajdu w pokazie"
           onClick={() => setSlideSecs((s) => { const n = ({ 2: 4, 4: 7, 7: 12, 12: 2 } as Record<number, number>)[s] ?? 4; try { localStorage.setItem('slide-secs', String(n)) } catch { /* brak pamięci przeglądarki */ } return n })}>{slideSecs} s</button>
         <button className="ico" aria-label="Pomniejsz" title="Pomniejsz (−)" disabled={zoom <= 1} onClick={() => zoomAt(1 / 1.4)}><ZoomOut size={19} /></button>

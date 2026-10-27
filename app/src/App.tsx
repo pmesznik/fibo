@@ -7,13 +7,14 @@ import { LocationDialog } from './LocationDialog'
 import { RenameDialog } from './RenameDialog'
 import { DateDialog } from './DateDialog'
 import { ShortcutsDialog, StatsDialog } from './HelpDialogs'
+import { PropsDialog } from './PropsDialog'
 import { getClip, pasteEditToPhotos } from './editor/batch'
 import { Duplicates } from './Duplicates'
 import { UpdateDialog, useUpdater } from './Updater'
 import { exportSidecars, getSidecarEnabled, importSidecars, setSidecarEnabled } from './api'
 import {
   addToAlbum, createAlbum, deleteAlbum, listAlbums, listRoots, movePhotos, removeFromAlbum, removeRoot,
-  renameAlbum, renamePhoto, rescanRoots, trashPhotos, renameFolder, personPhotos, importPhotos, backupLibrary, restoreLibrary, pickFile, facesStart, facesStatus, hidePhotos, hiddenCount, restoreHidden, type Album,
+  renameAlbum, renamePhoto, rescanRoots, trashPhotos, listProps, renameFolder, type Prop, personPhotos, importPhotos, backupLibrary, restoreLibrary, pickFile, facesStart, facesStatus, hidePhotos, hiddenCount, restoreHidden, type Album,
 } from './api'
 import { AlbumPicker, PromptDialog } from './Dialogs'
 import { addTag, deleteTag, inTauri, listPhotos, pickFolder, refreshLibrary, removeTag, scanFolder, setFavorite, setRating, type Photo } from './api'
@@ -25,7 +26,7 @@ import { Justified } from './Justified'
 import { Chip, Sec, Toast } from './ui'
 import {
   Images, FolderOpen, Users, MapPin, Heart, Star, Plus, Play, Maximize2, X,
-  SlidersHorizontal, Search as SearchIcon, ImageUp, Ruler, LayoutDashboard, Check, ListChecks, Tag, CalendarDays, Copy, RefreshCw, Download, Save, Pencil, Trash2, Eye, EyeOff, ChevronLeft, Wand2,
+  SlidersHorizontal, Search as SearchIcon, ImageUp, Ruler, LayoutDashboard, Check, ListChecks, Tag, CalendarDays, Copy, RefreshCw, Download, Save, Pencil, Trash2, Eye, EyeOff, ChevronLeft, Wand2, Info,
 } from './FiboIcons'
 
 type Mode = 'library' | 'albums' | 'favs' | 'people' | 'map'
@@ -130,6 +131,12 @@ export default function App() {
   const reloadAlbums = useCallback(async () => { if (inTauri) setAlbums(await listAlbums()) }, [])
   const reloadRoots = useCallback(async () => { if (inTauri) setRoots(await listRoots()) }, [])
   // Taca: trwały koszyk zdjęć z różnych folderów i albumów; akcje działają na jej zawartości po „Zaznacz z tacy”.
+  const [props, setPropsList] = useState<Prop[]>([])
+  const [propsFor, setPropsFor] = useState<null | { kind: 'album' | 'folder'; id: string; title: string }>(null)
+  const reloadProps = useCallback(async () => { if (inTauri) setPropsList(await listProps()) }, [])
+  useEffect(() => { reloadProps() }, [reloadProps])
+  const propOf = useMemo(() => new Map(props.map((p) => [`${p.kind}:${p.key}`, p] as [string, Prop])), [props])
+  const propText = (kind: 'album' | 'folder', key: string) => { const p = propOf.get(`${kind}:${key}`); return p ? `${p.description} ${p.place} ${p.date}` : '' }
   const [folderSort, setFolderSort] = useState<'date' | 'name'>('date')
   const [tray, setTray] = useState<number[]>([])
   const [trayView, setTrayView] = useState(false)
@@ -277,14 +284,14 @@ export default function App() {
       (!dateTo || whenOf(p).slice(0, 10).replace(/:/g, '-') <= dateTo) &&
       (missing === '' || (missing === 'tags' ? p.tags.length === 0 : missing === 'geo' ? p.lat == null || p.lon == null : p.rating === 0)) &&
       activeTags.every((t) => p.tags.includes(t)) &&
-      (!q || `${p.name} ${p.camera ?? ''} ${p.caption ?? ''} ${p.tags.join(' ')} ${p.albums.map((a) => albumNames.get(a) ?? '').join(' ')} ${folderName(dirOf(p.path))}`.toLowerCase().includes(q)),
+      (!q || `${p.name} ${p.camera ?? ''} ${p.caption ?? ''} ${p.tags.join(' ')} ${p.albums.map((a) => `${albumNames.get(a) ?? ''} ${propText('album', String(a))}`).join(' ')} ${folderName(dirOf(p.path))} ${propText('folder', dirOf(p.path))}`.toLowerCase().includes(q)),
     )
     if (sort === 'name') list.sort((a, b) => a.name.localeCompare(b.name, 'pl', { numeric: true }))
     else if (sort === 'rating') list.sort((a, b) => b.rating - a.rating || whenOf(b).localeCompare(whenOf(a)))
     else if (sort === 'size') list.sort((a, b) => b.size - a.size)
     else list.sort((a, b) => (sort === 'date-desc' ? whenOf(b).localeCompare(whenOf(a)) : whenOf(a).localeCompare(whenOf(b))))
     return list
-  }, [all, albumNames, query, folder, albumId, person, trayView, tray, onlyFav, minStars, dateFrom, dateTo, missing, sort, activeTags])
+  }, [all, albumNames, propOf, query, folder, albumId, person, trayView, tray, onlyFav, minStars, dateFrom, dateTo, missing, sort, activeTags])
 
   // Foldery od najnowszego; rok albumu to rok jego najnowszego zdjęcia (jak w Picasie).
   const folders = useMemo(() => {
@@ -814,6 +821,7 @@ export default function App() {
                 const ids = list.map((p) => p.id)
                 return (
                   <>
+                    <button className="wide" onClick={() => { setDrawer(false); setPropsFor({ kind: 'folder', id: folder, title: folderName(folder) }) }}><Info size={17} /> Właściwości folderu (opis, miejsce, data)…</button>
                     <button className="wide" onClick={() => {
                       setPrompt({
                         title: 'Zmień nazwę folderu', label: 'Nowa nazwa folderu', initial: folderName(folder), confirm: 'Zmień nazwę',
@@ -870,6 +878,12 @@ export default function App() {
               )}
               <h1 style={{ margin: 0, font: '700 22px/1.2 system-ui' }}>{mode === 'favs' ? 'Ulubione' : person ? person.name : albumId !== null ? (albums.find((a) => a.id === albumId)?.name ?? 'Album') : folder ? folderName(folder) : 'Biblioteka'}</h1>
               <div style={{ color: 'var(--muted)', fontSize: 13 }}>{subtitle}</div>
+              {(() => {
+                const pr = albumId !== null ? propOf.get(`album:${albumId}`) : folder ? propOf.get(`folder:${folder}`) : undefined
+                if (!pr) return null
+                const meta = [pr.date && pr.date.split('-').reverse().join('.'), pr.place].filter(Boolean).join(' · ')
+                return <div style={{ marginTop: 6, fontSize: 13.5 }}>{meta && <b>{meta}</b>}{meta && pr.description ? ' · ' : ''}<span style={{ color: 'var(--muted)' }}>{pr.description}</span></div>
+              })()}
               {years.length > 1 && (
                 <div className="chips" style={{ marginTop: 10 }} role="navigation" aria-label="Przejdź do roku">
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--muted)', fontSize: 13 }}><CalendarDays size={15} /> Rok</span>
@@ -958,6 +972,7 @@ export default function App() {
                           <div style={{ color: 'var(--muted)', fontSize: 13 }}>{a.count} {pl(a.count, 'zdjęcie', 'zdjęcia', 'zdjęć')}</div>
                         </button>
                         <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
+                          <button className="ico" style={{ minWidth: 40, minHeight: 36 }} aria-label={`Właściwości albumu ${a.name}`} title="Właściwości: opis, miejsce, data" onClick={() => setPropsFor({ kind: 'album', id: String(a.id), title: a.name })}><Info size={16} /></button>
                           <button className="ico" style={{ minWidth: 40, minHeight: 36 }} aria-label={`Zmień nazwę albumu ${a.name}`} title="Zmień nazwę" onClick={() => renameAlbumPrompt(a)}><Pencil size={16} /></button>
                           <button className="ico" style={{ minWidth: 40, minHeight: 36 }} aria-label={`Usuń album ${a.name}`} title="Usuń album (zdjęcia zostają)" onClick={() => deleteAlbumAsk(a)}><Trash2 size={16} /></button>
                         </div>
@@ -1143,6 +1158,7 @@ export default function App() {
           <button className="ico" aria-label="Wyczyść tacę" title="Wyczyść tacę" onClick={() => { setTray([]); setTrayView(false) }}><X size={18} /></button>
         </div>
       )}
+      {propsFor && <PropsDialog kind={propsFor.kind} id={propsFor.id} title={propsFor.title} current={propOf.get(`${propsFor.kind}:${propsFor.id}`)} say={say} onSaved={reloadProps} onClose={() => setPropsFor(null)} />}
       {helpDlg === 'keys' && <ShortcutsDialog onClose={() => setHelpDlg(null)} />}
       {helpDlg === 'stats' && <StatsDialog photos={all} onClose={() => setHelpDlg(null)} />}
       {dateIds && dateIds.length > 0 && (

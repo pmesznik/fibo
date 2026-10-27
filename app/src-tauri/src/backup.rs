@@ -13,6 +13,8 @@ use crate::AppState;
 /// Tabele biblioteki przenoszone w kopii (kolejność ma znaczenie tylko dla czytelności, nie ma kluczy obcych).
 // Dane twarzy nie są w kopii: po przywróceniu numery zdjęć się zmieniają, a analiza twarzy i tak liczy się lokalnie od nowa.
 const TABLES: [&str; 6] = ["photos", "tags", "photo_tags", "roots", "albums", "album_photos"];
+// Tabele dodane później: starsze kopie ich nie mają, wtedy zostają bez zmian.
+const OPTIONAL: [&str; 1] = ["props"];
 
 fn stamp() -> String {
     let secs = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0);
@@ -65,8 +67,14 @@ pub fn restore_core(conn: &mut Connection, file: &Path, safety_dir: &Path) -> Re
                 return Err(format!("Kopia pochodzi z innej wersji programu (tabela {t} ma inne kolumny)"));
             }
         }
+        let optional: Vec<&str> = OPTIONAL.iter().copied().filter(|t| columns(conn, "kopia", t).map(|c| !c.is_empty()).unwrap_or(false)).collect();
+        for t in &optional {
+            if columns(conn, "main", t)? != columns(conn, "kopia", t)? {
+                return Err(format!("Kopia pochodzi z innej wersji programu (tabela {t} ma inne kolumny)"));
+            }
+        }
         let tx = conn.transaction().map_err(|e| e.to_string())?;
-        for t in TABLES {
+        for t in TABLES.iter().chain(optional.iter()) {
             tx.execute(&format!("DELETE FROM main.{t}"), []).map_err(|e| e.to_string())?;
             tx.execute(&format!("INSERT INTO main.{t} SELECT * FROM kopia.{t}"), []).map_err(|e| e.to_string())?;
         }

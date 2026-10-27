@@ -99,6 +99,8 @@ fn open_db(path: &Path) -> rusqlite::Result<Connection> {
     // Migracja: zdjęcia ukryte w bibliotece (pliki zostają na dysku, skan ich nie dodaje ponownie).
     let _ = conn.execute("ALTER TABLE photos ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0", []);
     people::init_schema(&conn)?;
+    // Właściwości albumów i folderów: opis, miejsce, data (rodzaj: "album" z numerem albumu albo "folder" ze ścieżką).
+    conn.execute_batch("CREATE TABLE IF NOT EXISTS props (kind TEXT NOT NULL, key TEXT NOT NULL, description TEXT, place TEXT, date TEXT, PRIMARY KEY (kind, key));")?;
     // Migracja: lokalizacja ustawiona ręcznie ma pierwszeństwo przed danymi GPS z pliku.
     let _ = conn.execute("ALTER TABLE photos ADD COLUMN geo_manual INTEGER NOT NULL DEFAULT 0", []);
     // Migracje: opis zdjęcia oraz data ustawiona ręcznie (ma pierwszeństwo przed datą z pliku).
@@ -516,6 +518,24 @@ fn save_collage(state: State<'_, AppState>, request: tauri::ipc::Request<'_>) ->
 }
 
 /// Surowe bajty zdjęcia dla edytora (pomija CORS protokołu asset).
+/// Plik muzyczny do pokazu slajdów (tylko znane rozszerzenia dźwięku, do 80 MB), przekazany jako bajty; nic nie jest wysyłane w sieć.
+#[tauri::command]
+fn read_audio(path: String) -> Result<tauri::ipc::Response, String> {
+    let p = Path::new(&path);
+    let ok = p.extension().and_then(|e| e.to_str()).map(|e| ["mp3", "m4a", "aac", "ogg", "oga", "wav", "flac"].contains(&e.to_ascii_lowercase().as_str())).unwrap_or(false);
+    if !ok {
+        return Err("To nie jest obsługiwany plik muzyczny (mp3, m4a, aac, ogg, wav, flac)".into());
+    }
+    let meta = fs::symlink_metadata(p).map_err(|e| e.to_string())?;
+    if !meta.is_file() {
+        return Err("To nie jest zwykły plik".into());
+    }
+    if meta.len() > 80 * 1024 * 1024 {
+        return Err("Plik muzyczny jest za duży (limit 80 MB)".into());
+    }
+    Ok(tauri::ipc::Response::new(fs::read(p).map_err(|e| e.to_string())?))
+}
+
 #[tauri::command]
 fn read_image(state: State<'_, AppState>, id: i64) -> Result<tauri::ipc::Response, String> {
     let (path, _, _) = photo_path(&state, id)?;
@@ -1125,6 +1145,7 @@ fn delete_album(state: State<'_, AppState>, id: i64) -> Result<(), String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM album_photos WHERE album_id = ?1", [id]).map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM albums WHERE id = ?1", [id]).map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM props WHERE kind = 'album' AND key = ?1", [id.to_string()]).map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -1443,6 +1464,57 @@ async fn rename_batch(app: tauri::AppHandle, ids: Vec<i64>, prefix: String, with
     tauri::async_runtime::spawn_blocking(move || rename_batch_core(&app.state::<AppState>(), &ids, &prefix, with_date, start))
         .await
         .map_err(|e| e.to_string())?
+}
+
+#[derive(Serialize)]
+struct Prop {
+    kind: String,
+    key: String,
+    description: String,
+    place: String,
+    date: String,
+}
+
+#[tauri::command]
+fn list_props(state: State<'_, AppState>) -> Result<Vec<Prop>, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare("SELECT kind, key, COALESCE(description,''), COALESCE(place,''), COALESCE(date,'') FROM props").map_err(|e| e.to_string())?;
+    let v = stmt
+        .query_map([], |r| Ok(Prop { kind: r.get(0)?, key: r.get(1)?, description: r.get(2)?, place: r.get(3)?, date: r.get(4)? }))
+        .map_err(|e| e.to_string())?
+        .filter_map(Result::ok)
+        .collect();
+    Ok(v)
+}
+
+fn clean_prop(s: &str, max: usize) -> String {
+    s.chars().filter(|c| !c.is_control() || *c == '\n').take(max).collect::<String>().trim().to_string()
+}
+
+/// Zapisuje opis, miejsce i datę albumu lub folderu (same puste pola usuwają wpis). Dane są przeszukiwalne i zostają w bibliotece FIBO.
+fn set_props_core(conn: &Connection, kind: &str, key: &str, description: &str, place: &str, date: &str) -> Result<(), String> {
+    if kind != "album" && kind != "folder" {
+        return Err("Nieznany rodzaj".into());
+    }
+    if key.is_empty() || key.chars().count() > 1000 {
+        return Err("Nieprawidłowy klucz".into());
+    }
+    let (description, place, date) = (clean_prop(description, 2000), clean_prop(place, 200), date.trim().to_string());
+    if !date.is_empty() && (parse_ts(&date).is_none() || date.len() != 10) {
+        return Err("Data musi mieć postać RRRR-MM-DD".into());
+    }
+    if description.is_empty() && place.is_empty() && date.is_empty() {
+        conn.execute("DELETE FROM props WHERE kind = ?1 AND key = ?2", params![kind, key]).map_err(|e| e.to_string())?;
+    } else {
+        conn.execute("INSERT OR REPLACE INTO props (kind, key, description, place, date) VALUES (?1, ?2, ?3, ?4, ?5)", params![kind, key, description, place, date]).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn set_props(state: State<'_, AppState>, kind: String, key: String, description: String, place: String, date: String) -> Result<(), String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    set_props_core(&conn, &kind, &key, &description, &place, &date)
 }
 
 /// Dane EXIF zdjęcia do pokazania w panelu informacji: (nazwa po polsku, wartość). Tylko odczyt, wartości są przycinane.
@@ -2276,6 +2348,39 @@ mod tests {
     }
 
     #[test]
+    fn album_and_folder_properties_are_validated() {
+        let dir = std::env::temp_dir().join("mz-props-test");
+        let state = test_state(&dir);
+        let c = state.db.lock().unwrap();
+        set_props_core(&c, "album", "3", "Wakacje nad morzem", "Hel", "2024-07-01").unwrap();
+        set_props_core(&c, "folder", "C:\\Zdjecia\\2024", "opis", "", "").unwrap();
+        let n: i64 = c.query_row("SELECT COUNT(*) FROM props", [], |r| r.get(0)).unwrap();
+        assert_eq!(n, 2);
+        assert!(set_props_core(&c, "album", "3", "x", "", "01.07.2024").is_err());
+        assert!(set_props_core(&c, "album", "3", "x", "", "2024-13-40").is_err());
+        assert!(set_props_core(&c, "zly", "3", "x", "", "").is_err());
+        assert!(set_props_core(&c, "album", "", "x", "", "").is_err());
+        // Wszystkie pola puste usuwają wpis.
+        set_props_core(&c, "album", "3", "", "", "").unwrap();
+        let n: i64 = c.query_row("SELECT COUNT(*) FROM props", [], |r| r.get(0)).unwrap();
+        assert_eq!(n, 1);
+    }
+
+    #[test]
+    fn read_audio_accepts_only_small_audio_files() {
+        let dir = std::env::temp_dir().join("mz-audio-test");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("a.mp3"), b"id3").unwrap();
+        fs::write(dir.join("a.exe"), b"MZ").unwrap();
+        fs::create_dir_all(dir.join("folder.mp3")).unwrap();
+        assert!(read_audio(dir.join("a.mp3").to_string_lossy().to_string()).is_ok());
+        assert!(read_audio(dir.join("a.exe").to_string_lossy().to_string()).is_err());
+        assert!(read_audio(dir.join("folder.mp3").to_string_lossy().to_string()).is_err());
+        assert!(read_audio(dir.join("brak.mp3").to_string_lossy().to_string()).is_err());
+    }
+
+    #[test]
     fn manual_dates_and_captions() {
         assert_eq!(days_from_civil(1970, 1, 1), 0);
         assert_eq!(days_from_civil(2024, 1, 1), 19723);
@@ -2797,7 +2902,7 @@ fn main() {
             app.manage(AppState { db: Mutex::new(db), thumbs, sidecar: AtomicBool::new(sidecar) });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![list_roots, remove_root, rescan_roots, list_albums, create_album, rename_album, delete_album, add_to_album, remove_from_album, rename_photo, move_photos, get_sidecar_enabled, set_sidecar_enabled, export_sidecars, import_sidecars, scan_folder, refresh_library, find_duplicates, trash_photos, export_photos, set_location, rename_batch, import_photos, gallery::export_gallery, gallery::rename_folder, set_date, shift_dates, set_caption, photo_exif, people::photo_people, backup::backup_library, backup::restore_library, hide_photos, hidden_count, restore_hidden, people::faces_status, people::set_faces_enabled, people::faces_start, people::faces_stop, people::faces_delete_all, people::list_people, people::person_photos, people::person_faces, people::set_person_cover, people::rename_person, people::merge_people, people::ignore_person, list_photos, thumbnail, thumbnail_data, people::face_crop, set_rating, set_favorite, add_tag, remove_tag, delete_tag, save_edit, save_collage, read_image, has_original, restore_original])
+        .invoke_handler(tauri::generate_handler![list_roots, remove_root, rescan_roots, list_albums, create_album, rename_album, delete_album, add_to_album, remove_from_album, rename_photo, move_photos, get_sidecar_enabled, set_sidecar_enabled, export_sidecars, import_sidecars, scan_folder, refresh_library, find_duplicates, trash_photos, export_photos, set_location, rename_batch, import_photos, gallery::export_gallery, gallery::rename_folder, set_date, shift_dates, set_caption, photo_exif, list_props, set_props, people::photo_people, people::reassign_person_faces, backup::backup_library, backup::restore_library, hide_photos, hidden_count, restore_hidden, people::faces_status, people::set_faces_enabled, people::faces_start, people::faces_stop, people::faces_delete_all, people::list_people, people::person_photos, people::person_faces, people::set_person_cover, people::rename_person, people::merge_people, people::ignore_person, list_photos, thumbnail, thumbnail_data, people::face_crop, set_rating, set_favorite, add_tag, remove_tag, delete_tag, save_edit, save_collage, read_image, read_audio, has_original, restore_original])
         .run(tauri::generate_context!())
         .expect("błąd uruchomienia aplikacji");
 }

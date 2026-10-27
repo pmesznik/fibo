@@ -153,6 +153,11 @@ pub fn rename_folder_core(conn: &Connection, old: &Path, new_name: &str) -> Resu
             .map_err(|e| e.to_string())?;
         }
     }
+    tx.execute(
+        "UPDATE props SET key = ?2 || substr(key, length(?1) + 1) WHERE kind = 'folder' AND (key = ?1 OR substr(key, 1, length(?1) + 1) = ?1 || ?3)",
+        params![old_s, new_s, sep],
+    )
+    .map_err(|e| e.to_string())?;
     tx.commit().map_err(|e| e.to_string())?;
     Ok(target)
 }

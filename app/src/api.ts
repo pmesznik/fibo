@@ -60,11 +60,16 @@ export const setCaption = (id: number, caption: string) => invoke('set_caption',
 export const setDate = (ids: number[], date: string) => invoke<number>('set_date', { ids, date })
 export const shiftDates = (ids: number[], minutes: number) => invoke<number>('shift_dates', { ids, minutes })
 export type PhotoPerson = { id: number; name: string | null; face: number }
+export const reassignPersonFaces = (photoId: number, from: number, to: number | null) => invoke<number>('reassign_person_faces', { photoId, from, to })
 export const photoPeople = (id: number) => invoke<PhotoPerson[]>('photo_people', { id })
 export type GalleryReport = { folder: string; done: number; errors: string[] }
 export const exportGallery = (ids: number[], dest: string, title: string, maxSide: number, quality: number) =>
   invoke<GalleryReport>('export_gallery', { ids, dest, title, maxSide, quality })
 export const renameFolder = (old: string, newName: string) => invoke<string>('rename_folder', { old, newName })
+export type Prop = { kind: 'album' | 'folder'; key: string; description: string; place: string; date: string }
+export const listProps = () => invoke<Prop[]>('list_props')
+export const setProps = (kind: string, key: string, description: string, place: string, date: string) => invoke('set_props', { kind, key, description, place, date })
+export const readAudio = (path: string) => invoke<ArrayBuffer>('read_audio', { path })
 export const exportPhotos = (ids: number[], dest: string, maxSide: number, quality: number) => invoke<MoveReport>('export_photos', { ids, dest, maxSide, quality })
 export const trashPhotos = (ids: number[], confirm?: string) => invoke<number>('trash_photos', { ids, confirm })
 export const hidePhotos = (ids: number[]) => invoke<number>('hide_photos', { ids })
@@ -120,8 +125,8 @@ export const renamePerson = (id: number, name: string) => invoke('rename_person'
 export const mergePeople = (from: number, into: number) => invoke('merge_people', { from, into })
 export const ignorePerson = (id: number, ignored: boolean) => invoke('ignore_person', { id, ignored })
 
-export async function pickFile(title: string, extensions: string[]) {
-  const f = await open({ directory: false, multiple: false, title, filters: [{ name: 'Kopia biblioteki FIBO', extensions }] })
+export async function pickFile(title: string, extensions: string[], filterName = 'Kopia biblioteki FIBO') {
+  const f = await open({ directory: false, multiple: false, title, filters: [{ name: filterName, extensions }] })
   return typeof f === 'string' ? f : null
 }
 

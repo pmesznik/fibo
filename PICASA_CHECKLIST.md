@@ -21,7 +21,7 @@ Lista powstała z pamięci o Picasie 3, z przeglądu FIBO i z oficjalnego podrę
 - [x] **Opisy zdjęć (podpisy)**: pole „Opis” przy zdjęciu, szukanie po opisie, zapis do XMP. P1 T S Gotowe: opis w podglądzie i szukanie po opisach. Zapis do XMP jeszcze nie (opis zostaje w bibliotece FIBO).
 - [x] **Taca („Hold”)**: trwały koszyk zaznaczonych zdjęć, do którego dokładasz z różnych folderów, a potem robisz akcję na całości (album, eksport, kolaż). P2 T M Gotowe: Dodaj do tacy, pasek Taca (pokaż, zaznacz, wyczyść); akcje przez Zaznacz i menu.
 - [x] **Zmiana daty zdjęcia / przesunięcie dat** (np. zły zegar aparatu): ustaw datę lub przesuń o N godzin dla wielu zdjęć. P1 T M Gotowe w bibliotece FIBO (plików nie zmieniamy).
-- [ ] **Własne albumy: kolejność zdjęć** przeciąganiem, opis i data albumu. P3 T M
+- [ ] **Własne albumy: kolejność zdjęć** przeciąganiem. P3 T M (opis, miejsce i data albumu są już gotowe)
 - [ ] **Albumy inteligentne** (zapisane filtry, np. „5 gwiazdek z 2023”). P3 T M
 - [ ] **Wyszukiwanie po kolorze** dominującym. P4 T M
 - [ ] **Wyszukiwanie po danych aparatu** (model, obiektyw, ISO, przysłona, czas) i filtr „aparat”. P2 T M
@@ -36,7 +36,7 @@ Lista powstała z pamięci o Picasie 3, z przeglądu FIBO i z oficjalnego podrę
 - [x] Rozpoznawanie twarzy lokalnie, grupowanie w osoby, imiona, łączenie, okładka, pomijanie
 - [x] Mapa z globusem, pinezki w kolorach, skupiska, dzień i noc z animacją
 - [x] Ręczne ustawianie lokalizacji (klik na mapie albo współrzędne)
-- [x] **Chipy osób w podglądzie zdjęcia** (kto jest na tym zdjęciu) i ręczne przypisanie twarzy do osoby. P1 T M Gotowe: znaczki osób i przejście do zdjęć osoby. Ręczne przypisanie twarzy nadal do zrobienia.
+- [x] **Chipy osób w podglądzie zdjęcia** (kto jest na tym zdjęciu) i ręczne przypisanie twarzy do osoby. P1 T M Gotowe: znaczki osób, przejście do zdjęć osoby oraz poprawianie błędnego rozpoznania („To inna osoba”).
 - [ ] **Twarze, których nie znaleziono**: ręczne zaznaczenie twarzy na zdjęciu. P3 T M
 - [ ] **„Zdjęcia osoby A i osoby B razem”** (przecięcie osób). P3 T S
 - [ ] **Nazwy miejsc** (miasto, kraj) z lokalnego słownika współrzędnych, szukanie po miejscu. P3 T L
@@ -90,7 +90,7 @@ Lista powstała z pamięci o Picasie 3, z przeglądu FIBO i z oficjalnego podrę
 - [x] Pokaz slajdów (spacja)
 - [x] Zdjęcia w pełnym ekranie, powiększanie, porównanie
 - [ ] **Kolaż: tryby** (stos zdjęć, mozaika, arkusz kontaktowy, plakat z wieloma rozmiarami). P3 T M
-- [ ] **Pokaz slajdów: przejścia, czas na zdjęcie, muzyka z pliku, podpisy**. P2 T M
+- [x] **Pokaz slajdów: przejścia, czas na zdjęcie, muzyka z pliku, podpisy**. P2 T M Gotowe: płynne przejście, czas slajdu, muzyka z pliku, opisy.
 - [ ] **Film ze zdjęć** (eksport pokazu slajdów do wideo MP4). P3 T L
 - [ ] **Wygaszacz ekranu** ze zdjęć z biblioteki. P4 T M
 - [ ] **Animowany GIF** z kilku zdjęć. P4 T S
@@ -117,7 +117,7 @@ Lista powstała z pamięci o Picasie 3, z przeglądu FIBO i z oficjalnego podrę
 Pozycje, których brakowało na liście powyżej albo które podręcznik opisuje dokładniej.
 
 Biblioteka i foldery:
-- [ ] **Właściwości folderu i albumu**: tytuł, data, miejsce, opis (dwuklik w nagłówku), wszystko przeszukiwalne. P2 T M
+- [x] **Właściwości folderu i albumu**: tytuł, data, miejsce, opis (dwuklik w nagłówku), wszystko przeszukiwalne. P2 T M Gotowe (ikona informacji przy albumie, menu → Foldery).
 - [x] **Zmiana nazwy folderu z poziomu FIBO** (zmienia też folder na dysku, z ostrzeżeniem). P3 T M Gotowe (menu → Foldery).
 - [ ] **„Pokaż w Eksploratorze”** dla folderu i zdjęcia. P2 T S
 - [ ] **Menedżer folderów**: dla każdego folderu „obserwuj zawsze”, „skanuj raz”, „usuń z FIBO” (dziś jest tylko obserwuj i przestań obserwować). P2 T S
