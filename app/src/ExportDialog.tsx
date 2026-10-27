@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { X, Download } from './FiboIcons'
-import { exportGallery, exportPhotos, pickFolder } from './api'
+import { exportGallery, exportPhotos, pickFile, pickFolder, type Watermark } from './api'
 
 const SIZES: [number, string][] = [[1024, '1024 px (e-mail)'], [1600, '1600 px'], [2048, '2048 px'], [0, 'Oryginalny rozmiar']]
 const QUALITIES: [number, string][] = [[75, 'Mała'], [88, 'Dobra'], [95, 'Najlepsza']]
@@ -10,6 +10,22 @@ export function ExportDialog({ ids, onClose, say }: { ids: number[]; onClose: ()
   const [size, setSize] = useState(1600)
   const [quality, setQuality] = useState(88)
   const [busy, setBusy] = useState(false)
+  // Znak wodny z własnego logo: plik, położenie, rozmiar i krycie (ustawienia są zapamiętywane na tym komputerze).
+  const [wm, setWm] = useState<{ path: string; position: string; sizePct: number; opacity: number } | null>(() => {
+    try {
+      const v = JSON.parse(localStorage.getItem('watermark-logo') ?? 'null')
+      return v && typeof v.path === 'string' ? { path: v.path, position: String(v.position ?? 'br'), sizePct: +v.sizePct || 20, opacity: +v.opacity || 70 } : null
+    } catch { return null }
+  })
+  const [useWm, setUseWm] = useState(false)
+  const saveWm = (w: typeof wm) => { setWm(w); try { localStorage.setItem('watermark-logo', JSON.stringify(w)) } catch { /* brak pamięci przeglądarki */ } }
+  const pickLogo = async () => {
+    try {
+      const f = await pickFile('Wybierz logo (PNG z przezroczystością, JPEG lub WebP)', ['png', 'jpg', 'jpeg', 'webp'], 'Logo')
+      if (f) { saveWm({ path: f, position: wm?.position ?? 'br', sizePct: wm?.sizePct ?? 20, opacity: wm?.opacity ?? 70 }); setUseWm(true) }
+    } catch (e) { say(`Błąd: ${e}`, 'err') }
+  }
+  const watermark: Watermark | null = useWm && wm ? { ...wm } : null
   const [title, setTitle] = useState('Galeria')
 
   const run = async () => {
@@ -17,7 +33,7 @@ export function ExportDialog({ ids, onClose, say }: { ids: number[]; onClose: ()
       const dir = await pickFolder('Wybierz folder na wyeksportowane zdjęcia')
       if (!dir) return
       setBusy(true)
-      const r = await exportPhotos(ids, dir, size, quality)
+      const r = await exportPhotos(ids, dir, size, quality, watermark)
       say(r.errors.length ? `Wyeksportowano ${r.done}, błędy: ${r.errors.length} (${r.errors[0]})` : `Wyeksportowano ${r.done} do wybranego folderu`, r.errors.length ? 'err' : 'ok')
       if (!r.errors.length) onClose()
     } catch (e) { say(`Błąd eksportu: ${e}`, 'err') } finally { setBusy(false) }
@@ -55,6 +71,27 @@ export function ExportDialog({ ids, onClose, say }: { ids: number[]; onClose: ()
           <div className="chips">
             {QUALITIES.map(([v, l]) => <button key={v} className={`chip${quality === v ? ' on' : ''}`} aria-pressed={quality === v} onClick={() => setQuality(v)}>{l}</button>)}
           </div>
+          <h3 style={{ margin: '14px 0 4px', fontSize: 14 }}>Znak wodny (logo)</h3>
+          <div className="chips">
+            <button className="chip" onClick={pickLogo}>{wm ? 'Zmień logo…' : 'Wybierz logo…'}</button>
+            {wm && <button className={`chip${useWm ? ' on' : ''}`} aria-pressed={useWm} onClick={() => setUseWm((v) => !v)}>{useWm ? 'Znak wodny włączony' : 'Użyj znaku wodnego'}</button>}
+          </div>
+          {wm && <p style={{ margin: '6px 0 0', color: 'var(--muted)', fontSize: 12.5, wordBreak: 'break-all' }}>Logo: {wm.path.split(/[\\/]/).pop()}</p>}
+          {wm && useWm && (
+            <>
+              <label>Położenie</label>
+              <div role="group" aria-label="Położenie znaku wodnego" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 44px)', gap: 4 }}>
+                {['tl', 'tc', 'tr', 'ml', 'mc', 'mr', 'bl', 'bc', 'br'].map((p) => (
+                  <button key={p} className={`chip${wm.position === p ? ' on' : ''}`} aria-pressed={wm.position === p} aria-label={`Położenie: ${({ t: 'góra', m: 'środek', b: 'dół' } as Record<string, string>)[p[0]]} ${({ l: 'lewo', c: 'środek', r: 'prawo' } as Record<string, string>)[p[1]]}`}
+                    style={{ minWidth: 44, height: 32, justifyContent: 'center' }} onClick={() => saveWm({ ...wm, position: p })}>{wm.position === p ? '●' : '○'}</button>
+                ))}
+              </div>
+              <label htmlFor="wm-size" style={{ display: 'flex', justifyContent: 'space-between' }}><span>Rozmiar logo</span><span>{wm.sizePct}% szerokości zdjęcia</span></label>
+              <input id="wm-size" type="range" min={3} max={60} value={wm.sizePct} onChange={(e) => saveWm({ ...wm, sizePct: +e.target.value })} />
+              <label htmlFor="wm-op" style={{ display: 'flex', justifyContent: 'space-between' }}><span>Krycie</span><span>{wm.opacity}%</span></label>
+              <input id="wm-op" type="range" min={5} max={100} value={wm.opacity} onChange={(e) => saveWm({ ...wm, opacity: +e.target.value })} />
+            </>
+          )}
           <button className="primary" style={{ marginTop: 16 }} disabled={busy} onClick={run}>
             <span className="inline-flex items-center gap-2"><Download size={17} /> {busy ? 'Eksportuję…' : 'Wybierz folder i eksportuj'}</span>
           </button>

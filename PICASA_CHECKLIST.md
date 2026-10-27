@@ -58,7 +58,7 @@ Lista powstała z pamięci o Picasie 3, z przeglądu FIBO i z oficjalnego podrę
 - [ ] **Poprawka perspektywy** (wyrównanie pionów). P4 T L
 - [ ] **Redukcja szumu**. P4 T M
 - [ ] **Rozmycie / pogłębienie ostrości w obszarze** (maska radialna). P4 T M
-- [ ] **Znak wodny** (tekst lub obraz) przy eksporcie. P2 T M
+- [x] **Znak wodny** (tekst lub obraz) przy eksporcie. P2 T M Gotowe jako logo (PNG, JPEG, WebP): położenie, rozmiar, krycie; dla jednego lub wielu zdjęć przy eksporcie. Znak tekstowy nie zrobiony.
 - [ ] **Rysowanie i strzałki** na zdjęciu. P4 T M
 
 ## 4. Edytor: efekty

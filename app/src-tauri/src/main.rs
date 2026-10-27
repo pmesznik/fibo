@@ -16,6 +16,7 @@ mod faces;
 mod gallery;
 mod people;
 mod secure;
+mod watermark;
 
 use image::imageops::FilterType;
 use rusqlite::{params, Connection};
@@ -1655,7 +1656,7 @@ fn set_location(state: State<'_, AppState>, ids: Vec<i64>, lat: Option<f64>, lon
 /// Eksport kopii zdjęć do folderu: opcjonalnie pomniejszonych (dłuższy bok `max_side`, 0 = bez zmiany rozmiaru), jako JPEG.
 /// Kopie nie zawierają metadanych EXIF (w tym lokalizacji GPS), więc nadają się do wysłania znajomym. Oryginały nie są ruszane,
 /// a istniejące pliki nie są nadpisywane.
-fn export_photos_blocking(state: &AppState, ids: &[i64], dest: &Path, max_side: u32, quality: u8) -> Result<MoveReport, String> {
+fn export_photos_blocking(state: &AppState, ids: &[i64], dest: &Path, max_side: u32, quality: u8, wm: Option<&watermark::Watermark>) -> Result<MoveReport, String> {
     if !dest.is_dir() {
         return Err("Folder docelowy nie istnieje".into());
     }
@@ -1663,6 +1664,8 @@ fn export_photos_blocking(state: &AppState, ids: &[i64], dest: &Path, max_side: 
         return Err("Zbyt duży rozmiar".into());
     }
     let quality = quality.clamp(1, 100);
+    // Logo znaku wodnego sprawdzamy i wczytujemy raz, przed kopiowaniem czegokolwiek.
+    let logo = wm.map(watermark::load_logo).transpose()?;
     let mut rep = MoveReport::default();
     for &id in ids {
         let (path, _, _) = photo_path(state, id)?;
@@ -1681,6 +1684,9 @@ fn export_photos_blocking(state: &AppState, ids: &[i64], dest: &Path, max_side: 
                 8 => img.rotate270(),
                 _ => img,
             };
+            if let (Some(l), Some(w)) = (&logo, wm) {
+                img = watermark::apply(img, l, w);
+            }
             let stem = src.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "zdjecie".into());
             let target = unique_target(dest, &format!("{stem}.jpg"));
             let file = File::create(&target).map_err(|e| e.to_string())?;
@@ -1696,8 +1702,8 @@ fn export_photos_blocking(state: &AppState, ids: &[i64], dest: &Path, max_side: 
 }
 
 #[tauri::command]
-async fn export_photos(app: tauri::AppHandle, ids: Vec<i64>, dest: String, max_side: u32, quality: u8) -> Result<MoveReport, String> {
-    tauri::async_runtime::spawn_blocking(move || export_photos_blocking(&app.state::<AppState>(), &ids, Path::new(&dest), max_side, quality))
+async fn export_photos(app: tauri::AppHandle, ids: Vec<i64>, dest: String, max_side: u32, quality: u8, watermark: Option<watermark::Watermark>) -> Result<MoveReport, String> {
+    tauri::async_runtime::spawn_blocking(move || export_photos_blocking(&app.state::<AppState>(), &ids, Path::new(&dest), max_side, quality, watermark.as_ref()))
         .await
         .map_err(|e| e.to_string())?
 }
@@ -2248,15 +2254,26 @@ mod tests {
         image::RgbImage::new(100, 50).save(lib.join("a.jpg")).unwrap();
         assert_eq!(scan_blocking(&state, lib.to_str().unwrap(), &|_| {}).unwrap(), 1);
         let id = photo_id(&state, "a.jpg");
-        let rep = export_photos_blocking(&state, &[id], &out, 40, 80).unwrap();
+        let rep = export_photos_blocking(&state, &[id], &out, 40, 80, None).unwrap();
         assert_eq!((rep.done, rep.errors.len()), (1, 0));
         assert_eq!(image::image_dimensions(out.join("a.jpg")).unwrap(), (40, 20));
         // Drugi eksport nie nadpisuje pierwszego; 0 = bez zmiany rozmiaru.
-        export_photos_blocking(&state, &[id], &out, 0, 90).unwrap();
+        export_photos_blocking(&state, &[id], &out, 0, 90, None).unwrap();
         assert_eq!(image::image_dimensions(out.join("a_1.jpg")).unwrap(), (100, 50));
         assert!(!read_exif(&out.join("a.jpg")).keywords.iter().any(|_| true));
-        assert!(export_photos_blocking(&state, &[id], &dir.join("brak"), 40, 80).is_err());
-        assert!(export_photos_blocking(&state, &[id], &out, 99999, 80).is_err());
+        assert!(export_photos_blocking(&state, &[id], &dir.join("brak"), 40, 80, None).is_err());
+        assert!(export_photos_blocking(&state, &[id], &out, 99999, 80, None).is_err());
+        // Znak wodny: logo trafia do prawego dolnego rogu kopii, a zły plik logo przerywa eksport przed kopiowaniem.
+        image::RgbaImage::from_pixel(10, 10, image::Rgba([255, 0, 0, 255])).save(dir.join("logo.png")).unwrap();
+        let wm = watermark::Watermark { path: dir.join("logo.png").to_string_lossy().to_string(), position: "br".into(), size_pct: 25, opacity: 100 };
+        export_photos_blocking(&state, &[id], &out, 0, 95, Some(&wm)).unwrap();
+        let marked = image::open(out.join("a_2.jpg")).unwrap().to_rgb8();
+        let px = marked.get_pixel(90, 45);
+        assert!(px[0] > 200 && px[1] < 80, "logo w prawym dolnym rogu: {px:?}");
+        let before = fs::read_dir(&out).unwrap().count();
+        let bad = watermark::Watermark { path: dir.join("brak.png").to_string_lossy().to_string(), ..wm };
+        assert!(export_photos_blocking(&state, &[id], &out, 0, 95, Some(&bad)).is_err());
+        assert_eq!(fs::read_dir(&out).unwrap().count(), before, "nic nie jest kopiowane przy błędnym logo");
         assert!(lib.join("a.jpg").exists());
     }
 
