@@ -27,7 +27,7 @@ Lista powstała z pamięci o Picasie 3, z przeglądu FIBO i z oficjalnego podrę
 - [ ] **Wyszukiwanie po danych aparatu** (model, obiektyw, ISO, przysłona, czas) i filtr „aparat”. P2 T M
 - [ ] **Zaznaczanie podobnych** do wybranego zdjęcia. P4 T M
 - [x] **Statystyki biblioteki** (liczba zdjęć, rozmiar, zdjęcia na rok, najczęstsze aparaty). P4 T S Gotowe (menu, szybkie akcje).
-- [ ] **Blokowanie folderu** przed zmianami z poziomu FIBO (ochrona przed przypadkowym usunięciem). P3 T S
+- [x] **Blokowanie folderu** przed zmianami z poziomu FIBO (ochrona przed przypadkowym usunięciem). P3 T S Gotowe (menu → Foldery); ochrona działa w programie, nie w systemie plików.
 - [x] **Skróty klawiszowe w bibliotece** (np. 1 do 5 oceny, F ulubione, Del ukrywanie) i ich lista pod F1. P2 T S Gotowe: 0-5, F, ? lub F1 (Del nie dodany, bo usuwanie ma potwierdzenia).
 - [ ] Obsługa **plików wideo** w bibliotece (miniatura, odtwarzanie, filtr). P3 T L
 - [ ] Obsługa **plików RAW** (CR2, NEF, ARW, DNG): miniatura z osadzonego podglądu. P3 T L
@@ -40,7 +40,7 @@ Lista powstała z pamięci o Picasie 3, z przeglądu FIBO i z oficjalnego podrę
 - [ ] **Twarze, których nie znaleziono**: ręczne zaznaczenie twarzy na zdjęciu. P3 T M
 - [x] **„Zdjęcia osoby A i osoby B razem”** (przecięcie osób). P3 T S Gotowe: przycisk „Razem z…” w widoku osoby.
 - [ ] **Nazwy miejsc** (miasto, kraj) z lokalnego słownika współrzędnych, szukanie po miejscu. P3 T L
-- [ ] **Eksport tras / lokalizacji** do pliku GPX lub KML. P4 T S
+- [x] **Eksport tras / lokalizacji** do pliku GPX lub KML. P4 T S Gotowe w oknie eksportu (GPX).
 - [ ] **Film z twarzy** (pokaz zdjęć jednej osoby). P4 T M
 
 ## 3. Edytor: poprawki podstawowe
@@ -93,7 +93,7 @@ Lista powstała z pamięci o Picasie 3, z przeglądu FIBO i z oficjalnego podrę
 - [x] **Pokaz slajdów: przejścia, czas na zdjęcie, muzyka z pliku, podpisy**. P2 T M Gotowe: płynne przejście, czas slajdu, muzyka z pliku, opisy.
 - [ ] **Film ze zdjęć** (eksport pokazu slajdów do wideo MP4). P3 T L
 - [ ] **Wygaszacz ekranu** ze zdjęć z biblioteki. P4 T M
-- [ ] **Animowany GIF** z kilku zdjęć. P4 T S
+- [x] **Animowany GIF** z kilku zdjęć. P4 T S Gotowe w oknie eksportu.
 
 ## 7. Metadane i pliki
 - [x] Podgląd informacji (EXIF: aparat, data, wymiary), tagi w panelu

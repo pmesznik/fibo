@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { X, Download } from './FiboIcons'
-import { exportGallery, exportPhotos, pickFile, pickFolder, type Watermark } from './api'
+import { exportGallery, exportGif, exportGpx, exportPhotos, pickFile, pickFolder, type Watermark } from './api'
 
 const SIZES: [number, string][] = [[1024, '1024 px (e-mail)'], [1600, '1600 px'], [2048, '2048 px'], [0, 'Oryginalny rozmiar']]
 const QUALITIES: [number, string][] = [[75, 'Mała'], [88, 'Dobra'], [95, 'Najlepsza']]
@@ -27,6 +27,7 @@ export function ExportDialog({ ids, onClose, say }: { ids: number[]; onClose: ()
   }
   const watermark: Watermark | null = useWm && wm ? { ...wm } : null
   const [title, setTitle] = useState('Galeria')
+  const [delay, setDelay] = useState(1000)
 
   const run = async () => {
     try {
@@ -49,6 +50,25 @@ export function ExportDialog({ ids, onClose, say }: { ids: number[]; onClose: ()
       say(r.errors.length ? `Galeria: ${r.done} zdjęć, błędy: ${r.errors.length} (${r.errors[0]})` : `Galeria gotowa (${r.done} zdjęć): ${r.folder}. Otwórz plik index.html`, r.errors.length ? 'err' : 'ok')
       if (!r.errors.length) onClose()
     } catch (e) { say(`Błąd galerii: ${e}`, 'err') } finally { setBusy(false) }
+  }
+
+  const runGpx = async () => {
+    try {
+      const dir = await pickFolder('Wybierz folder na plik GPX')
+      if (!dir) return
+      setBusy(true)
+      const [file, n] = await exportGpx(ids, dir)
+      say(`Zapisano ${n} ${n === 1 ? 'lokalizację' : 'lokalizacji'} do pliku: ${file}`, 'ok')
+    } catch (e) { say(`${e}`, 'err') } finally { setBusy(false) }
+  }
+  const runGif = async () => {
+    try {
+      const dir = await pickFolder('Wybierz folder na animowany GIF')
+      if (!dir) return
+      setBusy(true)
+      const file = await exportGif(ids, dir, 480, delay)
+      say(`Animacja zapisana: ${file}`, 'ok')
+    } catch (e) { say(`${e}`, 'err') } finally { setBusy(false) }
   }
 
   return (
@@ -100,6 +120,17 @@ export function ExportDialog({ ids, onClose, say }: { ids: number[]; onClose: ()
           <label htmlFor="gal-title" style={{ marginTop: 0 }}>Tytuł galerii (nazwa folderu)</label>
           <input id="gal-title" type="text" value={title} maxLength={80} autoComplete="off" onChange={(e) => setTitle(e.target.value)} />
           <button className="wide" disabled={busy || !title.trim()} onClick={runGallery}>Utwórz galerię HTML</button>
+          <h3 style={{ margin: '18px 0 4px', fontSize: 14 }}>Animowany GIF</h3>
+          <p style={{ margin: '0 0 6px', color: 'var(--muted)', fontSize: 13 }}>Z zaznaczonych zdjęć (2 do 60, w widocznej kolejności) powstaje animacja do 480 px.</p>
+          <div className="chips">
+            {([[500, '0,5 s'], [1000, '1 s'], [2000, '2 s']] as [number, string][]).map(([v, l]) => (
+              <button key={v} className={`chip${delay === v ? ' on' : ''}`} aria-pressed={delay === v} onClick={() => setDelay(v)}>Klatka: {l}</button>
+            ))}
+          </div>
+          <button className="wide" disabled={busy || ids.length < 2} onClick={runGif}>Utwórz animowany GIF</button>
+          <h3 style={{ margin: '18px 0 4px', fontSize: 14 }}>Lokalizacje do GPX</h3>
+          <p style={{ margin: '0 0 6px', color: 'var(--muted)', fontSize: 13 }}>Plik z punktami (nazwa zdjęcia, data, opis) dla map i aplikacji do tras. Zdjęcia bez lokalizacji są pomijane.</p>
+          <button className="wide" disabled={busy} onClick={runGpx}>Zapisz lokalizacje jako GPX</button>
         </div>
       </div>
     </>

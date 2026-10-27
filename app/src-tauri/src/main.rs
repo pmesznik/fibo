@@ -14,6 +14,7 @@ use std::{
 mod backup;
 mod faces;
 mod gallery;
+mod locks;
 mod people;
 mod secure;
 mod watermark;
@@ -100,6 +101,7 @@ fn open_db(path: &Path) -> rusqlite::Result<Connection> {
     // Migracja: zdjęcia ukryte w bibliotece (pliki zostają na dysku, skan ich nie dodaje ponownie).
     let _ = conn.execute("ALTER TABLE photos ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0", []);
     people::init_schema(&conn)?;
+    locks::init_schema(&conn)?;
     // Właściwości albumów i folderów: opis, miejsce, data (rodzaj: "album" z numerem albumu albo "folder" ze ścieżką).
     conn.execute_batch("CREATE TABLE IF NOT EXISTS props (kind TEXT NOT NULL, key TEXT NOT NULL, description TEXT, place TEXT, date TEXT, PRIMARY KEY (kind, key));")?;
     // Migracja: lokalizacja ustawiona ręcznie ma pierwszeństwo przed danymi GPS z pliku.
@@ -474,6 +476,9 @@ fn save_edit(state: State<'_, AppState>, request: tauri::ipc::Request<'_>) -> Re
     let path = PathBuf::from(path);
     let dir = path.parent().ok_or("brak folderu")?.to_path_buf();
     let ext = match header("ext").as_str() { "png" => "png", "webp" => "webp", _ => "jpg" };
+    if header("mode") == "overwrite" {
+        locks::ensure_unlocked_state(&state, &path)?;
+    }
 
     let target = if header("mode") == "copy" {
         let stem = path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
@@ -554,6 +559,7 @@ fn has_original(state: State<'_, AppState>, id: i64) -> Result<bool, String> {
 fn restore_original(state: State<'_, AppState>, id: i64) -> Result<i64, String> {
     let (path, taken, camera) = photo_path(&state, id)?;
     let p = Path::new(&path);
+    locks::ensure_unlocked_state(&state, p)?;
     let backup = p.parent().zip(p.file_name()).map(|(d, n)| d.join(ORIGINALS_DIR).join(n)).ok_or("brak ścieżki")?;
     if !backup.exists() {
         return Err("Brak kopii oryginału".into());
@@ -1255,6 +1261,7 @@ fn rename_photo_core(state: &AppState, id: i64, new_stem: &str) -> Result<String
     let stem = valid_stem(new_stem)?;
     let (path, _, _) = photo_path(state, id)?;
     let src = PathBuf::from(&path);
+    locks::ensure_unlocked_state(state, &src)?;
     let dir = src.parent().ok_or("brak folderu")?.to_path_buf();
     let old_name = src.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
     let new_name = match src.extension() {
@@ -1291,6 +1298,12 @@ fn move_photos_blocking(state: &AppState, ids: &[i64], dest: &Path, copy: bool) 
     for &id in ids {
         let (path, taken, camera) = photo_path(state, id)?;
         let src = PathBuf::from(&path);
+        if !copy {
+            if let Err(e) = locks::ensure_unlocked_state(state, &src) {
+                rep.errors.push(format!("{path}: {e}"));
+                continue;
+            }
+        }
         let name = src.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
         if src.parent() == Some(dest) && !copy {
             continue; // już tam jest
@@ -1981,6 +1994,7 @@ fn trash_photos_core(state: &AppState, ids: Vec<i64>, confirm: Option<String>, d
     for id in &ids {
         let (path, _, _) = photo_path(&state, *id)?;
         let p = Path::new(&path);
+        locks::ensure_unlocked_state(state, p)?;
         match std::fs::symlink_metadata(p) {
             Ok(m) if m.is_file() && is_photo(p) => targets.push((*id, path, true)),
             Ok(_) => return Err(format!("{path}: to nie jest zwykły plik zdjęcia, nie usuwam")),
@@ -2432,6 +2446,33 @@ mod tests {
         conn.execute("UPDATE photos SET caption = ?2 WHERE id = ?1", params![id, "Ala"]).unwrap();
         let c: Option<String> = conn.query_row("SELECT caption FROM photos WHERE id = ?1", [id], |r| r.get(0)).unwrap();
         assert_eq!(c.as_deref(), Some("Ala"));
+    }
+
+    #[test]
+    fn locked_folders_block_destructive_changes_but_allow_copies() {
+        let dir = std::env::temp_dir().join("mz-lock-test");
+        let state = test_state(&dir);
+        let lib = dir.join("archiwum");
+        let other = dir.join("inne");
+        fs::create_dir_all(&lib).unwrap();
+        fs::create_dir_all(&other).unwrap();
+        image::RgbImage::new(8, 8).save(lib.join("a.jpg")).unwrap();
+        scan_blocking(&state, lib.to_str().unwrap(), &|_| {}).unwrap();
+        let id = photo_id(&state, "a.jpg");
+        state.db.lock().unwrap().execute("INSERT INTO locked_folders (path) VALUES (?1)", [lib.to_string_lossy()]).unwrap();
+        let fake = |p: &str| fs::remove_file(p).map_err(|e| e.to_string());
+        assert!(trash_photos_core(&state, vec![id], None, &fake).is_err());
+        assert!(rename_photo_core(&state, id, "nowa").is_err());
+        let rep = move_photos_blocking(&state, &[id], &other, false).unwrap();
+        assert_eq!((rep.done, rep.errors.len()), (0, 1));
+        assert!(lib.join("a.jpg").exists());
+        // Kopiowanie i eksport są dozwolone.
+        let rep = move_photos_blocking(&state, &[id], &other, true).unwrap();
+        assert_eq!(rep.done, 1);
+        assert!(export_photos_blocking(&state, &[id], &other, 0, 80, None).is_ok());
+        // Po odblokowaniu zmiany znowu działają.
+        state.db.lock().unwrap().execute("DELETE FROM locked_folders", []).unwrap();
+        assert_eq!(rename_photo_core(&state, id, "nowa").unwrap(), "nowa.jpg");
     }
 
     #[test]
@@ -2920,7 +2961,7 @@ fn main() {
             app.manage(AppState { db: Mutex::new(db), thumbs, sidecar: AtomicBool::new(sidecar) });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![list_roots, remove_root, rescan_roots, list_albums, create_album, rename_album, delete_album, add_to_album, remove_from_album, rename_photo, move_photos, get_sidecar_enabled, set_sidecar_enabled, export_sidecars, import_sidecars, scan_folder, refresh_library, find_duplicates, trash_photos, export_photos, set_location, rename_batch, import_photos, gallery::export_gallery, gallery::rename_folder, set_date, shift_dates, set_caption, photo_exif, list_props, set_props, people::photo_people, people::reassign_person_faces, backup::backup_library, backup::restore_library, hide_photos, hidden_count, restore_hidden, people::faces_status, people::set_faces_enabled, people::faces_start, people::faces_stop, people::faces_delete_all, people::list_people, people::person_photos, people::person_faces, people::set_person_cover, people::rename_person, people::merge_people, people::ignore_person, list_photos, thumbnail, thumbnail_data, people::face_crop, set_rating, set_favorite, add_tag, remove_tag, delete_tag, save_edit, save_collage, read_image, read_audio, has_original, restore_original])
+        .invoke_handler(tauri::generate_handler![list_roots, remove_root, rescan_roots, list_albums, create_album, rename_album, delete_album, add_to_album, remove_from_album, rename_photo, move_photos, get_sidecar_enabled, set_sidecar_enabled, export_sidecars, import_sidecars, scan_folder, refresh_library, find_duplicates, trash_photos, export_photos, set_location, rename_batch, import_photos, gallery::export_gallery, gallery::export_gpx, gallery::export_gif, gallery::rename_folder, locks::list_locked, locks::set_folder_locked, set_date, shift_dates, set_caption, photo_exif, list_props, set_props, people::photo_people, people::reassign_person_faces, backup::backup_library, backup::restore_library, hide_photos, hidden_count, restore_hidden, people::faces_status, people::set_faces_enabled, people::faces_start, people::faces_stop, people::faces_delete_all, people::list_people, people::person_photos, people::person_faces, people::set_person_cover, people::rename_person, people::merge_people, people::ignore_person, list_photos, thumbnail, thumbnail_data, people::face_crop, set_rating, set_favorite, add_tag, remove_tag, delete_tag, save_edit, save_collage, read_image, read_audio, has_original, restore_original])
         .run(tauri::generate_context!())
         .expect("błąd uruchomienia aplikacji");
 }

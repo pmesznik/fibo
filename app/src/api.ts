@@ -74,6 +74,10 @@ export const readAudio = (path: string) => invoke<ArrayBuffer>('read_audio', { p
 export type Watermark = { path: string; position: string; sizePct: number; opacity: number }
 /** Pokazuje plik lub folder w Eksploratorze Windows (zaznacza go w oknie folderu). */
 export const revealInExplorer = (path: string) => revealItemInDir(path)
+export const listLocked = () => invoke<string[]>('list_locked')
+export const setFolderLocked = (path: string, locked: boolean) => invoke('set_folder_locked', { path, locked })
+export const exportGpx = (ids: number[], dest: string) => invoke<[string, number]>('export_gpx', { ids, dest })
+export const exportGif = (ids: number[], dest: string, maxSide: number, delayMs: number) => invoke<string>('export_gif', { ids, dest, maxSide, delayMs })
 export const exportPhotos = (ids: number[], dest: string, maxSide: number, quality: number, watermark: Watermark | null = null) => invoke<MoveReport>('export_photos', { ids, dest, maxSide, quality, watermark })
 export const trashPhotos = (ids: number[], confirm?: string) => invoke<number>('trash_photos', { ids, confirm })
 export const hidePhotos = (ids: number[]) => invoke<number>('hide_photos', { ids })

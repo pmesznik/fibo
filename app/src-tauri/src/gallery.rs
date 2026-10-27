@@ -103,6 +103,111 @@ document.addEventListener('keydown',function(e){{if(!lb.classList.contains('on')
     Ok((root, rep))
 }
 
+fn out_stamp() -> String {
+    let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0);
+    let (y, m, d) = crate::civil_from_days(secs / 86400);
+    let r = secs % 86400;
+    format!("{y:04}-{m:02}-{d:02}_{:02}{:02}{:02}", r / 3600, r % 3600 / 60, r % 60)
+}
+
+/// Zapisuje lokalizacje wybranych zdjęć jako punkty w pliku GPX (do map i aplikacji do tras). Zdjęcia bez lokalizacji są pomijane.
+/// Plik zawiera nazwy plików, daty zdjęć i opisy, ale nie same zdjęcia. Istniejące pliki nie są nadpisywane.
+pub fn gpx_core(state: &AppState, ids: &[i64], dest: &Path) -> Result<(PathBuf, usize), String> {
+    if !dest.is_dir() {
+        return Err("Folder docelowy nie istnieje".into());
+    }
+    let mut pts = String::new();
+    let mut n = 0;
+    for &id in ids {
+        let row: Option<(String, Option<String>, f64, f64, Option<String>)> = state
+            .db
+            .lock()
+            .map_err(|e| e.to_string())?
+            .query_row("SELECT name, taken, lat, lon, caption FROM photos WHERE id = ?1 AND lat IS NOT NULL AND lon IS NOT NULL", [id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)))
+            .ok();
+        let Some((name, taken, lat, lon, caption)) = row else { continue };
+        let time = taken
+            .as_deref()
+            .and_then(|t| if t.len() >= 19 { Some(format!("{}T{}Z", t[..10].replace(':', "-"), &t[11..19])) } else { None })
+            .map(|t| format!("<time>{}</time>", xml_escape(&t)))
+            .unwrap_or_default();
+        let desc = caption.map(|c| format!("<desc>{}</desc>", xml_escape(&c))).unwrap_or_default();
+        pts.push_str(&format!("  <wpt lat=\"{lat:.6}\" lon=\"{lon:.6}\"><name>{}</name>{desc}{time}</wpt>\n", xml_escape(&name)));
+        n += 1;
+    }
+    if n == 0 {
+        return Err("Żadne z zaznaczonych zdjęć nie ma lokalizacji".into());
+    }
+    let xml = format!("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<gpx version=\"1.1\" creator=\"FIBO\" xmlns=\"http://www.topografix.com/GPX/1/1\">\n{pts}</gpx>\n");
+    let target = unique_target(dest, &format!("fibo-lokalizacje_{}.gpx", out_stamp()));
+    fs::write(&target, xml).map_err(|e| e.to_string())?;
+    Ok((target, n))
+}
+
+#[tauri::command]
+pub fn export_gpx(state: State<'_, AppState>, ids: Vec<i64>, dest: String) -> Result<(String, usize), String> {
+    gpx_core(&state, &ids, Path::new(&dest)).map(|(p, n)| (p.to_string_lossy().to_string(), n))
+}
+
+/// Tworzy animowany GIF z wybranych zdjęć (w podanej kolejności). Wszystkie klatki mają rozmiar pierwszego zdjęcia (po zmniejszeniu do `max_side`).
+pub fn gif_core(state: &AppState, ids: &[i64], dest: &Path, max_side: u32, delay_ms: u32) -> Result<PathBuf, String> {
+    use image::{codecs::gif::{GifEncoder, Repeat}, Delay, Frame};
+    if !dest.is_dir() {
+        return Err("Folder docelowy nie istnieje".into());
+    }
+    if ids.len() < 2 || ids.len() > 60 {
+        return Err("Do animacji potrzeba od 2 do 60 zdjęć".into());
+    }
+    if !(100..=1200).contains(&max_side) || !(100..=10000).contains(&delay_ms) {
+        return Err("Rozmiar (100-1200 px) lub czas klatki (0,1-10 s) poza zakresem".into());
+    }
+    let target = unique_target(dest, &format!("fibo-animacja_{}.gif", out_stamp()));
+    let file = File::create(&target).map_err(|e| e.to_string())?;
+    let mut enc = GifEncoder::new_with_speed(std::io::BufWriter::new(file), 20);
+    enc.set_repeat(Repeat::Infinite).map_err(|e| e.to_string())?;
+    let mut size: Option<(u32, u32)> = None;
+    let result = (|| -> Result<(), String> {
+        for &id in ids {
+            let (path, _, _) = photo_path(state, id)?;
+            let src = PathBuf::from(&path);
+            let orientation = read_exif(&src).orientation;
+            let mut img = image::open(&src).map_err(|e| format!("{path}: {e}"))?;
+            img = match orientation {
+                2 => img.fliph(),
+                3 => img.rotate180(),
+                4 => img.flipv(),
+                6 => img.rotate90(),
+                8 => img.rotate270(),
+                _ => img,
+            };
+            let rgba = match size {
+                None => {
+                    let r = img.resize(max_side, max_side, FilterType::Triangle);
+                    size = Some((r.width(), r.height()));
+                    r.to_rgba8()
+                }
+                Some((w, h)) => img.resize_to_fill(w, h, FilterType::Triangle).to_rgba8(),
+            };
+            enc.encode_frame(Frame::from_parts(rgba, 0, 0, Delay::from_numer_denom_ms(delay_ms, 1))).map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    })();
+    drop(enc);
+    if let Err(e) = result {
+        let _ = fs::remove_file(&target); // nie zostawiamy niedokończonego pliku
+        return Err(e);
+    }
+    Ok(target)
+}
+
+#[tauri::command]
+pub async fn export_gif(app: tauri::AppHandle, ids: Vec<i64>, dest: String, max_side: u32, delay_ms: u32) -> Result<String, String> {
+    use tauri::Manager;
+    tauri::async_runtime::spawn_blocking(move || gif_core(&app.state::<AppState>(), &ids, Path::new(&dest), max_side, delay_ms).map(|p| p.to_string_lossy().to_string()))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 #[derive(serde::Serialize)]
 pub struct GalleryReport {
     folder: String,
@@ -135,6 +240,7 @@ pub fn rename_folder_core(conn: &Connection, old: &Path, new_name: &str) -> Resu
     if !old.is_dir() {
         return Err("Folder nie istnieje na dysku".into());
     }
+    crate::locks::ensure_unlocked(conn, &old.join("x"))?;
     let parent = old.parent().ok_or("Nie można zmienić nazwy folderu głównego dysku")?;
     let target = parent.join(&new_name);
     if target.exists() {
@@ -210,6 +316,43 @@ mod tests {
         assert!(gallery_core(&st, &[id], &out, "x", 10, 80).is_err());
         assert!(gallery_core(&st, &[id], &out, "a/b", 300, 80).is_err());
         assert!(lib.join("a.jpg").exists());
+    }
+
+    #[test]
+    fn gpx_and_gif_exports_work_and_validate() {
+        let (st, dir) = state("mz-gpxgif-test");
+        let lib = dir.join("lib");
+        let out = dir.join("out");
+        fs::create_dir_all(&lib).unwrap();
+        fs::create_dir_all(&out).unwrap();
+        for (n, w) in [("a.jpg", 40u32), ("b.jpg", 60), ("c.jpg", 50)] {
+            image::RgbImage::new(w, 30).save(lib.join(n)).unwrap();
+        }
+        crate::scan_blocking(&st, lib.to_str().unwrap(), &|_| {}).unwrap();
+        let ids: Vec<i64> = ["a.jpg", "b.jpg", "c.jpg"].iter().map(|n| st.db.lock().unwrap().query_row("SELECT id FROM photos WHERE name = ?1", [n], |r| r.get(0)).unwrap()).collect();
+        {
+            let c = st.db.lock().unwrap();
+            c.execute("UPDATE photos SET lat = 52.2, lon = 21.0, taken = '2024-07-01 12:30:00', caption = ?2 WHERE id = ?1", params![ids[0], "Wakacje <b>&</b>"]).unwrap();
+        }
+        // Bez lokalizacji nic się nie zapisuje, a z lokalizacją powstaje poprawny, zescapowany GPX.
+        assert!(gpx_core(&st, &ids[1..], &out).is_err());
+        let (gpx, n) = gpx_core(&st, &ids, &out).unwrap();
+        assert_eq!(n, 1);
+        let xml = fs::read_to_string(&gpx).unwrap();
+        assert!(xml.contains("lat=\"52.200000\"") && xml.contains("<time>2024-07-01T12:30:00Z</time>"));
+        assert!(xml.contains("&lt;b&gt;&amp;&lt;/b&gt;") && !xml.contains("<b>"));
+        assert!(gpx_core(&st, &ids, &dir.join("brak")).is_err());
+        // Animowany GIF: trzy klatki o jednakowym rozmiarze, złe parametry odrzucone.
+        let gif = gif_core(&st, &ids, &out, 100, 500).unwrap();
+        let bytes = fs::read(&gif).unwrap();
+        assert!(bytes.starts_with(b"GIF89a"));
+        use image::AnimationDecoder;
+        let frames = image::codecs::gif::GifDecoder::new(std::io::Cursor::new(bytes)).unwrap().into_frames().collect_frames().unwrap();
+        assert_eq!(frames.len(), 3);
+        assert!(frames.iter().all(|f| f.buffer().dimensions() == frames[0].buffer().dimensions()));
+        assert!(gif_core(&st, &ids[..1], &out, 100, 500).is_err());
+        assert!(gif_core(&st, &ids, &out, 50, 500).is_err());
+        assert!(gif_core(&st, &ids, &out, 100, 5).is_err());
     }
 
     #[test]

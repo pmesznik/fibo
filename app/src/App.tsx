@@ -14,7 +14,7 @@ import { UpdateDialog, useUpdater } from './Updater'
 import { exportSidecars, getSidecarEnabled, importSidecars, setSidecarEnabled } from './api'
 import {
   addToAlbum, createAlbum, deleteAlbum, listAlbums, listRoots, movePhotos, removeFromAlbum, removeRoot,
-  renameAlbum, renamePhoto, rescanRoots, trashPhotos, revealInExplorer, listPeople, listProps, renameFolder, type Prop, type Person, personPhotos, importPhotos, backupLibrary, restoreLibrary, pickFile, facesStart, facesStatus, hidePhotos, hiddenCount, restoreHidden, type Album,
+  renameAlbum, renamePhoto, rescanRoots, trashPhotos, listLocked, setFolderLocked, revealInExplorer, listPeople, listProps, renameFolder, type Prop, type Person, personPhotos, importPhotos, backupLibrary, restoreLibrary, pickFile, facesStart, facesStatus, hidePhotos, hiddenCount, restoreHidden, type Album,
 } from './api'
 import { AlbumPicker, PromptDialog } from './Dialogs'
 import { addTag, deleteTag, inTauri, listPhotos, pickFolder, refreshLibrary, removeTag, scanFolder, setFavorite, setRating, type Photo } from './api'
@@ -131,6 +131,9 @@ export default function App() {
   const reloadAlbums = useCallback(async () => { if (inTauri) setAlbums(await listAlbums()) }, [])
   const reloadRoots = useCallback(async () => { if (inTauri) setRoots(await listRoots()) }, [])
   // Taca: trwały koszyk zdjęć z różnych folderów i albumów; akcje działają na jej zawartości po „Zaznacz z tacy”.
+  const [locked, setLocked] = useState<string[]>([])
+  const reloadLocked = useCallback(async () => { if (inTauri) setLocked(await listLocked()) }, [])
+  useEffect(() => { reloadLocked() }, [reloadLocked])
   const [together, setTogether] = useState<Person[] | null>(null)
   const [props, setPropsList] = useState<Prop[]>([])
   const [propsFor, setPropsFor] = useState<null | { kind: 'album' | 'folder'; id: string; title: string }>(null)
@@ -823,6 +826,7 @@ export default function App() {
                 const ids = list.map((p) => p.id)
                 return (
                   <>
+                    <button className="wide" onClick={async () => { try { await setFolderLocked(folder, !locked.includes(folder)); await reloadLocked(); say(locked.includes(folder) ? 'Folder odblokowany' : 'Folder zablokowany: FIBO nie zmieni, nie przeniesie ani nie usunie jego zdjęć', 'ok') } catch (e) { say(`Błąd: ${e}`, 'err') } }}>{locked.includes(folder) ? <Eye size={17} /> : <EyeOff size={17} />} {locked.includes(folder) ? 'Odblokuj folder' : 'Zablokuj folder przed zmianami'}</button>
                     <button className="wide" onClick={async () => { try { await revealInExplorer(folder) } catch (e) { say(`Nie udało się otworzyć Eksploratora: ${e}`, 'err') } }}><FolderOpen size={17} /> Pokaż folder w Eksploratorze</button>
                     <button className="wide" onClick={() => { setDrawer(false); setPropsFor({ kind: 'folder', id: folder, title: folderName(folder) }) }}><Info size={17} /> Właściwości folderu (opis, miejsce, data)…</button>
                     <button className="wide" onClick={() => {
