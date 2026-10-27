@@ -4,14 +4,14 @@ import {
   RotateCcw, RotateCw, FlipHorizontal, FlipVertical, Eye, Wand2, Save, CopyPlus, History,
   ZoomIn, ZoomOut, Compare, Sliders, Sparkles, Info, Tag, Crop as CropIcon, Trash2, Sun, Palette, Aperture, Pencil, Zap, Plus,
 } from './FiboIcons'
-import { hasOriginal, photoPeople, readImage, restoreOriginal, saveEdit, setCaption, setPersonCover, setFavorite, setRating, type Photo, type PhotoPerson } from './api'
+import { hasOriginal, photoPeople, readImage, restoreOriginal, saveEdit, setCaption, setPersonCover, photoExif, setFavorite, setRating, type Photo, type PhotoPerson } from './api'
 import { FaceImg } from './People'
 import { copyEdit, getClip } from './editor/batch'
 import { Thumb } from './Thumb'
 import { Chip, Sec, Toast } from './ui'
 import { TagEditor, type TagCount } from './TagEditor'
 import {
-  EFFECTS, EMPTY_EDIT, ZERO_ADJUST, isEdited, renderEdit, MAX_TEXTS, MAX_TEXT_LEN, type TextItem,
+  EFFECTS, EMPTY_EDIT, ZERO_ADJUST, isEdited, renderEdit, renderGeometry, neutralFromSample, MAX_TEXTS, MAX_TEXT_LEN, type TextItem,
   type Adjust, type EditState,
 } from './editor/effects'
 
@@ -92,6 +92,7 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
   const [sheet, setSheet] = useState(false)
   const [tab, setTab] = useState<Tab>('basic')
   const [redEyeMode, setRedEyeMode] = useState(false)
+  const [neutralMode, setNeutralMode] = useState(false)
   const [playing, setPlaying] = useState(autoplay)
   const [zoom, setZoom] = useState(1)
   const [pan, setPan] = useState({ x: 0, y: 0 })
@@ -156,7 +157,7 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
     setZoom(Math.min(8, Math.max(2, z100)))
   }
   const onPanStart = (e: React.PointerEvent) => {
-    if (zoom <= 1 || redEyeMode) return
+    if (zoom <= 1 || redEyeMode || neutralMode) return
     drag.current = { x: e.clientX, y: e.clientY, px: pan.x, py: pan.y }
     e.currentTarget.setPointerCapture(e.pointerId)
   }
@@ -186,10 +187,12 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
   // Opis zdjęcia (zapis po opuszczeniu pola) i osoby rozpoznane na zdjęciu.
   const [captionDraft, setCaptionDraft] = useState('')
   const [people, setPeople] = useState<PhotoPerson[]>([])
+  const [exifRows, setExifRows] = useState<[string, string][]>([])
   useEffect(() => { setCaptionDraft(photo?.caption ?? '') }, [photo?.id, photo?.caption])
   useEffect(() => {
     let dead = false
-    setPeople([])
+    setPeople([]); setExifRows([])
+    if (photo && photo.id >= 0) photoExif(photo.id).then((v) => { if (!dead) setExifRows(v) }).catch(() => {})
     if (photo && photo.id >= 0) photoPeople(photo.id).then((v) => { if (!dead) setPeople(v) }).catch(() => {})
     return () => { dead = true }
   }, [photo?.id])
@@ -281,6 +284,7 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
       else if (e.key === 'ArrowRight' && !onRange) go(1)
       else if (e.key === 'Escape') {
         if (redEyeMode) setRedEyeMode(false)
+        else if (neutralMode) setNeutralMode(false)
         else if (pendingNav !== null) setPendingNav(null)
         else if (sheet) setSheet(false)
         else if (document.fullscreenElement) document.exitFullscreen()
@@ -302,6 +306,14 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
   })
 
   const onCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const r0 = e.currentTarget.getBoundingClientRect()
+    if (neutralMode && bitmap) {
+      const n = neutralFromSample(renderGeometry(bitmap, edit.geo, 800), (e.clientX - r0.left) / r0.width, (e.clientY - r0.top) / r0.height)
+      if (!n) { say('Ten punkt jest zbyt ciemny. Kliknij fragment, który ma być szary lub biały.'); return }
+      change((s) => ({ ...s, neutral: n }))
+      setNeutralMode(false)
+      return
+    }
     if (!redEyeMode) return
     const r = e.currentTarget.getBoundingClientRect()
     change((s) => ({ ...s, redeye: [...s.redeye, { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height, r: 0.025 }] }))
@@ -336,7 +348,7 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
           className={bitmap ? '' : 'hidden'}
           style={{
             maxWidth: '100%', maxHeight: '100%', borderRadius: 'var(--r-md)', boxShadow: '0 10px 40px rgba(0,0,0,.4)',
-            cursor: redEyeMode ? 'crosshair' : zoom > 1 ? 'grab' : 'zoom-in', touchAction: 'none',
+            cursor: redEyeMode || neutralMode ? 'crosshair' : zoom > 1 ? 'grab' : 'zoom-in', touchAction: 'none',
             transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: 'center center',
           }}
         />
@@ -435,8 +447,11 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
                   <button className="ico" aria-label="Obróć w prawo" title="Obróć w prawo" onClick={() => change((s) => ({ ...s, geo: { ...s.geo, rot: (s.geo.rot + 1) % 4 } }))}><RotateCw size={20} /></button>
                   <button className={`ico ${edit.geo.flipH ? 'on' : ''}`} aria-label="Odbij poziomo" title="Odbij poziomo" onClick={() => change((s) => ({ ...s, geo: { ...s.geo, flipH: !s.geo.flipH } }))}><FlipHorizontal size={20} /></button>
                   <button className={`ico ${edit.geo.flipV ? 'on' : ''}`} aria-label="Odbij pionowo" title="Odbij pionowo" onClick={() => change((s) => ({ ...s, geo: { ...s.geo, flipV: !s.geo.flipV } }))}><FlipVertical size={20} /></button>
+                  <button className={`ico ${neutralMode ? 'on' : ''}`} aria-label="Neutralny kolor (zakraplacz)" aria-pressed={neutralMode} title="Neutralny kolor: kliknij to, co ma być szare lub białe" onClick={() => { setNeutralMode((v) => !v); setRedEyeMode(false); setSheet(true) }}><Palette size={20} /></button>
                   <button className={`ico ${redEyeMode ? 'on' : ''}`} aria-label="Czerwone oczy" aria-pressed={redEyeMode} title="Czerwone oczy" onClick={() => { setRedEyeMode((v) => !v); setSheet(true) }}><Eye size={20} /></button>
                 </div>
+                {neutralMode && <p style={{ margin: '8px 0 0', fontSize: 13, color: 'var(--muted)' }}>Kliknij na zdjęciu miejsce, które powinno być szare lub białe. Esc kończy.</p>}
+                {edit.neutral && <button className="wide" onClick={() => change((s) => ({ ...s, neutral: null }))}>Usuń korektę neutralnego koloru</button>}
                 {redEyeMode && <p style={{ margin: '8px 0 0', fontSize: 13, color: 'var(--muted)' }}>Kliknij środek oka na zdjęciu. Esc kończy.</p>}
                 {edit.redeye.length > 0 && (
                   <button className="wide" onClick={() => change((s) => ({ ...s, redeye: [] }))}>Usuń poprawki oczu ({edit.redeye.length})</button>
@@ -554,6 +569,16 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
                   <div style={{ wordBreak: 'break-all' }}>{v}</div>
                 </div>
               ))}
+              {exifRows.length > 0 && (
+                <Sec id="v-exif" icon={<Info size={17} />} title="Dane EXIF" hint={`${exifRows.length} pól z pliku`}>
+                  {exifRows.map(([k, v]) => (
+                    <div key={k} className="item" style={{ display: 'block' }}>
+                      <small style={{ color: 'var(--muted)', fontSize: 12 }}>{k}</small>
+                      <div style={{ wordBreak: 'break-word' }}>{v}</div>
+                    </div>
+                  ))}
+                </Sec>
+              )}
               <label htmlFor="v-caption">Opis zdjęcia</label>
               <textarea id="v-caption" rows={3} maxLength={2000} value={captionDraft} placeholder="Dodaj opis…" onChange={(e) => setCaptionDraft(e.target.value)} onBlur={saveCaption}
                 style={{ width: '100%', resize: 'vertical' }} />

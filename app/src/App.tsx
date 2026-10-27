@@ -6,6 +6,7 @@ import { ExportDialog } from './ExportDialog'
 import { LocationDialog } from './LocationDialog'
 import { RenameDialog } from './RenameDialog'
 import { DateDialog } from './DateDialog'
+import { ShortcutsDialog, StatsDialog } from './HelpDialogs'
 import { getClip, pasteEditToPhotos } from './editor/batch'
 import { Duplicates } from './Duplicates'
 import { UpdateDialog, useUpdater } from './Updater'
@@ -128,6 +129,7 @@ export default function App() {
   useEffect(() => { reload() }, [reload])
   const reloadAlbums = useCallback(async () => { if (inTauri) setAlbums(await listAlbums()) }, [])
   const reloadRoots = useCallback(async () => { if (inTauri) setRoots(await listRoots()) }, [])
+  const [helpDlg, setHelpDlg] = useState<null | 'keys' | 'stats'>(null)
   const [dateIds, setDateIds] = useState<number[] | null>(null)
   const [renameIds, setRenameIds] = useState<number[] | null>(null)
   const [locIds, setLocIds] = useState<number[] | null>(null)
@@ -581,6 +583,24 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey)
   }, [viewer, confirm, tagDlg, menu, prompt, picker])
 
+  // Skróty w bibliotece: 0-5 ocena, F ulubione, ? lub F1 pomoc. Nie działają podczas pisania ani gdy otwarte jest okno.
+  useEffect(() => {
+    if (viewer) return
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
+      if (e.ctrlKey || e.metaKey || e.altKey) return
+      if (e.key === '?' || e.key === 'F1') { e.preventDefault(); setHelpDlg('keys'); return }
+      if (confirm || prompt || picker || tagDlg || helpDlg || collage || dateIds || renameIds || locIds || exportIds) return
+      if (!sel.some((i) => i >= 0)) return
+      if (/^[0-5]$/.test(e.key)) { e.preventDefault(); rateSelected(+e.key) }
+      else if (e.key.toLowerCase() === 'f') { e.preventDefault(); favSelected() }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewer, sel, all, confirm, prompt, picker, tagDlg, helpDlg, collage, dateIds, renameIds, locIds, exportIds])
+
   const multi = sel.length > 1 || selectMode
   const tile = (p: Photo, ratio43: boolean) => {
     const on = sel.includes(p.id)
@@ -664,6 +684,8 @@ export default function App() {
               {[
                 { icon: ImageUp, label: 'Dodaj folder', fn: addFolder, on: false },
                 { icon: Download, label: 'Importuj z karty', fn: importFromCard, on: false },
+                { icon: ListChecks, label: 'Statystyki', fn: () => { setDrawer(false); setHelpDlg('stats') }, on: false },
+                { icon: SlidersHorizontal, label: 'Skróty klawiszowe', fn: () => { setDrawer(false); setHelpDlg('keys') }, on: false },
                 { icon: Play, label: 'Pokaz slajdów', fn: slideshow, on: false },
                 { icon: ListChecks, label: selectMode ? 'Zaznaczanie włączone' : 'Zaznaczanie wielu', fn: () => { setSelectMode((v) => !v); setDrawer(false) }, on: selectMode },
                 { icon: LayoutDashboard, label: chosen.length > 1 ? `Kolaż (${chosen.length})` : 'Kolaż', fn: () => { setDrawer(false); startCollage() }, on: false },
@@ -1075,6 +1097,8 @@ export default function App() {
         <AlbumPicker albums={albums} count={realIds().length} onPick={pickAlbum} onClose={() => setPicker(false)}
           onCreate={() => { setPicker(false); newAlbum(true) }} />
       )}
+      {helpDlg === 'keys' && <ShortcutsDialog onClose={() => setHelpDlg(null)} />}
+      {helpDlg === 'stats' && <StatsDialog photos={all} onClose={() => setHelpDlg(null)} />}
       {dateIds && dateIds.length > 0 && (
         <DateDialog photos={dateIds.map((id) => all.find((p) => p.id === id)).filter((p): p is Photo => !!p)} say={say}
           onDone={() => { reload() }} onClose={() => setDateIds(null)} />

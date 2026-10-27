@@ -21,8 +21,30 @@ export type RedEye = { x: number; y: number; r: number }
 export type TextItem = { text: string; x: number; y: number; size: number; color: string; bold: boolean }
 export const MAX_TEXTS = 20
 export const MAX_TEXT_LEN = 200
-export type EditState = { geo: Geometry; adj: Adjust; fx: EffectInst[]; redeye: RedEye[]; texts: TextItem[] }
-export const EMPTY_EDIT: EditState = { geo: ZERO_GEO, adj: ZERO_ADJUST, fx: [], redeye: [], texts: [] }
+/** Mnożniki kanałów R, G, B z zakraplacza „neutralny kolor” (balans bieli). */
+export type Neutral = { r: number; g: number; b: number }
+export type EditState = { geo: Geometry; adj: Adjust; fx: EffectInst[]; redeye: RedEye[]; texts: TextItem[]; neutral: Neutral | null }
+export const EMPTY_EDIT: EditState = { geo: ZERO_GEO, adj: ZERO_ADJUST, fx: [], redeye: [], texts: [], neutral: null }
+
+/** Mnożniki, które zamieniają próbkowany punkt na neutralny (szary): średnia z małego otoczenia kliknięcia. */
+export function neutralFromSample(canvas: HTMLCanvasElement, fx: number, fy: number): Neutral | null {
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })
+  if (!ctx) return null
+  const x = Math.min(canvas.width - 1, Math.max(0, Math.round(fx * canvas.width)))
+  const y = Math.min(canvas.height - 1, Math.max(0, Math.round(fy * canvas.height)))
+  const r = 3
+  const x0 = Math.max(0, x - r), y0 = Math.max(0, y - r)
+  const w = Math.min(canvas.width - x0, 2 * r + 1), h = Math.min(canvas.height - y0, 2 * r + 1)
+  const d = ctx.getImageData(x0, y0, w, h).data
+  let R = 0, G = 0, B = 0
+  const n = d.length / 4
+  for (let i = 0; i < d.length; i += 4) { R += d[i]; G += d[i + 1]; B += d[i + 2] }
+  R /= n; G /= n; B /= n
+  const gray = (R + G + B) / 3
+  if (gray < 12) return null // zbyt ciemny punkt nie niesie informacji o kolorze
+  const g = (c: number) => Math.min(2, Math.max(0.5, gray / Math.max(c, 1)))
+  return { r: g(R), g: g(G), b: g(B) }
+}
 
 export const isEdited = (s: EditState) =>
   JSON.stringify(s) !== JSON.stringify(EMPTY_EDIT)
@@ -270,6 +292,10 @@ export function applyColor(canvas: HTMLCanvasElement, st: EditState) {
   const data = ctx.getImageData(0, 0, canvas.width, canvas.height)
   const img: Img = { d: data.data, w: canvas.width, h: canvas.height }
   for (const e of st.redeye) redEyeFix(img, e)
+  if (st.neutral) {
+    const { r, g, b } = st.neutral
+    for (let i = 0; i < img.d.length; i += 4) { img.d[i] = clamp(img.d[i] * r); img.d[i + 1] = clamp(img.d[i + 1] * g); img.d[i + 2] = clamp(img.d[i + 2] * b) }
+  }
   if (JSON.stringify(st.adj) !== JSON.stringify(ZERO_ADJUST)) applyAdjust(img, st.adj)
   for (const fx of st.fx) EFFECT_BY_ID.get(fx.id)?.fn(img, fx.amount / 100)
   ctx.putImageData(data, 0, 0)

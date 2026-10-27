@@ -1444,6 +1444,34 @@ async fn rename_batch(app: tauri::AppHandle, ids: Vec<i64>, prefix: String, with
         .map_err(|e| e.to_string())?
 }
 
+/// Dane EXIF zdjęcia do pokazania w panelu informacji: (nazwa po polsku, wartość). Tylko odczyt, wartości są przycinane.
+fn exif_details(path: &Path) -> Vec<(String, String)> {
+    let Ok(file) = File::open(path) else { return vec![] };
+    let Ok(exif) = exif::Reader::new().read_from_container(&mut BufReader::new(file)) else { return vec![] };
+    let wanted: [(exif::Tag, &str); 17] = [
+        (exif::Tag::Make, "Producent aparatu"), (exif::Tag::Model, "Model aparatu"), (exif::Tag::LensModel, "Obiektyw"),
+        (exif::Tag::DateTimeOriginal, "Data wykonania"), (exif::Tag::ExposureTime, "Czas naświetlania"), (exif::Tag::FNumber, "Przysłona"),
+        (exif::Tag::PhotographicSensitivity, "ISO"), (exif::Tag::FocalLength, "Ogniskowa"), (exif::Tag::FocalLengthIn35mmFilm, "Ogniskowa (odpowiednik 35 mm)"),
+        (exif::Tag::ExposureBiasValue, "Korekcja ekspozycji"), (exif::Tag::MeteringMode, "Pomiar światła"), (exif::Tag::ExposureProgram, "Program ekspozycji"),
+        (exif::Tag::Flash, "Lampa błyskowa"), (exif::Tag::WhiteBalance, "Balans bieli"), (exif::Tag::Software, "Oprogramowanie"),
+        (exif::Tag::Orientation, "Orientacja"), (exif::Tag::Artist, "Autor"),
+    ];
+    wanted
+        .iter()
+        .filter_map(|(tag, label)| {
+            let f = exif.get_field(*tag, exif::In::PRIMARY)?;
+            let v = f.display_value().with_unit(&exif).to_string().trim_matches('"').trim().to_string();
+            (!v.is_empty()).then(|| (label.to_string(), v.chars().take(200).collect()))
+        })
+        .collect()
+}
+
+#[tauri::command]
+fn photo_exif(state: State<'_, AppState>, id: i64) -> Result<Vec<(String, String)>, String> {
+    let (path, _, _) = photo_path(&state, id)?;
+    Ok(exif_details(Path::new(&path)))
+}
+
 /// Liczba dni od 1970-01-01 dla daty (odwrotność `civil_from_days`).
 fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
     let y = y - i64::from(m <= 2);
@@ -2235,6 +2263,18 @@ mod tests {
     }
 
     #[test]
+    fn exif_details_handles_missing_and_plain_files() {
+        let dir = std::env::temp_dir().join("mz-exifd-test");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        image::RgbImage::new(8, 8).save(dir.join("p.jpg")).unwrap();
+        assert!(exif_details(&dir.join("p.jpg")).is_empty());
+        assert!(exif_details(&dir.join("brak.jpg")).is_empty());
+        fs::write(dir.join("zly.jpg"), b"to nie jest jpeg").unwrap();
+        assert!(exif_details(&dir.join("zly.jpg")).is_empty());
+    }
+
+    #[test]
     fn manual_dates_and_captions() {
         assert_eq!(days_from_civil(1970, 1, 1), 0);
         assert_eq!(days_from_civil(2024, 1, 1), 19723);
@@ -2756,7 +2796,7 @@ fn main() {
             app.manage(AppState { db: Mutex::new(db), thumbs, sidecar: AtomicBool::new(sidecar) });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![list_roots, remove_root, rescan_roots, list_albums, create_album, rename_album, delete_album, add_to_album, remove_from_album, rename_photo, move_photos, get_sidecar_enabled, set_sidecar_enabled, export_sidecars, import_sidecars, scan_folder, refresh_library, find_duplicates, trash_photos, export_photos, set_location, rename_batch, import_photos, set_date, shift_dates, set_caption, people::photo_people, backup::backup_library, backup::restore_library, hide_photos, hidden_count, restore_hidden, people::faces_status, people::set_faces_enabled, people::faces_start, people::faces_stop, people::faces_delete_all, people::list_people, people::person_photos, people::person_faces, people::set_person_cover, people::rename_person, people::merge_people, people::ignore_person, list_photos, thumbnail, thumbnail_data, people::face_crop, set_rating, set_favorite, add_tag, remove_tag, delete_tag, save_edit, save_collage, read_image, has_original, restore_original])
+        .invoke_handler(tauri::generate_handler![list_roots, remove_root, rescan_roots, list_albums, create_album, rename_album, delete_album, add_to_album, remove_from_album, rename_photo, move_photos, get_sidecar_enabled, set_sidecar_enabled, export_sidecars, import_sidecars, scan_folder, refresh_library, find_duplicates, trash_photos, export_photos, set_location, rename_batch, import_photos, set_date, shift_dates, set_caption, photo_exif, people::photo_people, backup::backup_library, backup::restore_library, hide_photos, hidden_count, restore_hidden, people::faces_status, people::set_faces_enabled, people::faces_start, people::faces_stop, people::faces_delete_all, people::list_people, people::person_photos, people::person_faces, people::set_person_cover, people::rename_person, people::merge_people, people::ignore_person, list_photos, thumbnail, thumbnail_data, people::face_crop, set_rating, set_favorite, add_tag, remove_tag, delete_tag, save_edit, save_collage, read_image, has_original, restore_original])
         .run(tauri::generate_context!())
         .expect("błąd uruchomienia aplikacji");
 }

@@ -26,9 +26,9 @@ Lista powstała z pamięci o Picasie 3, z przeglądu FIBO i z oficjalnego podrę
 - [ ] **Wyszukiwanie po kolorze** dominującym. P4 T M
 - [ ] **Wyszukiwanie po danych aparatu** (model, obiektyw, ISO, przysłona, czas) i filtr „aparat”. P2 T M
 - [ ] **Zaznaczanie podobnych** do wybranego zdjęcia. P4 T M
-- [ ] **Statystyki biblioteki** (liczba zdjęć, rozmiar, zdjęcia na rok, najczęstsze aparaty). P4 T S
+- [x] **Statystyki biblioteki** (liczba zdjęć, rozmiar, zdjęcia na rok, najczęstsze aparaty). P4 T S Gotowe (menu, szybkie akcje).
 - [ ] **Blokowanie folderu** przed zmianami z poziomu FIBO (ochrona przed przypadkowym usunięciem). P3 T S
-- [ ] **Skróty klawiszowe w bibliotece** (np. 1 do 5 oceny, F ulubione, Del ukrywanie) i ich lista pod F1. P2 T S
+- [x] **Skróty klawiszowe w bibliotece** (np. 1 do 5 oceny, F ulubione, Del ukrywanie) i ich lista pod F1. P2 T S Gotowe: 0-5, F, ? lub F1 (Del nie dodany, bo usuwanie ma potwierdzenia).
 - [ ] Obsługa **plików wideo** w bibliotece (miniatura, odtwarzanie, filtr). P3 T L
 - [ ] Obsługa **plików RAW** (CR2, NEF, ARW, DNG): miniatura z osadzonego podglądu. P3 T L
 
@@ -50,7 +50,7 @@ Lista powstała z pamięci o Picasie 3, z przeglądu FIBO i z oficjalnego podrę
 - [x] Doświetlenie, światła, cienie, jasność, kontrast, gamma, temperatura barwowa, nasycenie, wyostrzenie
 - [x] Tekst na zdjęciu
 - [x] Cofnij i ponów, przywrócenie oryginału, porównanie z oryginałem
-- [ ] **Neutralny kolor (zakraplacz)**: klik w szary punkt koryguje balans bieli. P2 T S
+- [x] **Neutralny kolor (zakraplacz)**: klik w szary punkt koryguje balans bieli. P2 T S Gotowe w edytorze.
 - [ ] **Retusz** (usuwanie plam i skaz pędzlem). P2 T M
 - [ ] **Kadrowanie ręczne z ramką** i gotowe formaty wydruku 10x15, 13x18, A4 oraz obrót ramki. P3 T M
 - [x] **Zastosuj te same zmiany do wielu zdjęć** (kopiuj i wklej edycję, edycja wsadowa). P1 T M Gotowe: kopiuj i wklej edycję, wsadowo jako kopie.
@@ -98,7 +98,7 @@ Lista powstała z pamięci o Picasie 3, z przeglądu FIBO i z oficjalnego podrę
 ## 7. Metadane i pliki
 - [x] Podgląd informacji (EXIF: aparat, data, wymiary), tagi w panelu
 - [x] Zapis tagów i ocen do plików XMP, odczyt z EXIF XP i IPTC
-- [ ] **Pełny podgląd EXIF** (przysłona, czas, ISO, ogniskowa, obiektyw, flesz) i kopiowanie wartości. P2 T S
+- [x] **Pełny podgląd EXIF** (przysłona, czas, ISO, ogniskowa, obiektyw, flesz) i kopiowanie wartości. P2 T S Gotowe w panelu Informacje (kopiowanie wartości nie zrobione).
 - [ ] **Edycja EXIF/IPTC**: autor, prawa autorskie, opis (w XMP, bez ruszania pliku). P3 T M
 - [ ] **Usuwanie metadanych** z wybranych zdjęć (kopie bez GPS) jako osobna akcja. P3 T S
 - [ ] **Wykrywanie uszkodzonych plików** i raport. P4 T S

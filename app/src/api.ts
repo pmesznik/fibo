@@ -55,6 +55,7 @@ export type PhotoImportReport = { copied: number; skipped: number; errors: strin
 export const importPhotos = (src: string, dest: string) => invoke<PhotoImportReport>('import_photos', { src, dest })
 export const backupLibrary = (dest: string) => invoke<string>('backup_library', { dest })
 export const restoreLibrary = (file: string) => invoke<number>('restore_library', { file })
+export const photoExif = (id: number) => invoke<[string, string][]>('photo_exif', { id })
 export const setCaption = (id: number, caption: string) => invoke('set_caption', { id, caption })
 export const setDate = (ids: number[], date: string) => invoke<number>('set_date', { ids, date })
 export const shiftDates = (ids: number[], minutes: number) => invoke<number>('shift_dates', { ids, minutes })
