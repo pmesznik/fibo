@@ -75,7 +75,7 @@ Lista powstała z pamięci o Picasie 3, z przeglądu FIBO i z oficjalnego podrę
 - [x] Przenoszenie, kopiowanie, zmiana nazw (jedna i zbiorczo), Kosz Windows z zabezpieczeniami
 - [x] Import z karty pamięci do folderów według daty
 - [x] Duplikaty do Kosza
-- [ ] **Eksport galerii HTML** (strona offline do wysłania znajomym lub wgrania na serwer). P2 T M
+- [x] **Eksport galerii HTML** (strona offline do wysłania znajomym lub wgrania na serwer). P2 T M Gotowe (Eksportuj pomniejszone → Utwórz galerię HTML).
 - [ ] **Eksport do PDF** (album, arkusz kontaktowy). P2 T M
 - [ ] **Drukowanie** (układy: pojedyncze, 2x2, arkusz kontaktowy, rozmiar papieru). P2 T M
 - [ ] **Wysyłka e-mailem**: tylko przygotowanie pomniejszonych kopii do załączenia (bez wysyłania przez FIBO). P3 T S
@@ -118,10 +118,10 @@ Pozycje, których brakowało na liście powyżej albo które podręcznik opisuje
 
 Biblioteka i foldery:
 - [ ] **Właściwości folderu i albumu**: tytuł, data, miejsce, opis (dwuklik w nagłówku), wszystko przeszukiwalne. P2 T M
-- [ ] **Zmiana nazwy folderu z poziomu FIBO** (zmienia też folder na dysku, z ostrzeżeniem). P3 T M
+- [x] **Zmiana nazwy folderu z poziomu FIBO** (zmienia też folder na dysku, z ostrzeżeniem). P3 T M Gotowe (menu → Foldery).
 - [ ] **„Pokaż w Eksploratorze”** dla folderu i zdjęcia. P2 T S
 - [ ] **Menedżer folderów**: dla każdego folderu „obserwuj zawsze”, „skanuj raz”, „usuń z FIBO” (dziś jest tylko obserwuj i przestań obserwować). P2 T S
-- [ ] **Sortowanie listy folderów** (data utworzenia, nazwa, data zdjęć). P3 T S
+- [x] **Sortowanie listy folderów** (data utworzenia, nazwa, data zdjęć). P3 T S Gotowe: od najnowszych albo po nazwie.
 - [ ] **Przeciąganie zdjęcia na folder** przenosi plik (z potwierdzeniem), a na album dodaje do albumu. P3 T M
 - [ ] **Wykrywanie karty pamięci i aparatu** przy podłączeniu oraz wybór nazwy folderu przy imporcie. P3 T M
 - [ ] **Opcja skanowania GIF i PNG** w ustawieniach (domyślnie wyłączona jak w Picasie). P4 T S

@@ -61,6 +61,10 @@ export const setDate = (ids: number[], date: string) => invoke<number>('set_date
 export const shiftDates = (ids: number[], minutes: number) => invoke<number>('shift_dates', { ids, minutes })
 export type PhotoPerson = { id: number; name: string | null; face: number }
 export const photoPeople = (id: number) => invoke<PhotoPerson[]>('photo_people', { id })
+export type GalleryReport = { folder: string; done: number; errors: string[] }
+export const exportGallery = (ids: number[], dest: string, title: string, maxSide: number, quality: number) =>
+  invoke<GalleryReport>('export_gallery', { ids, dest, title, maxSide, quality })
+export const renameFolder = (old: string, newName: string) => invoke<string>('rename_folder', { old, newName })
 export const exportPhotos = (ids: number[], dest: string, maxSide: number, quality: number) => invoke<MoveReport>('export_photos', { ids, dest, maxSide, quality })
 export const trashPhotos = (ids: number[], confirm?: string) => invoke<number>('trash_photos', { ids, confirm })
 export const hidePhotos = (ids: number[]) => invoke<number>('hide_photos', { ids })

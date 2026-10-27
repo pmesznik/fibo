@@ -13,7 +13,7 @@ import { UpdateDialog, useUpdater } from './Updater'
 import { exportSidecars, getSidecarEnabled, importSidecars, setSidecarEnabled } from './api'
 import {
   addToAlbum, createAlbum, deleteAlbum, listAlbums, listRoots, movePhotos, removeFromAlbum, removeRoot,
-  renameAlbum, renamePhoto, rescanRoots, trashPhotos, personPhotos, importPhotos, backupLibrary, restoreLibrary, pickFile, facesStart, facesStatus, hidePhotos, hiddenCount, restoreHidden, type Album,
+  renameAlbum, renamePhoto, rescanRoots, trashPhotos, renameFolder, personPhotos, importPhotos, backupLibrary, restoreLibrary, pickFile, facesStart, facesStatus, hidePhotos, hiddenCount, restoreHidden, type Album,
 } from './api'
 import { AlbumPicker, PromptDialog } from './Dialogs'
 import { addTag, deleteTag, inTauri, listPhotos, pickFolder, refreshLibrary, removeTag, scanFolder, setFavorite, setRating, type Photo } from './api'
@@ -130,6 +130,7 @@ export default function App() {
   const reloadAlbums = useCallback(async () => { if (inTauri) setAlbums(await listAlbums()) }, [])
   const reloadRoots = useCallback(async () => { if (inTauri) setRoots(await listRoots()) }, [])
   // Taca: trwały koszyk zdjęć z różnych folderów i albumów; akcje działają na jej zawartości po „Zaznacz z tacy”.
+  const [folderSort, setFolderSort] = useState<'date' | 'name'>('date')
   const [tray, setTray] = useState<number[]>([])
   const [trayView, setTrayView] = useState(false)
   const [helpDlg, setHelpDlg] = useState<null | 'keys' | 'stats'>(null)
@@ -794,9 +795,13 @@ export default function App() {
               <button className="wide" onClick={() => rescan(true)}><RefreshCw size={17} /> Sprawdź nowe zdjęcia teraz</button>
             </Sec>
             <Sec id="folders" icon={<FolderOpen size={17} />} title="Foldery" hint={folder ? folderName(folder) : `${folders.length} ${pl(folders.length, 'folder', 'foldery', 'folderów')}`}>
+              <div className="chips" style={{ marginBottom: 8 }}>
+                <Chip on={folderSort === 'date'} onClick={() => setFolderSort('date')}>Od najnowszych</Chip>
+                <Chip on={folderSort === 'name'} onClick={() => setFolderSort('name')}>Po nazwie</Chip>
+              </div>
               <div className="chips">
                 <Chip on={!folder} onClick={() => setFolder(null)}>Wszystkie <b>{all.length}</b></Chip>
-                {folders.slice(0, 40).map(([dir, list]) => (
+                {(folderSort === 'name' ? [...folders].sort((a, b) => folderName(a[0]).localeCompare(folderName(b[0]), 'pl', { numeric: true })) : folders).slice(0, 40).map(([dir, list]) => (
                   <Chip key={dir} on={folder === dir} onClick={() => { setFolder(dir); setMode('library'); setDrawer(false) }}>
                     {folderName(dir)} <b>{list.length}</b>
                   </Chip>
@@ -809,6 +814,15 @@ export default function App() {
                 const ids = list.map((p) => p.id)
                 return (
                   <>
+                    <button className="wide" onClick={() => {
+                      setPrompt({
+                        title: 'Zmień nazwę folderu', label: 'Nowa nazwa folderu', initial: folderName(folder), confirm: 'Zmień nazwę',
+                        hint: 'Zmienia się folder na dysku razem ze wszystkimi zdjęciami w środku. Inne programy, które znają starą ścieżkę, jej nie znajdą.',
+                        onSubmit: async (v) => {
+                          try { const np = await renameFolder(folder, v); setFolder(np); await Promise.all([reload(), reloadRoots()]); say('Nazwa folderu zmieniona', 'ok') } catch (e) { return String(e) }
+                        },
+                      })
+                    }}><Pencil size={17} /> Zmień nazwę folderu…</button>
                     <button className="wide" onClick={() => { setDrawer(false); askHide(ids, `z folderu „${folderName(folder)}”`) }}><EyeOff size={17} /> Ukryj folder w FIBO (pliki zostają)</button>
                     <button className="wide" style={{ color: 'var(--err)' }} onClick={() => { setDrawer(false); askTrash(ids, `z folderu „${folderName(folder)}”`, true) }}><Trash2 size={17} /> Zdjęcia z folderu do Kosza…</button>
                   </>
