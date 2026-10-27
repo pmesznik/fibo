@@ -49,3 +49,35 @@ export async function pasteEditToPhotos(
   }
   return { done, errors }
 }
+
+// ---- Własne zestawy efektów („recepty”): zapisane korekty, efekty i napisy do użycia na dowolnym zdjęciu ----
+export type Preset = { name: string; clip: EditClip }
+const PRESETS_KEY = 'edit-presets'
+export const MAX_PRESETS = 30
+
+export function loadPresets(): Preset[] {
+  try {
+    const v = JSON.parse(localStorage.getItem(PRESETS_KEY) ?? '[]')
+    return Array.isArray(v)
+      ? v.filter((p) => p && typeof p.name === 'string' && p.clip && Array.isArray(p.clip.fx) && Array.isArray(p.clip.texts) && p.clip.adj).slice(0, MAX_PRESETS)
+      : []
+  } catch { return [] }
+}
+
+function storePresets(list: Preset[]) {
+  try { localStorage.setItem(PRESETS_KEY, JSON.stringify(list)) } catch { /* brak pamięci przeglądarki */ }
+}
+
+/** Zapisuje bieżące korekty, efekty i napisy pod nazwą (ta sama nazwa zastępuje zestaw). Zwraca false, gdy nie ma czego zapisać. */
+export function savePreset(name: string, s: EditState): boolean {
+  const n = name.trim().slice(0, 40)
+  if (!n || !isEdited({ ...EMPTY_EDIT, adj: s.adj, fx: s.fx, texts: s.texts })) return false
+  const clipCopy = JSON.parse(JSON.stringify({ adj: s.adj, fx: s.fx, texts: s.texts })) as EditClip
+  const rest = loadPresets().filter((p) => p.name.toLowerCase() !== n.toLowerCase())
+  storePresets([...rest, { name: n, clip: clipCopy }].slice(-MAX_PRESETS))
+  return true
+}
+
+export function deletePreset(name: string) {
+  storePresets(loadPresets().filter((p) => p.name !== name))
+}

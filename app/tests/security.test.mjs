@@ -78,12 +78,12 @@ describe('Protokół zasobów i uprawnienia', () => {
     assert.deepEqual(uses, [])
   })
   test('uprawnienia okna: tylko to, co potrzebne', () => {
-    const allowed = new Set(['core:default', 'dialog:default', 'updater:default', 'process:allow-restart'])
+    const allowed = new Set(['core:default', 'dialog:default', 'updater:default', 'process:allow-restart', 'opener:allow-reveal-item-in-dir'])
     for (const p of caps.permissions) assert.ok(allowed.has(p), `nieoczekiwane uprawnienie: ${p}`)
   })
   test('brak uprawnień do plików, powłoki, HTTP, schowka i dostępu do systemu', () => {
     const text = JSON.stringify(caps)
-    for (const bad of ['fs:', 'shell:', 'http:', 'clipboard', 'os:', 'process:allow-exit', 'opener:', 'global-shortcut', 'webview:allow-create']) {
+    for (const bad of ['fs:', 'shell:', 'http:', 'clipboard', 'os:', 'process:allow-exit', 'opener:default', 'opener:allow-open', 'opener:allow-default-urls', 'global-shortcut', 'webview:allow-create']) {
       assert.ok(!text.includes(bad), `niedozwolone uprawnienie zawiera ${bad}`)
     }
   })
@@ -91,11 +91,11 @@ describe('Protokół zasobów i uprawnienia', () => {
   test('tylko jedno okno w konfiguracji', () => assert.equal(conf.app.windows.length, 1))
   test('wtyczki w Cargo.toml: tylko dialog, updater i process (bez fs, shell, http)', () => {
     const plugins = [...cargo.matchAll(/^tauri-plugin-([a-z-]+)\s*=/gm)].map((m) => m[1]).sort()
-    assert.deepEqual(plugins, ['dialog', 'process', 'updater'])
+    assert.deepEqual(plugins, ['dialog', 'opener', 'process', 'updater'])
   })
   test('wtyczki zarejestrowane w main.rs zgadzają się z Cargo.toml', () => {
     const reg = [...mainRs.matchAll(/\.plugin\(tauri_plugin_([a-z]+)::/g)].map((m) => m[1]).sort()
-    assert.deepEqual(reg, ['dialog', 'process', 'updater'])
+    assert.deepEqual(reg, ['dialog', 'opener', 'process', 'updater'])
   })
   test('identyfikator aplikacji się nie zmienia (od niego zależy folder z biblioteką użytkownika)', () => {
     assert.equal(conf.identifier, 'pl.local.menedzerzdjec')
@@ -166,7 +166,7 @@ describe('Kod frontu', () => {
   test('localStorage przechowuje tylko ustawienia interfejsu (bez haseł i kluczy)', () => {
     const keys = new Set()
     for (const f of src) for (const m of readTracked(f).matchAll(/localStorage\.(?:get|set|remove)Item\(\s*['"]([^'"]+)['"]/g)) keys.add(m[1])
-    for (const k of keys) assert.ok(/^(theme|group|grid-original|sec-open|skip-update-version|update-last-check|fibo-lang|slide-secs|watermark-logo)$/.test(k), `nieoczekiwany klucz localStorage: ${k}`)
+    for (const k of keys) assert.ok(/^(theme|group|grid-original|sec-open|skip-update-version|update-last-check|fibo-lang|slide-secs|watermark-logo|edit-presets)$/.test(k), `nieoczekiwany klucz localStorage: ${k}`)
   })
   test('komunikaty z backendu i opisy zmian trafiają do React jako tekst (nie jako HTML)', () => {
     const updater = readTracked('app/src/Updater.tsx')
@@ -438,5 +438,17 @@ describe('Edycja wsadowa i opisy', () => {
     const rs = readFileSync(new URL('../src-tauri/src/main.rs', import.meta.url), 'utf8')
     assert.match(rs, /const MAX_CAPTION: usize = 2000/)
     assert.match(rs, /is_control\(\)/)
+  })
+})
+
+describe('Duplikaty i wtyczka opener', () => {
+  test('duplikaty: przy 20 lub więcej plikach wymagane jest słowo USUŃ, a ważniejszy katalog wpływa na wybór głównego zdjęcia', () => {
+    const d = readFileSync(new URL('../src/Duplicates.tsx', import.meta.url), 'utf8')
+    assert.match(d, /markedList\.length >= 20 \? word\.trim\(\)/)
+    assert.match(d, /bestOf\(list, order\)/)
+  })
+  test('wtyczka opener ma tylko uprawnienie pokazania elementu w katalogu (bez otwierania adresów i plików)', () => {
+    const caps = JSON.parse(readFileSync(new URL('../src-tauri/capabilities/default.json', import.meta.url), 'utf8'))
+    assert.deepEqual(caps.permissions.filter((p) => p.startsWith('opener')), ['opener:allow-reveal-item-in-dir'])
   })
 })

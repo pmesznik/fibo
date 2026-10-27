@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { listen } from '@tauri-apps/api/event'
 import { MapView } from './MapView'
-import { People } from './People'
+import { People, FaceImg } from './People'
 import { ExportDialog } from './ExportDialog'
 import { LocationDialog } from './LocationDialog'
 import { RenameDialog } from './RenameDialog'
@@ -14,7 +14,7 @@ import { UpdateDialog, useUpdater } from './Updater'
 import { exportSidecars, getSidecarEnabled, importSidecars, setSidecarEnabled } from './api'
 import {
   addToAlbum, createAlbum, deleteAlbum, listAlbums, listRoots, movePhotos, removeFromAlbum, removeRoot,
-  renameAlbum, renamePhoto, rescanRoots, trashPhotos, listProps, renameFolder, type Prop, personPhotos, importPhotos, backupLibrary, restoreLibrary, pickFile, facesStart, facesStatus, hidePhotos, hiddenCount, restoreHidden, type Album,
+  renameAlbum, renamePhoto, rescanRoots, trashPhotos, revealInExplorer, listPeople, listProps, renameFolder, type Prop, type Person, personPhotos, importPhotos, backupLibrary, restoreLibrary, pickFile, facesStart, facesStatus, hidePhotos, hiddenCount, restoreHidden, type Album,
 } from './api'
 import { AlbumPicker, PromptDialog } from './Dialogs'
 import { addTag, deleteTag, inTauri, listPhotos, pickFolder, refreshLibrary, removeTag, scanFolder, setFavorite, setRating, type Photo } from './api'
@@ -131,6 +131,7 @@ export default function App() {
   const reloadAlbums = useCallback(async () => { if (inTauri) setAlbums(await listAlbums()) }, [])
   const reloadRoots = useCallback(async () => { if (inTauri) setRoots(await listRoots()) }, [])
   // Taca: trwały koszyk zdjęć z różnych folderów i albumów; akcje działają na jej zawartości po „Zaznacz z tacy”.
+  const [together, setTogether] = useState<Person[] | null>(null)
   const [props, setPropsList] = useState<Prop[]>([])
   const [propsFor, setPropsFor] = useState<null | { kind: 'album' | 'folder'; id: string; title: string }>(null)
   const reloadProps = useCallback(async () => { if (inTauri) setPropsList(await listProps()) }, [])
@@ -652,7 +653,8 @@ export default function App() {
   }
 
   const filtersOn = minStars > 0 || !!dateFrom || !!dateTo || missing !== '' || sort !== 'date-desc' || !!folder || activeTags.length > 0
-  const subtitle = busy ? `Skanowanie… ${progress}` : `${photos.length} z ${all.length} ${pl(all.length, 'zdjęcia', 'zdjęć', 'zdjęć')}`
+  const selPhotos = sel.length ? all.filter((p) => sel.includes(p.id)) : []
+  const subtitle = busy ? `Skanowanie… ${progress}` : `${photos.length} z ${all.length} ${pl(all.length, 'zdjęcia', 'zdjęć', 'zdjęć')}${selPhotos.length ? ` · zaznaczono ${selPhotos.length} (${sizeText(selPhotos)})` : ''}`
 
   return (
     <div className="h-full">
@@ -821,6 +823,7 @@ export default function App() {
                 const ids = list.map((p) => p.id)
                 return (
                   <>
+                    <button className="wide" onClick={async () => { try { await revealInExplorer(folder) } catch (e) { say(`Nie udało się otworzyć Eksploratora: ${e}`, 'err') } }}><FolderOpen size={17} /> Pokaż folder w Eksploratorze</button>
                     <button className="wide" onClick={() => { setDrawer(false); setPropsFor({ kind: 'folder', id: folder, title: folderName(folder) }) }}><Info size={17} /> Właściwości folderu (opis, miejsce, data)…</button>
                     <button className="wide" onClick={() => {
                       setPrompt({
@@ -906,6 +909,7 @@ export default function App() {
                   {albumId !== null && <Chip on onClick={() => setAlbumId(null)} label="Pokaż całą bibliotekę"><FolderOpen size={13} /> Album: {albums.find((a) => a.id === albumId)?.name ?? '…'} <X size={13} /></Chip>}
                   {trayView && <Chip on onClick={() => setTrayView(false)} label="Pokaż całą bibliotekę"><ListChecks size={13} /> Taca <X size={13} /></Chip>}
                   {person && <Chip on onClick={() => setPerson(null)} label="Pokaż całą bibliotekę"><Users size={13} /> {person.name} <X size={13} /></Chip>}
+                  {person && <Chip onClick={async () => { try { setTogether((await listPeople()).filter((o) => !o.ignored)) } catch (e) { say(`Błąd: ${e}`, 'err') } }} label="Pokaż tylko zdjęcia razem z inną osobą"><Users size={13} /> Razem z…</Chip>}
                   {folder && <Chip on onClick={() => setFolder(null)} label="Usuń filtr folderu"><FolderOpen size={13} /> {folderName(folder)} <X size={13} /></Chip>}
                   {(dateFrom || dateTo) && <Chip on onClick={() => { setDateFrom(''); setDateTo('') }} label="Usuń filtr dat"><CalendarDays size={13} /> {dateFrom || '…'} – {dateTo || '…'} <X size={13} /></Chip>}
                   {missing && <Chip on onClick={() => setMissing('')} label="Usuń filtr braków">{missing === 'tags' ? 'Bez tagów' : missing === 'geo' ? 'Bez lokalizacji' : 'Bez oceny'} <X size={13} /></Chip>}
@@ -1132,6 +1136,7 @@ export default function App() {
             )}
             <button className="text menu-item" role="menuitem" onClick={() => moveSelected(false)}><ImageUp size={18} /> Przenieś do folderu…</button>
             <button className="text menu-item" role="menuitem" onClick={() => moveSelected(true)}><Copy size={18} /> Kopiuj do folderu…</button>
+            {sel.length === 1 && <button className="text menu-item" role="menuitem" onClick={async () => { setMenu(null); const p = all.find((x) => x.id === sel[0]); if (p) { try { await revealInExplorer(p.path) } catch (e) { say(`Nie udało się otworzyć Eksploratora: ${e}`, 'err') } } }}><FolderOpen size={18} /> Pokaż w Eksploratorze</button>}
             <button className="text menu-item" role="menuitem" onClick={() => { setMenu(null); setDateIds(realIds()) }}><CalendarDays size={18} /> Zmień datę…</button>
             <button className="text menu-item" role="menuitem" onClick={pasteEditSelected}><Wand2 size={18} /> Wklej edycję do zaznaczonych…</button>
             <button className="text menu-item" role="menuitem" onClick={() => { setMenu(null); setLocIds(realIds()) }}><MapPin size={18} /> Ustaw lokalizację…</button>
@@ -1157,6 +1162,35 @@ export default function App() {
           <button className="chip" onClick={() => { setSel([...tray]); say(`Zaznaczono z tacy: ${tray.length}. Kliknij prawym przyciskiem, żeby wybrać akcję`, 'ok') }}>Zaznacz</button>
           <button className="ico" aria-label="Wyczyść tacę" title="Wyczyść tacę" onClick={() => { setTray([]); setTrayView(false) }}><X size={18} /></button>
         </div>
+      )}
+      {together && person && (
+        <>
+          <div className="fixed inset-0 z-[1700]" style={{ background: 'rgba(0,0,0,.45)' }} onClick={() => setTogether(null)} />
+          <div className="glass fixed left-1/2 top-1/2 z-[1800] flex max-h-[85vh] w-[min(92vw,460px)] -translate-x-1/2 -translate-y-1/2 flex-col" style={{ borderRadius: 'var(--r-lg)' }} role="dialog" aria-label="Zdjęcia razem z inną osobą">
+            <div className="dr-head" style={{ paddingBottom: 0 }}>
+              <span>Razem z kim?</span>
+              <button className="ico" aria-label="Zamknij" onClick={() => setTogether(null)}><X size={22} /></button>
+            </div>
+            <div style={{ padding: '4px 16px 8px', color: 'var(--muted)', fontSize: 13 }}>Pokażę tylko zdjęcia, na których są obie osoby: „{person.name}” i wybrana.</div>
+            <div className="sheet-body" style={{ padding: '0 16px 16px' }}>
+              <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(88px, 1fr))' }}>
+                {together.map((o) => (
+                  <button key={o.id} className="bare text-center" aria-label={o.name ?? 'Nieznana osoba'} onClick={async () => {
+                    try {
+                      const ids = new Set(await personPhotos(o.id))
+                      const both = [...person.ids].filter((i) => ids.has(i))
+                      if (!both.length) { say(`Nie ma zdjęć, na których są razem „${person.name}” i „${o.name ?? 'Nieznana osoba'}”`); return }
+                      setPerson({ name: `${person.name} i ${o.name ?? 'Nieznana osoba'}`, ids: new Set(both) }); setTogether(null)
+                    } catch (e) { say(`Błąd: ${e}`, 'err') }
+                  }}>
+                    <div style={{ width: 64, height: 64, margin: '0 auto', borderRadius: '50%', overflow: 'hidden', background: 'var(--tonal)' }}>{o.cover !== null && <FaceImg id={o.cover} size={64} />}</div>
+                    <div className="truncate" style={{ fontSize: 13, marginTop: 4 }}>{o.name ?? 'Nieznana osoba'}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </>
       )}
       {propsFor && <PropsDialog kind={propsFor.kind} id={propsFor.id} title={propsFor.title} current={propOf.get(`${propsFor.kind}:${propsFor.id}`)} say={say} onSaved={reloadProps} onClose={() => setPropsFor(null)} />}
       {helpDlg === 'keys' && <ShortcutsDialog onClose={() => setHelpDlg(null)} />}

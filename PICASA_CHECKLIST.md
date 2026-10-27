@@ -38,7 +38,7 @@ Lista powstała z pamięci o Picasie 3, z przeglądu FIBO i z oficjalnego podrę
 - [x] Ręczne ustawianie lokalizacji (klik na mapie albo współrzędne)
 - [x] **Chipy osób w podglądzie zdjęcia** (kto jest na tym zdjęciu) i ręczne przypisanie twarzy do osoby. P1 T M Gotowe: znaczki osób, przejście do zdjęć osoby oraz poprawianie błędnego rozpoznania („To inna osoba”).
 - [ ] **Twarze, których nie znaleziono**: ręczne zaznaczenie twarzy na zdjęciu. P3 T M
-- [ ] **„Zdjęcia osoby A i osoby B razem”** (przecięcie osób). P3 T S
+- [x] **„Zdjęcia osoby A i osoby B razem”** (przecięcie osób). P3 T S Gotowe: przycisk „Razem z…” w widoku osoby.
 - [ ] **Nazwy miejsc** (miasto, kraj) z lokalnego słownika współrzędnych, szukanie po miejscu. P3 T L
 - [ ] **Eksport tras / lokalizacji** do pliku GPX lub KML. P4 T S
 - [ ] **Film z twarzy** (pokaz zdjęć jednej osoby). P4 T M
@@ -66,8 +66,8 @@ Lista powstała z pamięci o Picasie 3, z przeglądu FIBO i z oficjalnego podrę
 - [x] Czerń i biel z ogniskiem, winieta, gradientowy odcień, dwutonowy, mapa cieplna, noktowizor, podczerwień
 - [x] Mat, cross process, Lomo, lata 60., Polaroid, HDR, posteryzacja, pikselizacja, szkic, komiks, neon, ramka
 - [ ] **Przechylenie i przesunięcie (tilt-shift)**, miniatura. P4 T M
-- [ ] **Efekt „Kolor selektywny”** (zostaw jeden kolor). P3 T M
-- [ ] **Własne zestawy efektów** (zapisz receptę i użyj na innych zdjęciach). P3 T M
+- [x] **Efekt „Kolor selektywny”** (zostaw jeden kolor). P3 T M Gotowe: tylko czerwony, żółty, zielony lub niebieski.
+- [x] **Własne zestawy efektów** (zapisz receptę i użyj na innych zdjęciach). P3 T M Gotowe: „Moje zestawy” w Efektach.
 
 ## 5. Zapis, eksport, udostępnianie
 - [x] Zapis jako kopia lub nadpisanie (oryginał w `.originals`)
@@ -108,7 +108,7 @@ Lista powstała z pamięci o Picasie 3, z przeglądu FIBO i z oficjalnego podrę
 - [x] Automatyczne aktualizacje z podpisem, instalator z polskimi tekstami
 - [ ] **Wersja angielska interfejsu** (przełącznik języka). P3 T L
 - [ ] **Suwak wielkości miniatur** z zapamiętaniem oraz tryby wyświetlania (siatka, lista z danymi). P3 T S
-- [ ] **Pasek stanu z liczbą zaznaczonych i rozmiarem**. P4 T S
+- [x] **Pasek stanu z liczbą zaznaczonych i rozmiarem**. P4 T S Gotowe pod tytułem widoku.
 - [ ] **Przeciąganie zdjęć na albumy** w menu bocznym. P3 T M
 - [ ] **Przeciągnij i upuść plików z Eksploratora** do FIBO (dodanie folderu). P3 T M, uwaga: wymaga ponownego włączenia obsługi upuszczania w oknie
 - [ ] **Praca z wieloma biblioteka** (profile, np. rodzinna i służbowa). P4 T L
@@ -119,7 +119,7 @@ Pozycje, których brakowało na liście powyżej albo które podręcznik opisuje
 Biblioteka i foldery:
 - [x] **Właściwości folderu i albumu**: tytuł, data, miejsce, opis (dwuklik w nagłówku), wszystko przeszukiwalne. P2 T M Gotowe (ikona informacji przy albumie, menu → Foldery).
 - [x] **Zmiana nazwy folderu z poziomu FIBO** (zmienia też folder na dysku, z ostrzeżeniem). P3 T M Gotowe (menu → Foldery).
-- [ ] **„Pokaż w Eksploratorze”** dla folderu i zdjęcia. P2 T S
+- [x] **„Pokaż w Eksploratorze”** dla folderu i zdjęcia. P2 T S Gotowe (wtyczka opener z jednym uprawnieniem: pokaż element w katalogu).
 - [ ] **Menedżer folderów**: dla każdego folderu „obserwuj zawsze”, „skanuj raz”, „usuń z FIBO” (dziś jest tylko obserwuj i przestań obserwować). P2 T S
 - [x] **Sortowanie listy folderów** (data utworzenia, nazwa, data zdjęć). P3 T S Gotowe: od najnowszych albo po nazwie.
 - [ ] **Przeciąganie zdjęcia na folder** przenosi plik (z potwierdzeniem), a na album dodaje do albumu. P3 T M
@@ -131,12 +131,12 @@ Widoki i wyszukiwanie:
 - [x] **Oś czasu („Timeline”)**: przesuwanie suwakiem po całej bibliotece (miesiące i lata z miniaturami), dziś są tylko skoki do roku. P2 T M Gotowe jako suwak nad zdjęciami (skok do miesiąca lub roku).
 - [x] **Szukanie obejmuje opisy, nazwy albumów, miejsce i dane EXIF aparatu** (dziś: nazwa pliku, aparat, tagi). P1 T S Gotowe: opisy, albumy, foldery, aparat, tagi (bez pól EXIF takich jak ISO i obiektyw, zob. wyszukiwanie po danych aparatu).
 - [ ] **Przycisk „Filmy”** (tylko wideo) i **suwak daty** do szybkiego zawężania wyników. P3 T S
-- [ ] **Filmstrip w edytorze** (pasek miniatur zdjęć z albumu u góry, zamiast samych strzałek). P3 T S
+- [x] **Filmstrip w edytorze** (pasek miniatur zdjęć z albumu u góry, zamiast samych strzałek). P3 T S Już był: pasek miniatur w podglądzie.
 
 Edytor, szczegóły z podręcznika:
 - [ ] **Soft focus i focal B&W z punktem środkowym**: wskazanie środka na zdjęciu, suwaki rozmiaru i ostrości (dziś jeden suwak siły). P2 T M
 - [ ] **Tint i graduated tint z wyborem koloru** zakraplaczem (dziś kolor jest stały). P2 T M
-- [ ] **Filtered B&W**: czerń i biel z kolorowym filtrem (czerwony, żółty, zielony…). P3 T S
+- [x] **Filtered B&W**: czerń i biel z kolorowym filtrem (czerwony, żółty, zielony…). P3 T S Gotowe: filtry czerwony, żółty, zielony.
 - [ ] **Jednoprzyciskowe poprawki światła** obok suwaków doświetlenia, świateł i cieni (jak w Picasie). P3 T S
 - [ ] **Gotowe rozmiary kadru** z podręcznika (np. 4x6) z przeciąganiem ramki i zmianą proporcji rogami. P3 T M
 - [x] **Opis pod zdjęciem w edytorze** z przełącznikiem „pokaż na zdjęciu”, zapis w metadanych, szukanie po opisach (zob. sekcja 1). P1 T S Gotowe w panelu Informacje podglądu; przełącznik „pokaż na zdjęciu” nie zrobiony.
@@ -156,3 +156,7 @@ Taca i wyjście:
 2. Znak wodny, eksport galerii HTML i PDF, drukowanie, pokaz slajdów z muzyką i przejściami.
 3. Zakraplacz bieli, retusz, szukanie po danych aparatu, skróty klawiszowe, pełny EXIF.
 4. Wideo i RAW (duże, ale ważne dla wielu użytkowników), kopia zapasowa zdjęć na dysk zewnętrzny.
+
+## Dodatkowe (z próśb użytkownika)
+- [x] **Duplikaty: wybór ważniejszego katalogu**: kolejność katalogów, główne zdjęcie i „Duplikat”, pełne ścieżki, otwarcie w Eksploratorze.
+- [x] **Znak wodny z własnym logo** przy eksporcie (jedno lub wiele zdjęć).

@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
+import { revealItemInDir } from '@tauri-apps/plugin-opener'
 import { open } from '@tauri-apps/plugin-dialog'
 
 export type Photo = {
@@ -71,6 +72,8 @@ export const listProps = () => invoke<Prop[]>('list_props')
 export const setProps = (kind: string, key: string, description: string, place: string, date: string) => invoke('set_props', { kind, key, description, place, date })
 export const readAudio = (path: string) => invoke<ArrayBuffer>('read_audio', { path })
 export type Watermark = { path: string; position: string; sizePct: number; opacity: number }
+/** Pokazuje plik lub folder w Eksploratorze Windows (zaznacza go w oknie folderu). */
+export const revealInExplorer = (path: string) => revealItemInDir(path)
 export const exportPhotos = (ids: number[], dest: string, maxSide: number, quality: number, watermark: Watermark | null = null) => invoke<MoveReport>('export_photos', { ids, dest, maxSide, quality, watermark })
 export const trashPhotos = (ids: number[], confirm?: string) => invoke<number>('trash_photos', { ids, confirm })
 export const hidePhotos = (ids: number[]) => invoke<number>('hide_photos', { ids })

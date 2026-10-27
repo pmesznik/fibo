@@ -168,12 +168,42 @@ function edges(img: Img): Float32Array {
 
 const bigRadius = (img: Img) => Math.max(4, Math.round(Math.max(img.w, img.h) / 40))
 
+/** Odcień (0-360) piksela RGB; dla szarości zwraca -1. */
+export function hueOf(r: number, g: number, b: number): number {
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn
+  if (d < 8) return -1
+  const h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4
+  return (h * 60 + 360) % 360
+}
+
+/** Czerń i biel jak z filmu z kolorowym filtrem: kanał filtra jest rozjaśniony, a kolory przeciwne przyciemnione. */
+const filteredBw = (w: [number, number, number]): Effect['fn'] => (img, t) =>
+  perPixel(img, t, (r, g, b) => { const y = r * w[0] + g * w[1] + b * w[2]; return [y, y, y] })
+
+/** Zostawia jeden kolor (z płynnym przejściem), resztę zamienia na czerń i biel. `t` wzmacnia efekt. */
+const keepColor = (target: number): Effect['fn'] => (img, t) =>
+  perPixel(img, t, (r, g, b) => {
+    const h = hueOf(r, g, b)
+    const y = lum(r, g, b)
+    if (h < 0) return [y, y, y]
+    const dist = Math.min(Math.abs(h - target), 360 - Math.abs(h - target))
+    const keep = Math.max(0, Math.min(1, (55 - dist) / 25))
+    return [lerp(y, r, keep), lerp(y, g, keep), lerp(y, b, keep)]
+  })
+
 export const EFFECTS: Effect[] = [
   // Jedno kliknięcie
   { id: 'lucky', label: 'Szczęśliwy traf', fn(img, t) { autoLevels(img, true, t); applyAdjust(img, { ...ZERO_ADJUST, fill: 12 * t, saturation: 14 * t, sharpen: 25 * t }) } },
   { id: 'autocontrast', label: 'Auto kontrast', fn(img, t) { autoLevels(img, false, t) } },
   { id: 'autocolor', label: 'Auto kolor', fn(img, t) { autoLevels(img, true, t) } },
   { id: 'bw', label: 'Czarno-białe', fn: (img, t) => perPixel(img, t, (r, g, b) => { const y = lum(r, g, b); return [y, y, y] }) },
+  { id: 'bwred', label: 'Czerń i biel: filtr czerwony', fn: filteredBw([0.75, 0.2, 0.05]) },
+  { id: 'bwyellow', label: 'Czerń i biel: filtr żółty', fn: filteredBw([0.45, 0.45, 0.1]) },
+  { id: 'bwgreen', label: 'Czerń i biel: filtr zielony', fn: filteredBw([0.15, 0.75, 0.1]) },
+  { id: 'keepred', label: 'Tylko czerwony', fn: keepColor(0) },
+  { id: 'keepyellow', label: 'Tylko żółty', fn: keepColor(55) },
+  { id: 'keepgreen', label: 'Tylko zielony', fn: keepColor(120) },
+  { id: 'keepblue', label: 'Tylko niebieski', fn: keepColor(220) },
   { id: 'sepia', label: 'Sepia', fn: (img, t) => perPixel(img, t, (r, g, b) => [r * .393 + g * .769 + b * .189, r * .349 + g * .686 + b * .168, r * .272 + g * .534 + b * .131]) },
   { id: 'warm', label: 'Ocieplenie', fn: (img, t) => applyAdjust(img, { ...ZERO_ADJUST, temp: 35 * t, saturation: 22 * t, contrast: 10 * t, fill: 10 * t }) },
   { id: 'boost', label: 'Podbicie', fn: (img, t) => applyAdjust(img, { ...ZERO_ADJUST, saturation: 35 * t, contrast: 20 * t }) },

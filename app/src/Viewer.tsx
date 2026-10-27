@@ -6,7 +6,7 @@ import {
 } from './FiboIcons'
 import { pickFile, readAudio, hasOriginal, photoPeople, readImage, restoreOriginal, saveEdit, setCaption, setPersonCover, photoExif, listPeople, reassignPersonFaces, type Person, setFavorite, setRating, type Photo, type PhotoPerson } from './api'
 import { FaceImg } from './People'
-import { copyEdit, getClip } from './editor/batch'
+import { copyEdit, deletePreset, getClip, loadPresets, savePreset, type Preset } from './editor/batch'
 import { Thumb } from './Thumb'
 import { Chip, Sec, Toast } from './ui'
 import { TagEditor, type TagCount } from './TagEditor'
@@ -44,6 +44,7 @@ const TUNE_GROUPS: { id: string; title: string; icon: typeof Sun; items: TuneDef
 const ONE_CLICK = ['lucky', 'autocontrast', 'autocolor']
 const FX_GROUPS: { id: string; title: string; icon: typeof Sun; ids: string[] }[] = [
   { id: 'fx-color', title: 'Kolor i ton', icon: Palette, ids: ['bw', 'sepia', 'warm', 'boost', 'duotone', 'heatmap', 'night', 'infrared', 'invert'] },
+  { id: 'fx-bw', title: 'Czerń i biel z filtrem, jeden kolor', icon: Aperture, ids: ['bwred', 'bwyellow', 'bwgreen', 'keepred', 'keepyellow', 'keepgreen', 'keepblue'] },
   { id: 'fx-retro', title: 'Retro i film', icon: History, ids: ['grain', 'matte', 'cross', 'lomo', 'sixties', 'polaroid', 'frame'] },
   { id: 'fx-focus', title: 'Światło i ostrość', icon: Aperture, ids: ['soften', 'glow', 'orton', 'softfocus', 'focalbw', 'vignette', 'gradtint', 'hdr'] },
   { id: 'fx-art', title: 'Kreatywne', icon: Pencil, ids: ['posterize', 'pixelate', 'sketch', 'comic', 'neon'] },
@@ -210,6 +211,8 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
     setUndo((u) => [...u, edit]); setEdit(r[r.length - 1]); return r.slice(0, -1)
   })
   const change = (fn: (s: EditState) => EditState) => { snap(); setEdit(fn) }
+  const [presets, setPresets] = useState<Preset[]>(() => loadPresets())
+  const [presetName, setPresetName] = useState('')
   const [newText, setNewText] = useState('')
   // Opis zdjęcia (zapis po opuszczeniu pola) i osoby rozpoznane na zdjęciu.
   const [captionDraft, setCaptionDraft] = useState('')
@@ -578,6 +581,25 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
                   ))}
                 </Sec>
               )}
+              <Sec id="fx-presets" icon={<Sparkles size={17} />} title="Moje zestawy" hint={presets.length ? `${presets.length} zapisanych` : 'Zapisz ulubione ustawienia'}>
+                <p style={{ margin: '0 0 6px', color: 'var(--muted)', fontSize: 13 }}>Zestaw to zapisane korekty, efekty i napisy. Zastosujesz go jednym kliknięciem na każdym zdjęciu (kadrowanie i obrót nie wchodzą do zestawu).</p>
+                {presets.length > 0 && (
+                  <div className="chips">
+                    {presets.map((p) => (
+                      <span key={p.name} style={{ display: 'inline-flex', gap: 2 }}>
+                        <button className="chip" onClick={() => change((s) => ({ ...s, adj: JSON.parse(JSON.stringify(p.clip.adj)), fx: JSON.parse(JSON.stringify(p.clip.fx)), texts: JSON.parse(JSON.stringify(p.clip.texts)) }))}>{p.name}</button>
+                        <button className="chip" aria-label={`Usuń zestaw ${p.name}`} title="Usuń zestaw" onClick={() => { deletePreset(p.name); setPresets(loadPresets()) }}><X size={13} /></button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <label htmlFor="preset-name">Zapisz bieżące ustawienia jako zestaw</label>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <input id="preset-name" type="text" maxLength={40} value={presetName} placeholder="Nazwa zestawu" autoComplete="off" onChange={(e) => setPresetName(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); (document.getElementById('preset-save') as HTMLButtonElement | null)?.click() } }} />
+                  <button id="preset-save" className="chip" disabled={!presetName.trim()} onClick={() => { if (savePreset(presetName, edit)) { setPresets(loadPresets()); setPresetName(''); say('Zestaw zapisany', 'ok') } else say('Najpierw ustaw korekty, efekty lub napis') }}>Zapisz</button>
+                </div>
+              </Sec>
               <Sec id="fx-text" icon={<Pencil size={17} />} title="Tekst na zdjęciu" hint={edit.texts.length ? `${edit.texts.length} ${edit.texts.length === 1 ? 'napis' : 'napisy'}` : 'Bez napisów'} defaultOpen={edit.texts.length > 0}>
                 <label htmlFor="new-text">Nowy napis</label>
                 <div style={{ display: 'flex', gap: 6 }}>
