@@ -14,7 +14,7 @@ use crate::AppState;
 // Dane twarzy nie są w kopii: po przywróceniu numery zdjęć się zmieniają, a analiza twarzy i tak liczy się lokalnie od nowa.
 const TABLES: [&str; 6] = ["photos", "tags", "photo_tags", "roots", "albums", "album_photos"];
 // Tabele dodane później: starsze kopie ich nie mają, wtedy zostają bez zmian.
-const OPTIONAL: [&str; 1] = ["props"];
+const OPTIONAL: [&str; 2] = ["props", "smart_albums"];
 
 fn stamp() -> String {
     let secs = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0);

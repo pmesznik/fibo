@@ -22,7 +22,7 @@ Lista powstała z pamięci o Picasie 3, z przeglądu FIBO i z oficjalnego podrę
 - [x] **Taca („Hold”)**: trwały koszyk zaznaczonych zdjęć, do którego dokładasz z różnych folderów, a potem robisz akcję na całości (album, eksport, kolaż). P2 T M Gotowe: Dodaj do tacy, pasek Taca (pokaż, zaznacz, wyczyść); akcje przez Zaznacz i menu.
 - [x] **Zmiana daty zdjęcia / przesunięcie dat** (np. zły zegar aparatu): ustaw datę lub przesuń o N godzin dla wielu zdjęć. P1 T M Gotowe w bibliotece FIBO (plików nie zmieniamy).
 - [ ] **Własne albumy: kolejność zdjęć** przeciąganiem. P3 T M (opis, miejsce i data albumu są już gotowe)
-- [ ] **Albumy inteligentne** (zapisane filtry, np. „5 gwiazdek z 2023”). P3 T M
+- [x] **Albumy inteligentne** (zapisane filtry, np. „5 gwiazdek z 2023”). P3 T M Gotowe (filtry: szukanie, ocena, daty, braki, tagi).
 - [ ] **Wyszukiwanie po kolorze** dominującym. P4 T M
 - [x] **Wyszukiwanie po danych aparatu** (model, obiektyw, ISO, przysłona, czas) i filtr „aparat”. P2 T M Gotowe w polu szukania (bez osobnego filtra „aparat”); starsze zdjęcia po „Odśwież dane zdjęć”.
 - [ ] **Zaznaczanie podobnych** do wybranego zdjęcia. P4 T M
@@ -89,7 +89,7 @@ Lista powstała z pamięci o Picasie 3, z przeglądu FIBO i z oficjalnego podrę
 - [x] Kolaż z zaznaczonych zdjęć
 - [x] Pokaz slajdów (spacja)
 - [x] Zdjęcia w pełnym ekranie, powiększanie, porównanie
-- [ ] **Kolaż: tryby** (stos zdjęć, mozaika, arkusz kontaktowy, plakat z wieloma rozmiarami). P3 T M
+- [x] **Kolaż: tryby** (stos zdjęć, mozaika, arkusz kontaktowy, plakat z wieloma rozmiarami). P3 T M Już były: mozaika, siatka, stos zdjęć i arkusz kontaktowy.
 - [x] **Pokaz slajdów: przejścia, czas na zdjęcie, muzyka z pliku, podpisy**. P2 T M Gotowe: płynne przejście, czas slajdu, muzyka z pliku, opisy.
 - [ ] **Film ze zdjęć** (eksport pokazu slajdów do wideo MP4). P3 T L
 - [ ] **Wygaszacz ekranu** ze zdjęć z biblioteki. P4 T M

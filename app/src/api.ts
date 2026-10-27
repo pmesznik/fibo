@@ -82,6 +82,10 @@ export const exportGif = (ids: number[], dest: string, maxSide: number, delayMs:
 export const exportPdf = (ids: number[], dest: string, cols: number, rows: number, maxSide: number, quality: number) => invoke<[string, number]>('export_pdf', { ids, dest, cols, rows, maxSide, quality })
 export type BrokenFile = { id: number; path: string; error: string }
 export const checkFiles = (deep: boolean) => invoke<BrokenFile[]>('check_files', { deep })
+export type SmartAlbum = { id: number; name: string; filters: string }
+export const listSmart = () => invoke<SmartAlbum[]>('list_smart')
+export const saveSmart = (name: string, filters: string) => invoke('save_smart', { name, filters })
+export const deleteSmart = (id: number) => invoke('delete_smart', { id })
 export const exportPhotos = (ids: number[], dest: string, maxSide: number, quality: number, watermark: Watermark | null = null) => invoke<MoveReport>('export_photos', { ids, dest, maxSide, quality, watermark })
 export const trashPhotos = (ids: number[], confirm?: string) => invoke<number>('trash_photos', { ids, confirm })
 export const hidePhotos = (ids: number[]) => invoke<number>('hide_photos', { ids })

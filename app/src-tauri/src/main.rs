@@ -105,6 +105,8 @@ fn open_db(path: &Path) -> rusqlite::Result<Connection> {
     let _ = conn.execute("ALTER TABLE photos ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0", []);
     people::init_schema(&conn)?;
     locks::init_schema(&conn)?;
+    // Albumy inteligentne: nazwa i zapisane filtry (JSON); zawartość liczy się na bieżąco z biblioteki.
+    conn.execute_batch("CREATE TABLE IF NOT EXISTS smart_albums (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE COLLATE NOCASE, filters TEXT NOT NULL);")?;
     // Właściwości albumów i folderów: opis, miejsce, data (rodzaj: "album" z numerem albumu albo "folder" ze ścieżką).
     conn.execute_batch("CREATE TABLE IF NOT EXISTS props (kind TEXT NOT NULL, key TEXT NOT NULL, description TEXT, place TEXT, date TEXT, PRIMARY KEY (kind, key));")?;
     // Migracja: lokalizacja ustawiona ręcznie ma pierwszeństwo przed danymi GPS z pliku.
@@ -1542,6 +1544,51 @@ fn set_props(state: State<'_, AppState>, kind: String, key: String, description:
     set_props_core(&conn, &kind, &key, &description, &place, &date)
 }
 
+#[derive(Serialize)]
+struct SmartAlbum {
+    id: i64,
+    name: String,
+    filters: String,
+}
+
+#[tauri::command]
+fn list_smart(state: State<'_, AppState>) -> Result<Vec<SmartAlbum>, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare("SELECT id, name, filters FROM smart_albums ORDER BY name COLLATE NOCASE").map_err(|e| e.to_string())?;
+    let v = stmt.query_map([], |r| Ok(SmartAlbum { id: r.get(0)?, name: r.get(1)?, filters: r.get(2)? })).map_err(|e| e.to_string())?.filter_map(Result::ok).collect();
+    Ok(v)
+}
+
+/// Zapisuje album inteligentny (ta sama nazwa zastępuje filtry). Filtry muszą być obiektem JSON do 4000 znaków.
+fn save_smart_core(conn: &Connection, name: &str, filters: &str) -> Result<(), String> {
+    let name: String = name.chars().filter(|c| !c.is_control()).collect::<String>().trim().chars().take(60).collect();
+    if name.is_empty() {
+        return Err("Podaj nazwę albumu".into());
+    }
+    if filters.len() > 4000 || !serde_json::from_str::<serde_json::Value>(filters).map(|v| v.is_object()).unwrap_or(false) {
+        return Err("Nieprawidłowe filtry".into());
+    }
+    conn.execute(
+        "INSERT INTO smart_albums (name, filters) VALUES (?1, ?2) ON CONFLICT(name) DO UPDATE SET filters = ?2",
+        params![name, filters],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn save_smart(state: State<'_, AppState>, name: String, filters: String) -> Result<(), String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    save_smart_core(&conn, &name, &filters)
+}
+
+#[tauri::command]
+fn delete_smart(state: State<'_, AppState>, id: i64) -> Result<(), String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM smart_albums WHERE id = ?1", [id]).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 /// Dane EXIF zdjęcia do pokazania w panelu informacji: (nazwa po polsku, wartość). Tylko odczyt, wartości są przycinane.
 /// Wybrane pola EXIF (nazwa po polsku, wartość), wartości przycięte do 200 znaków.
 fn exif_pairs(exif: &exif::Exif) -> Vec<(String, String)> {
@@ -2438,6 +2485,23 @@ mod tests {
     }
 
     #[test]
+    fn smart_albums_store_validated_filters() {
+        let dir = std::env::temp_dir().join("mz-smart-test");
+        let state = test_state(&dir);
+        let c = state.db.lock().unwrap();
+        save_smart_core(&c, "  5 gwiazdek 2023  ", r#"{"minStars":5,"dateFrom":"2023-01-01"}"#).unwrap();
+        save_smart_core(&c, "5 GWIAZDEK 2023", r#"{"minStars":4}"#).unwrap(); // ta sama nazwa (bez względu na wielkość liter) zastępuje filtry
+        let n: i64 = c.query_row("SELECT COUNT(*) FROM smart_albums", [], |r| r.get(0)).unwrap();
+        assert_eq!(n, 1);
+        let f: String = c.query_row("SELECT filters FROM smart_albums", [], |r| r.get(0)).unwrap();
+        assert!(f.contains("\"minStars\":4"));
+        assert!(save_smart_core(&c, "", "{}").is_err());
+        assert!(save_smart_core(&c, "x", "[1,2]").is_err());
+        assert!(save_smart_core(&c, "x", "to nie json").is_err());
+        assert!(save_smart_core(&c, "x", &format!("{{\"a\":\"{}\"}}", "z".repeat(5000))).is_err());
+    }
+
+    #[test]
     fn manual_dates_and_captions() {
         assert_eq!(days_from_civil(1970, 1, 1), 0);
         assert_eq!(days_from_civil(2024, 1, 1), 19723);
@@ -2987,7 +3051,7 @@ fn main() {
             app.manage(AppState { db: Mutex::new(db), thumbs, sidecar: AtomicBool::new(sidecar) });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![list_roots, remove_root, rescan_roots, list_albums, create_album, rename_album, delete_album, add_to_album, remove_from_album, rename_photo, move_photos, get_sidecar_enabled, set_sidecar_enabled, export_sidecars, import_sidecars, scan_folder, refresh_library, find_duplicates, trash_photos, export_photos, set_location, rename_batch, import_photos, gallery::export_gallery, gallery::export_gpx, gallery::export_gif, pdf::export_pdf, check::check_files, gallery::rename_folder, locks::list_locked, locks::set_folder_locked, set_date, shift_dates, set_caption, photo_exif, list_props, set_props, people::photo_people, people::reassign_person_faces, backup::backup_library, backup::restore_library, hide_photos, hidden_count, restore_hidden, people::faces_status, people::set_faces_enabled, people::faces_start, people::faces_stop, people::faces_delete_all, people::list_people, people::person_photos, people::person_faces, people::set_person_cover, people::rename_person, people::merge_people, people::ignore_person, list_photos, thumbnail, thumbnail_data, people::face_crop, set_rating, set_favorite, add_tag, remove_tag, delete_tag, save_edit, save_collage, read_image, read_audio, has_original, restore_original])
+        .invoke_handler(tauri::generate_handler![list_roots, remove_root, rescan_roots, list_albums, create_album, rename_album, delete_album, add_to_album, remove_from_album, rename_photo, move_photos, get_sidecar_enabled, set_sidecar_enabled, export_sidecars, import_sidecars, scan_folder, refresh_library, find_duplicates, trash_photos, export_photos, set_location, rename_batch, import_photos, gallery::export_gallery, gallery::export_gpx, gallery::export_gif, pdf::export_pdf, check::check_files, list_smart, save_smart, delete_smart, gallery::rename_folder, locks::list_locked, locks::set_folder_locked, set_date, shift_dates, set_caption, photo_exif, list_props, set_props, people::photo_people, people::reassign_person_faces, backup::backup_library, backup::restore_library, hide_photos, hidden_count, restore_hidden, people::faces_status, people::set_faces_enabled, people::faces_start, people::faces_stop, people::faces_delete_all, people::list_people, people::person_photos, people::person_faces, people::set_person_cover, people::rename_person, people::merge_people, people::ignore_person, list_photos, thumbnail, thumbnail_data, people::face_crop, set_rating, set_favorite, add_tag, remove_tag, delete_tag, save_edit, save_collage, read_image, read_audio, has_original, restore_original])
         .run(tauri::generate_context!())
         .expect("błąd uruchomienia aplikacji");
 }

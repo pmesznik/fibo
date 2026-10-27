@@ -15,7 +15,7 @@ import { UpdateDialog, useUpdater } from './Updater'
 import { exportSidecars, getSidecarEnabled, importSidecars, setSidecarEnabled } from './api'
 import {
   addToAlbum, createAlbum, deleteAlbum, listAlbums, listRoots, movePhotos, removeFromAlbum, removeRoot,
-  renameAlbum, renamePhoto, rescanRoots, trashPhotos, listLocked, setFolderLocked, revealInExplorer, listPeople, listProps, renameFolder, type Prop, type Person, personPhotos, importPhotos, backupLibrary, restoreLibrary, pickFile, facesStart, facesStatus, hidePhotos, hiddenCount, restoreHidden, type Album,
+  renameAlbum, renamePhoto, rescanRoots, trashPhotos, listSmart, saveSmart, deleteSmart, type SmartAlbum, listLocked, setFolderLocked, revealInExplorer, listPeople, listProps, renameFolder, type Prop, type Person, personPhotos, importPhotos, backupLibrary, restoreLibrary, pickFile, facesStart, facesStatus, hidePhotos, hiddenCount, restoreHidden, type Album,
 } from './api'
 import { AlbumPicker, PromptDialog } from './Dialogs'
 import { addTag, deleteTag, inTauri, listPhotos, pickFolder, refreshLibrary, removeTag, scanFolder, setFavorite, setRating, type Photo } from './api'
@@ -132,6 +132,10 @@ export default function App() {
   const reloadAlbums = useCallback(async () => { if (inTauri) setAlbums(await listAlbums()) }, [])
   const reloadRoots = useCallback(async () => { if (inTauri) setRoots(await listRoots()) }, [])
   // Taca: trwały koszyk zdjęć z różnych folderów i albumów; akcje działają na jej zawartości po „Zaznacz z tacy”.
+  // Albumy inteligentne: zapisane zestawy filtrów (szukanie, ocena, daty, braki, tagi), których zawartość liczy się na bieżąco.
+  const [smart, setSmart] = useState<SmartAlbum[]>([])
+  const reloadSmart = useCallback(async () => { if (inTauri) setSmart(await listSmart()) }, [])
+  useEffect(() => { reloadSmart() }, [reloadSmart])
   const [locked, setLocked] = useState<string[]>([])
   const reloadLocked = useCallback(async () => { if (inTauri) setLocked(await listLocked()) }, [])
   useEffect(() => { reloadLocked() }, [reloadLocked])
@@ -620,6 +624,29 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewer, sel, all, confirm, prompt, picker, tagDlg, helpDlg, collage, dateIds, renameIds, locIds, exportIds])
 
+  const smartFilters = () => JSON.stringify({ query: query.trim(), minStars, dateFrom, dateTo, missing, tags: activeTags })
+  const applySmart = (a: SmartAlbum) => {
+    try {
+      const f = JSON.parse(a.filters) as { query?: string; minStars?: number; dateFrom?: string; dateTo?: string; missing?: string; tags?: string[] }
+      setQuery(String(f.query ?? '')); setMinStars(Math.max(0, Math.min(5, +(f.minStars ?? 0) || 0)))
+      setDateFrom(String(f.dateFrom ?? '')); setDateTo(String(f.dateTo ?? ''))
+      setMissing(f.missing === 'tags' || f.missing === 'geo' || f.missing === 'rating' ? f.missing : '')
+      setActiveTags(Array.isArray(f.tags) ? f.tags.map(String).slice(0, 20) : [])
+      setFolder(null); setAlbumId(null); setPerson(null); setTrayView(false); setMode('library')
+    } catch { say('Nie udało się wczytać filtrów albumu', 'err') }
+  }
+  const saveSmartAlbum = () => setPrompt({
+    title: 'Album inteligentny', label: 'Nazwa albumu', initial: '', confirm: 'Zapisz',
+    hint: 'Zapisuje bieżące filtry (szukanie, ocenę, daty, braki i tagi). Zawartość albumu liczy się na bieżąco, więc nowe pasujące zdjęcia pojawią się same.',
+    onSubmit: async (v) => { try { await saveSmart(v, smartFilters()); await reloadSmart(); say('Album inteligentny zapisany', 'ok') } catch (e) { return String(e) } },
+  })
+  const smartSummary = (a: SmartAlbum) => {
+    try {
+      const f = JSON.parse(a.filters) as { query?: string; minStars?: number; dateFrom?: string; dateTo?: string; missing?: string; tags?: string[] }
+      return [f.query && `„${f.query}”`, f.minStars ? `≥ ${f.minStars} gwiazdek` : '', (f.dateFrom || f.dateTo) ? `${f.dateFrom || '…'} – ${f.dateTo || '…'}` : '', f.missing === 'tags' ? 'bez tagów' : f.missing === 'geo' ? 'bez lokalizacji' : f.missing === 'rating' ? 'bez oceny' : '', ...(f.tags ?? []).map((t) => `#${t}`)].filter(Boolean).join(' · ') || 'Wszystkie zdjęcia'
+    } catch { return '' }
+  }
+
   const multi = sel.length > 1 || selectMode
   const tile = (p: Photo, ratio43: boolean) => {
     const on = sel.includes(p.id)
@@ -914,6 +941,7 @@ export default function App() {
                   {activeTags.map((t) => <Chip key={t} on onClick={() => toggleTagFilter(t)} label={`Usuń filtr tagu ${t}`}><Tag size={13} /> {t} <X size={13} /></Chip>)}
                   {query && <Chip on onClick={() => setQuery('')} label="Usuń szukanie"><SearchIcon size={13} /> {query} <X size={13} /></Chip>}
                   {albumId !== null && <Chip on onClick={() => setAlbumId(null)} label="Pokaż całą bibliotekę"><FolderOpen size={13} /> Album: {albums.find((a) => a.id === albumId)?.name ?? '…'} <X size={13} /></Chip>}
+                  {(query.trim() || minStars > 0 || dateFrom || dateTo || missing || activeTags.length > 0) && <Chip onClick={saveSmartAlbum} label="Zapisz filtry jako album inteligentny"><Star size={13} /> Zapisz jako album inteligentny</Chip>}
                   {trayView && <Chip on onClick={() => setTrayView(false)} label="Pokaż całą bibliotekę"><ListChecks size={13} /> Taca <X size={13} /></Chip>}
                   {person && <Chip on onClick={() => setPerson(null)} label="Pokaż całą bibliotekę"><Users size={13} /> {person.name} <X size={13} /></Chip>}
                   {person && <Chip onClick={async () => { try { setTogether((await listPeople()).filter((o) => !o.ignored)) } catch (e) { say(`Błąd: ${e}`, 'err') } }} label="Pokaż tylko zdjęcia razem z inną osobą"><Users size={13} /> Razem z…</Chip>}
@@ -990,6 +1018,22 @@ export default function App() {
                       </div>
                     )
                   })}
+                </div>
+              )}
+            </section>
+
+            <section style={{ marginBottom: 28 }}>
+              <h2 style={{ margin: '0 0 12px', font: '650 18px/1.2 system-ui' }}>Albumy inteligentne</h2>
+              {smart.length === 0 ? (
+                <p style={{ margin: 0, color: 'var(--muted)', fontSize: 14 }}>Ustaw filtry w bibliotece (szukanie, ocena, daty, braki, tagi) i kliknij „Zapisz jako album inteligentny”. Album sam pokaże wszystkie pasujące zdjęcia, także te dodane później.</p>
+              ) : (
+                <div className="chips">
+                  {smart.map((a) => (
+                    <span key={a.id} style={{ display: 'inline-flex', gap: 2 }}>
+                      <button className="chip" title={smartSummary(a)} aria-label={`Album inteligentny ${a.name}: ${smartSummary(a)}`} onClick={() => applySmart(a)}><Star size={13} /> {a.name} <span style={{ color: 'var(--muted)', fontSize: 12 }}>{smartSummary(a)}</span></button>
+                      <button className="chip" aria-label={`Usuń album inteligentny ${a.name}`} title="Usuń album inteligentny (zdjęcia zostają)" onClick={() => setConfirm({ text: `Usunąć album inteligentny „${a.name}”? Zdjęcia zostają w bibliotece.`, yes: 'Usuń album', run: async () => { try { await deleteSmart(a.id); await reloadSmart() } catch (e) { say(`Błąd: ${e}`, 'err') } } })}><X size={13} /></button>
+                    </span>
+                  ))}
                 </div>
               )}
             </section>
