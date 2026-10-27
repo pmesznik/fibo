@@ -108,6 +108,10 @@ export const PL = {
         <li><strong>Ocena</strong> (gwiazdki), <strong>ulubione</strong>, <strong>Tagi…</strong>, <strong>Dodaj do albumu…</strong>, <strong>Kolaż</strong> (od dwóch zdjęć), <strong>Zaznacz wszystkie</strong>.</li>
         <li><strong>Zmień nazwę pliku…</strong> (jedno zdjęcie): rozszerzenie zostaje, plik XMP zmienia nazwę razem ze zdjęciem. FIBO odrzuca nazwy ze znakami niedozwolonymi w Windows (<code>\\ / : * ? " &lt; &gt; |</code>), zarezerwowane (CON, NUL, COM1…) i nie nadpisuje istniejącego pliku.</li>
         <li><strong>Przenieś do folderu…</strong> i <strong>Kopiuj do folderu…</strong>: nic nie jest nadpisywane, przy zajętej nazwie FIBO dopisuje <code>_1</code>, <code>_2</code>. Plik XMP idzie razem ze zdjęciem. Przenoszenie między dyskami kopiuje, sprawdza rozmiar i dopiero wtedy usuwa źródło.</li>
+        <li><strong>Opis zdjęcia</strong> (podgląd → Informacje): pole „Opis zdjęcia” zapisuje się po opuszczeniu pola. Szukanie obejmuje teraz opisy, nazwy albumów, nazwy folderów, aparat, tagi i nazwy plików.</li>
+        <li><strong>Zmień datę…</strong> (menu prawym przyciskiem): ustaw dokładną datę i godzinę albo przesuń daty zaznaczonych zdjęć o dni, godziny i minuty (np. gdy aparat miał zły zegar). Zmiana dotyczy biblioteki FIBO, a plików zdjęć nie zmieniamy.</li>
+        <li><strong>Kopiuj i wklej edycję</strong>: w edytorze „Kopiuj edycję” zapamiętuje korekty, efekty i napisy (bez kadrowania i obrotu), a „Wklej edycję” nakłada je na inne zdjęcie. W bibliotece <em>Wklej edycję do zaznaczonych…</em> robi to dla wielu zdjęć naraz i zapisuje wyniki jako kopie obok oryginałów.</li>
+        <li><strong>Osoby w podglądzie</strong>: na zdjęciu widać znaczki rozpoznanych osób, a kliknięcie znaczka pokazuje wszystkie zdjęcia tej osoby.</li>
         <li><strong>Kopia zapasowa biblioteki</strong> (menu): zapisuje dane biblioteki (tagi, oceny, albumy, ulubione, foldery) do pliku .db, a <em>Przywróć z kopii</em> wczytuje je z powrotem. Przed przywróceniem FIBO zapisuje kopię bezpieczeństwa obecnej biblioteki. Same zdjęcia i dane twarzy nie są w kopii.</li>
         <li><strong>Sortowanie</strong> zdjęć: od najnowszych, od najstarszych, po nazwie, po ocenie albo po rozmiarze pliku.</li>
         <li><strong>Zakres dat i braki</strong> (menu → Filtry): ogranicz widok do zdjęć z wybranych dat albo pokaż tylko zdjęcia bez tagów, bez lokalizacji lub bez oceny, żeby łatwo uzupełnić dane. Aktywne filtry widać jako znaczki nad zdjęciami.</li>
@@ -158,7 +162,7 @@ export const PL = {
         <li><strong>Nic nie wychodzi z komputera.</strong> Twarze są wykrywane i porównywane lokalnie (modele YuNet i SFace, dołączone do instalatora, bez pobierania w trakcie działania). Moduł nie ma żadnego kodu sieciowego, a testy to sprawdzają.</li>
         <li><strong>Wektory twarzy są zaszyfrowane</strong> kluczem Twojego konta Windows (DPAPI). Skopiowana baza FIBO ich nie ujawni.</li>
         <li><strong>Imiona zostają w bazie FIBO</strong> i nie trafiają do plików zdjęć ani XMP.</li>
-        <li>Przy osobie możesz <em>nadać imię</em>, <em>wybrać okładkę</em> (twarz pokazywaną na liście), <em>połączyć</em> ją z inną (gdy ta sama osoba trafiła do dwóch grup): przeciągnij jedną osobę na drugą i kliknij <em>Zatwierdź</em> albo <em>pominąć</em>. Kliknięcie osoby pokazuje jej zdjęcia.</li>
+        <li>Przy osobie możesz <em>nadać imię</em>, <em>wybrać okładkę</em> (twarz pokazywaną na liście: przycisk <em>Zmień okładkę</em> przy osobie albo <em>Okładka</em> przy znaczku osoby w podglądzie zdjęcia), <em>połączyć</em> ją z inną (gdy ta sama osoba trafiła do dwóch grup): przeciągnij jedną osobę na drugą i kliknij <em>Zatwierdź</em> albo <em>pominąć</em>. Kliknięcie osoby pokazuje jej zdjęcia.</li>
         <li><strong>Usuń dane twarzy</strong> kasuje osoby, wektory i wycinki twarzy oraz wyłącza funkcję. Zdjęcia nie są ruszane.</li>
       </ul>` },
     { id: 'duplicates', t: 'Duplikaty', h: `
@@ -328,6 +332,10 @@ export const EN = {
         <li><strong>Rating</strong> (stars), <strong>favorite</strong>, <strong>Tags…</strong>, <strong>Add to album…</strong>, <strong>Collage</strong> (from two photos), <strong>Select all</strong>.</li>
         <li><strong>Rename file…</strong> (one photo): the extension stays and the XMP file is renamed with the photo. FIBO rejects names with characters Windows does not allow (<code>\\ / : * ? " &lt; &gt; |</code>), reserved names (CON, NUL, COM1…) and never overwrites an existing file.</li>
         <li><strong>Move to folder…</strong> and <strong>Copy to folder…</strong>: nothing is overwritten, and when a name is taken FIBO appends <code>_1</code>, <code>_2</code>. The XMP file goes with the photo. Moving across drives copies, checks the size and only then removes the source.</li>
+        <li><strong>Photo caption</strong> (viewer → Info): the “Photo caption” field saves when you leave it. Search now covers captions, album names, folder names, camera, tags and file names.</li>
+        <li><strong>Change date…</strong> (right-click menu): set an exact date and time, or shift the dates of the selected photos by days, hours and minutes (for example when the camera clock was wrong). The change applies to the FIBO library; photo files are not modified.</li>
+        <li><strong>Copy and paste edit</strong>: in the editor “Copy edit” remembers adjustments, effects and captions (not crop or rotation) and “Paste edit” applies them to another photo. In the library <em>Paste edit to selected…</em> does it for many photos at once and saves the results as copies next to the originals.</li>
+        <li><strong>People in the viewer</strong>: recognized people show as chips on the photo, and clicking a chip shows all photos of that person.</li>
         <li><strong>Library backup</strong> (menu): saves your library data (tags, ratings, albums, favourites, folders) to a .db file, and <em>Restore from backup</em> loads it back. Before restoring, FIBO saves a safety copy of the current library. Photos themselves and face data are not in the backup.</li>
         <li><strong>Sorting</strong>: newest, oldest, by name, by rating or by file size.</li>
         <li><strong>Date range and gaps</strong> (menu → Filters): limit the view to photos from chosen dates, or show only photos without tags, without location or without a rating so you can fill in the gaps. Active filters appear as chips above the photos.</li>
@@ -378,7 +386,7 @@ export const EN = {
         <li><strong>Nothing leaves your computer.</strong> Faces are detected and compared locally (YuNet and SFace models shipped inside the installer, nothing is downloaded while the app runs). The module has no network code, and tests verify it.</li>
         <li><strong>Face vectors are encrypted</strong> with your Windows account key (DPAPI). A copied FIBO database does not reveal them.</li>
         <li><strong>Names stay in the FIBO database</strong> and never go into photo files or XMP.</li>
-        <li>For each person you can <em>name</em>, <em>pick a cover</em> (the face shown in the list), <em>merge</em> (when one person ended up in two groups): drag one person onto another and click <em>Confirm</em> or <em>ignore</em> them. Click a person to see their photos.</li>
+        <li>For each person you can <em>name</em>, <em>pick a cover</em> (the face shown in the list: the <em>Change cover</em> button on the person, or <em>Cover</em> next to the person chip in the viewer), <em>merge</em> (when one person ended up in two groups): drag one person onto another and click <em>Confirm</em> or <em>ignore</em> them. Click a person to see their photos.</li>
         <li><strong>Delete face data</strong> removes people, vectors and face crops and turns the feature off. Your photos are untouched.</li>
       </ul>` },
     { id: 'duplicates', t: 'Duplicates', h: `

@@ -49,6 +49,7 @@ struct Photo {
     lat: Option<f64>,
     lon: Option<f64>,
     albums: Vec<i64>,
+    caption: Option<String>,
 }
 
 fn open_db(path: &Path) -> rusqlite::Result<Connection> {
@@ -99,6 +100,9 @@ fn open_db(path: &Path) -> rusqlite::Result<Connection> {
     people::init_schema(&conn)?;
     // Migracja: lokalizacja ustawiona ręcznie ma pierwszeństwo przed danymi GPS z pliku.
     let _ = conn.execute("ALTER TABLE photos ADD COLUMN geo_manual INTEGER NOT NULL DEFAULT 0", []);
+    // Migracje: opis zdjęcia oraz data ustawiona ręcznie (ma pierwszeństwo przed datą z pliku).
+    let _ = conn.execute("ALTER TABLE photos ADD COLUMN caption TEXT", []);
+    let _ = conn.execute("ALTER TABLE photos ADD COLUMN taken_manual INTEGER NOT NULL DEFAULT 0", []);
     Ok(conn)
 }
 
@@ -239,7 +243,7 @@ fn flush(state: &AppState, rows: &mut Vec<Row>) -> Result<(), String> {
         tx.execute(
             "INSERT INTO photos (path, folder, name, size, modified, taken, width, height, camera, lat, lon)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
-             ON CONFLICT(path) DO UPDATE SET size=?4, modified=?5, taken=?6, width=?7, height=?8, camera=?9,
+             ON CONFLICT(path) DO UPDATE SET size=?4, modified=?5, taken=CASE WHEN taken_manual = 1 THEN taken ELSE ?6 END, width=?7, height=?8, camera=?9,
                  lat=CASE WHEN geo_manual = 1 THEN lat ELSE COALESCE(?10, lat) END, lon=CASE WHEN geo_manual = 1 THEN lon ELSE COALESCE(?11, lon) END",
             params![r.path, r.folder, r.name, r.size, r.modified, r.exif.taken, r.dims.0, r.dims.1, r.exif.camera, r.exif.lat, r.exif.lon],
         )
@@ -361,7 +365,7 @@ fn list_photos(state: State<'_, AppState>) -> Result<Vec<Photo>, String> {
             "SELECT id, path, name, size, modified, taken, width, height, camera, rating, favorite,
                     (SELECT group_concat(t.name, char(31)) FROM photo_tags pt JOIN tags t ON t.id = pt.tag_id
                      WHERE pt.photo_id = photos.id), lat, lon,
-                    (SELECT group_concat(album_id) FROM album_photos WHERE photo_id = photos.id)
+                    (SELECT group_concat(album_id) FROM album_photos WHERE photo_id = photos.id), caption
              FROM photos WHERE hidden = 0 ORDER BY COALESCE(taken, datetime(modified,'unixepoch')) DESC",
         )
         .map_err(|e| e.to_string())?;
@@ -389,6 +393,7 @@ fn list_photos(state: State<'_, AppState>) -> Result<Vec<Photo>, String> {
                     .get::<_, Option<String>>(14)?
                     .map(|s| s.split(',').filter_map(|x| x.parse().ok()).collect())
                     .unwrap_or_default(),
+                caption: r.get(15)?,
             })
         })
         .map_err(|e| e.to_string())?
@@ -1439,6 +1444,86 @@ async fn rename_batch(app: tauri::AppHandle, ids: Vec<i64>, prefix: String, with
         .map_err(|e| e.to_string())?
 }
 
+/// Liczba dni od 1970-01-01 dla daty (odwrotność `civil_from_days`).
+fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
+    let y = y - i64::from(m <= 2);
+    let era = y.div_euclid(400);
+    let yoe = y.rem_euclid(400);
+    let doy = (153 * (if m > 2 { m - 3 } else { m + 9 }) + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    era * 146097 + doe - 719468
+}
+
+/// „RRRR-MM-DD GG:MM:SS” (także z „:” w dacie) na sekundy od 1970 (bez stref czasowych, jak w EXIF).
+fn parse_ts(s: &str) -> Option<i64> {
+    let n: Vec<i64> = s.split(|c: char| !c.is_ascii_digit()).filter(|x| !x.is_empty()).map(|x| x.parse().ok()).collect::<Option<_>>()?;
+    if n.len() < 3 || !(1..=12).contains(&n[1]) || !(1..=31).contains(&n[2]) || !(1900..=2200).contains(&n[0]) {
+        return None;
+    }
+    let (h, mi, se) = (n.get(3).copied().unwrap_or(0), n.get(4).copied().unwrap_or(0), n.get(5).copied().unwrap_or(0));
+    if h > 23 || mi > 59 || se > 59 {
+        return None;
+    }
+    Some(days_from_civil(n[0], n[1], n[2]) * 86400 + h * 3600 + mi * 60 + se)
+}
+
+fn fmt_ts(secs: i64) -> String {
+    let (y, m, d) = civil_from_days(secs.div_euclid(86400));
+    let r = secs.rem_euclid(86400);
+    format!("{y:04}-{m:02}-{d:02} {:02}:{:02}:{:02}", r / 3600, r % 3600 / 60, r % 60)
+}
+
+/// Zmienia datę zdjęć w bibliotece: `Set` ustawia dokładną datę, `Shift` przesuwa o minuty (np. zły zegar aparatu).
+/// Zmiana jest w bibliotece FIBO (pliki zdjęć bez zmian) i przetrwa ponowne skanowanie.
+enum DateChange {
+    Set(i64),
+    Shift(i64),
+}
+
+fn change_dates_core(conn: &Connection, ids: &[i64], change: DateChange) -> Result<usize, String> {
+    let mut n = 0;
+    for &id in ids {
+        let (taken, modified): (Option<String>, i64) = conn
+            .query_row("SELECT taken, modified FROM photos WHERE id = ?1", [id], |r| Ok((r.get(0)?, r.get(1)?)))
+            .map_err(|e| e.to_string())?;
+        let new = match change {
+            DateChange::Set(t) => t,
+            DateChange::Shift(m) => taken.as_deref().and_then(parse_ts).unwrap_or(modified).checked_add(m.checked_mul(60).ok_or("Zbyt duże przesunięcie")?).ok_or("Zbyt duże przesunięcie")?,
+        };
+        if !(parse_ts("1900-01-01").unwrap_or(0)..=parse_ts("2200-12-31").unwrap_or(i64::MAX)).contains(&new) {
+            return Err("Data poza dozwolonym zakresem (1900-2200)".into());
+        }
+        n += conn.execute("UPDATE photos SET taken = ?2, taken_manual = 1 WHERE id = ?1", params![id, fmt_ts(new)]).map_err(|e| e.to_string())?;
+    }
+    Ok(n)
+}
+
+#[tauri::command]
+fn set_date(state: State<'_, AppState>, ids: Vec<i64>, date: String) -> Result<usize, String> {
+    let t = parse_ts(&date).ok_or("Nieprawidłowa data")?;
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    change_dates_core(&conn, &ids, DateChange::Set(t))
+}
+
+#[tauri::command]
+fn shift_dates(state: State<'_, AppState>, ids: Vec<i64>, minutes: i64) -> Result<usize, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    change_dates_core(&conn, &ids, DateChange::Shift(minutes))
+}
+
+const MAX_CAPTION: usize = 2000;
+
+/// Zapisuje opis zdjęcia (pusty tekst usuwa opis). Opis jest przeszukiwalny i zostaje w bibliotece FIBO.
+#[tauri::command]
+fn set_caption(state: State<'_, AppState>, id: i64, caption: String) -> Result<(), String> {
+    let text: String = caption.chars().filter(|c| !c.is_control() || *c == '\n').take(MAX_CAPTION).collect();
+    let text = text.trim();
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let value: Option<&str> = if text.is_empty() { None } else { Some(text) };
+    conn.execute("UPDATE photos SET caption = ?2 WHERE id = ?1", params![id, value]).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 /// Ustawia lokalizację zdjęć ręcznie (None = brak lokalizacji). Zapisuje tylko w bibliotece FIBO, plików zdjęć nie zmienia.
 fn set_location_core(conn: &Connection, ids: &[i64], loc: Option<(f64, f64)>) -> Result<usize, String> {
     if let Some((la, lo)) = loc {
@@ -2150,6 +2235,43 @@ mod tests {
     }
 
     #[test]
+    fn manual_dates_and_captions() {
+        assert_eq!(days_from_civil(1970, 1, 1), 0);
+        assert_eq!(days_from_civil(2024, 1, 1), 19723);
+        assert_eq!(parse_ts("2024:07:01 12:30:15").map(fmt_ts).as_deref(), Some("2024-07-01 12:30:15"));
+        assert_eq!(parse_ts("2024-02-30x"), parse_ts("2024-02-30"));
+        assert!(parse_ts("2024-13-01").is_none() && parse_ts("zle").is_none() && parse_ts("2024-01-01 25:00:00").is_none());
+        let dir = std::env::temp_dir().join("mz-date-test");
+        let state = test_state(&dir);
+        let lib = dir.join("lib");
+        fs::create_dir_all(&lib).unwrap();
+        image::RgbImage::new(8, 8).save(lib.join("d.jpg")).unwrap();
+        scan_blocking(&state, lib.to_str().unwrap(), &|_| {}).unwrap();
+        let id = photo_id(&state, "d.jpg");
+        let get = || -> Option<String> { state.db.lock().unwrap().query_row("SELECT taken FROM photos WHERE id = ?1", [id], |r| r.get(0)).unwrap() };
+        let conn = state.db.lock().unwrap();
+        change_dates_core(&conn, &[id], DateChange::Set(parse_ts("2023-12-31 23:30:00").unwrap())).unwrap();
+        drop(conn);
+        assert_eq!(get().as_deref(), Some("2023-12-31 23:30:00"));
+        // Przesunięcie o 90 minut przechodzi przez północ i rok.
+        change_dates_core(&state.db.lock().unwrap(), &[id], DateChange::Shift(90)).unwrap();
+        assert_eq!(get().as_deref(), Some("2024-01-01 01:00:00"));
+        change_dates_core(&state.db.lock().unwrap(), &[id], DateChange::Shift(-60 * 24)).unwrap();
+        assert_eq!(get().as_deref(), Some("2023-12-31 01:00:00"));
+        // Ponowne skanowanie zmienionego pliku nie kasuje ręcznej daty.
+        let row = build_row(&lib.join("d.jpg")).unwrap();
+        flush(&state, &mut vec![row]).unwrap();
+        assert_eq!(get().as_deref(), Some("2023-12-31 01:00:00"));
+        assert!(change_dates_core(&state.db.lock().unwrap(), &[id], DateChange::Shift(i64::MAX / 30)).is_err());
+        assert!(change_dates_core(&state.db.lock().unwrap(), &[id], DateChange::Set(parse_ts("1800-01-01").unwrap_or(-9_000_000_000))).is_err());
+        // Opis: przycinanie, brak znaków sterujących.
+        let conn = state.db.lock().unwrap();
+        conn.execute("UPDATE photos SET caption = ?2 WHERE id = ?1", params![id, "Ala"]).unwrap();
+        let c: Option<String> = conn.query_row("SELECT caption FROM photos WHERE id = ?1", [id], |r| r.get(0)).unwrap();
+        assert_eq!(c.as_deref(), Some("Ala"));
+    }
+
+    #[test]
     fn hiding_and_safe_deletion() {
         let dir = std::env::temp_dir().join("mz-delete-test");
         let state = test_state(&dir);
@@ -2634,7 +2756,7 @@ fn main() {
             app.manage(AppState { db: Mutex::new(db), thumbs, sidecar: AtomicBool::new(sidecar) });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![list_roots, remove_root, rescan_roots, list_albums, create_album, rename_album, delete_album, add_to_album, remove_from_album, rename_photo, move_photos, get_sidecar_enabled, set_sidecar_enabled, export_sidecars, import_sidecars, scan_folder, refresh_library, find_duplicates, trash_photos, export_photos, set_location, rename_batch, import_photos, backup::backup_library, backup::restore_library, hide_photos, hidden_count, restore_hidden, people::faces_status, people::set_faces_enabled, people::faces_start, people::faces_stop, people::faces_delete_all, people::list_people, people::person_photos, people::person_faces, people::set_person_cover, people::rename_person, people::merge_people, people::ignore_person, list_photos, thumbnail, thumbnail_data, people::face_crop, set_rating, set_favorite, add_tag, remove_tag, delete_tag, save_edit, save_collage, read_image, has_original, restore_original])
+        .invoke_handler(tauri::generate_handler![list_roots, remove_root, rescan_roots, list_albums, create_album, rename_album, delete_album, add_to_album, remove_from_album, rename_photo, move_photos, get_sidecar_enabled, set_sidecar_enabled, export_sidecars, import_sidecars, scan_folder, refresh_library, find_duplicates, trash_photos, export_photos, set_location, rename_batch, import_photos, set_date, shift_dates, set_caption, people::photo_people, backup::backup_library, backup::restore_library, hide_photos, hidden_count, restore_hidden, people::faces_status, people::set_faces_enabled, people::faces_start, people::faces_stop, people::faces_delete_all, people::list_people, people::person_photos, people::person_faces, people::set_person_cover, people::rename_person, people::merge_people, people::ignore_person, list_photos, thumbnail, thumbnail_data, people::face_crop, set_rating, set_favorite, add_tag, remove_tag, delete_tag, save_edit, save_collage, read_image, has_original, restore_original])
         .run(tauri::generate_context!())
         .expect("błąd uruchomienia aplikacji");
 }

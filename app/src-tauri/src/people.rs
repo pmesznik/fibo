@@ -453,6 +453,31 @@ pub fn set_person_cover(state: State<'_, AppState>, id: i64, face: i64) -> Resul
     Ok(())
 }
 
+#[derive(Serialize)]
+pub struct PhotoPerson {
+    id: i64,
+    name: Option<String>,
+    face: i64,
+}
+
+/// Osoby rozpoznane na zdjęciu (bez pominiętych), z twarzą do pokazania na znaczku.
+#[tauri::command]
+pub fn photo_people(state: State<'_, AppState>, id: i64) -> Result<Vec<PhotoPerson>, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT p.id, p.name, MIN(f.id) FROM faces f JOIN people p ON p.id = f.person_id
+             WHERE f.photo_id = ?1 AND p.ignored = 0 GROUP BY p.id ORDER BY MIN(f.x)",
+        )
+        .map_err(|e| e.to_string())?;
+    let v = stmt
+        .query_map([id], |r| Ok(PhotoPerson { id: r.get(0)?, name: r.get(1)?, face: r.get(2)? }))
+        .map_err(|e| e.to_string())?
+        .filter_map(Result::ok)
+        .collect();
+    Ok(v)
+}
+
 #[tauri::command]
 pub fn person_photos(state: State<'_, AppState>, id: i64) -> Result<Vec<i64>, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;

@@ -4,7 +4,9 @@ import {
   RotateCcw, RotateCw, FlipHorizontal, FlipVertical, Eye, Wand2, Save, CopyPlus, History,
   ZoomIn, ZoomOut, Compare, Sliders, Sparkles, Info, Tag, Crop as CropIcon, Trash2, Sun, Palette, Aperture, Pencil, Zap, Plus,
 } from './FiboIcons'
-import { hasOriginal, readImage, restoreOriginal, saveEdit, setFavorite, setRating, type Photo } from './api'
+import { hasOriginal, photoPeople, readImage, restoreOriginal, saveEdit, setCaption, setPersonCover, setFavorite, setRating, type Photo, type PhotoPerson } from './api'
+import { FaceImg } from './People'
+import { copyEdit, getClip } from './editor/batch'
 import { Thumb } from './Thumb'
 import { Chip, Sec, Toast } from './ui'
 import { TagEditor, type TagCount } from './TagEditor'
@@ -67,7 +69,7 @@ function Slider({ label, value, min, max, onChange, onStart }: {
   )
 }
 
-export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onClose, onPatch, onSaved }: {
+export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onClose, onPatch, onSaved, onOpenPerson }: {
   photos: Photo[]
   startId: number
   autoplay?: boolean
@@ -76,6 +78,7 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
   onClose: () => void
   onPatch: (id: number, change: Partial<Photo>) => void
   onSaved: (newId: number) => void
+  onOpenPerson?: (personId: number, name: string | null) => void
 }) {
   const [id, setId] = useState(startId)
   const index = Math.max(0, photos.findIndex((p) => p.id === id))
@@ -180,6 +183,20 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
   })
   const change = (fn: (s: EditState) => EditState) => { snap(); setEdit(fn) }
   const [newText, setNewText] = useState('')
+  // Opis zdjęcia (zapis po opuszczeniu pola) i osoby rozpoznane na zdjęciu.
+  const [captionDraft, setCaptionDraft] = useState('')
+  const [people, setPeople] = useState<PhotoPerson[]>([])
+  useEffect(() => { setCaptionDraft(photo?.caption ?? '') }, [photo?.id, photo?.caption])
+  useEffect(() => {
+    let dead = false
+    setPeople([])
+    if (photo && photo.id >= 0) photoPeople(photo.id).then((v) => { if (!dead) setPeople(v) }).catch(() => {})
+    return () => { dead = true }
+  }, [photo?.id])
+  const saveCaption = async () => {
+    if (!photo || captionDraft.trim() === (photo.caption ?? '')) return
+    try { await setCaption(photo.id, captionDraft); onPatch(photo.id, { caption: captionDraft.trim() || null }); say('Opis zapisany', 'ok') } catch (e) { say(`Błąd: ${e}`, 'err') }
+  }
   const [selText, setSelText] = useState<number | null>(null)
   const selT = selText !== null ? edit.texts[selText] : undefined
   const addText = () => {
@@ -340,6 +357,25 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
           style={{ position: 'absolute', right: sheet ? 382 : 12, top: '50%', width: 48, height: 48, padding: 0, borderRadius: '50%', display: 'grid', placeItems: 'center', transition: 'right .3s var(--ease)' }}><ChevronRight size={24} /></button>
       )}
 
+      {people.length > 0 && onOpenPerson && (
+        <div className="flex gap-2" role="group" aria-label="Osoby na zdjęciu"
+          style={{ position: 'absolute', left: 12, bottom: 'calc(112px + var(--sab))', maxWidth: `calc(100% - ${sheet ? 420 : 24}px)`, flexWrap: 'wrap', zIndex: 3 }}>
+          {people.map((p) => (
+            <button key={p.id} className="chip glass" style={{ paddingLeft: 4, gap: 6 }} aria-label={`Pokaż zdjęcia: ${p.name ?? 'Nieznana osoba'}`} title="Pokaż wszystkie zdjęcia tej osoby"
+              onClick={() => onOpenPerson(p.id, p.name)}>
+              <span style={{ width: 26, height: 26, borderRadius: '50%', overflow: 'hidden', display: 'inline-block', background: 'var(--tonal)' }}><FaceImg id={p.face} size={26} /></span>
+              {p.name ?? 'Nieznana osoba'}
+            </button>
+          ))}
+          {people.map((p) => (
+            <button key={`c${p.id}`} className="chip glass" style={{ gap: 6 }} aria-label={`Ustaw tę twarz jako okładkę osoby ${p.name ?? 'Nieznana osoba'}`} title={`Ustaw tę twarz jako okładkę: ${p.name ?? 'Nieznana osoba'}`}
+              onClick={async () => { try { await setPersonCover(p.id, p.face); say(`Okładka osoby „${p.name ?? 'Nieznana osoba'}” zmieniona`, 'ok') } catch (e) { say(`Błąd: ${e}`, 'err') } }}>
+              <Star size={13} /> Okładka: {p.name ?? 'Nieznana osoba'}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Górne elementy pływające */}
       <button id="viewerClose" className="glass" aria-label="Zamknij podgląd" title="Zamknij (Esc)" onClick={requestClose}
         style={{ position: 'absolute', left: 12, top: 'calc(12px + var(--sat))', width: 46, height: 46, padding: 0, borderRadius: '50%', display: 'grid', placeItems: 'center' }}><X size={20} /></button>
@@ -418,6 +454,15 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
                 <Slider label="Przesunięcie pionowe" value={edit.geo.panY} min={-1} max={1} onStart={snap} onChange={(v) => live((s) => ({ ...s, geo: { ...s.geo, panY: v } }))} />
               </Sec>
             </>
+          )}
+
+          {(tab === 'basic' || tab === 'tune' || tab === 'fx') && (
+            <div className="chips" style={{ margin: '8px 0 0' }} role="group" aria-label="Kopiowanie edycji">
+              <button className="chip" disabled={!isEdited(edit)} title="Kopiuje korekty, efekty i napisy (bez kadrowania) do schowka edycji"
+                onClick={() => { if (copyEdit(edit)) { say('Skopiowano edycję. Wklej ją tu lub zbiorczo w bibliotece', 'ok') } else say('Najpierw coś zmień w zdjęciu') }}>Kopiuj edycję</button>
+              <button className="chip" title="Wkleja skopiowane korekty, efekty i napisy"
+                onClick={() => { const c = getClip(); if (!c) return say('Schowek edycji jest pusty. Najpierw skopiuj edycję z innego zdjęcia'); change((s) => ({ ...s, adj: c.adj, fx: c.fx, texts: c.texts })) }}>Wklej edycję</button>
+            </div>
           )}
 
           {tab === 'tune' && (
@@ -509,6 +554,9 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
                   <div style={{ wordBreak: 'break-all' }}>{v}</div>
                 </div>
               ))}
+              <label htmlFor="v-caption">Opis zdjęcia</label>
+              <textarea id="v-caption" rows={3} maxLength={2000} value={captionDraft} placeholder="Dodaj opis…" onChange={(e) => setCaptionDraft(e.target.value)} onBlur={saveCaption}
+                style={{ width: '100%', resize: 'vertical' }} />
               <Sec id="v-tags" icon={<Tag size={17} />} title="Tagi" hint={photo.tags.length ? photo.tags.join(', ') : 'Brak tagów'} defaultOpen>
                 <TagEditor photos={[photo]} allTags={allTags}
                   onAdd={(t) => onTag([photo.id], t, true)} onRemove={(t) => onTag([photo.id], t, false)} />

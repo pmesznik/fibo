@@ -18,9 +18,9 @@ Lista powstała z pamięci o Picasie 3, z przeglądu FIBO i z oficjalnego podrę
 - [x] Filtry: ocena, zakres dat, bez tagów, bez lokalizacji, bez oceny
 - [x] Sortowanie: data, nazwa, ocena, rozmiar
 - [x] Kopia zapasowa i przywracanie biblioteki
-- [ ] **Opisy zdjęć (podpisy)**: pole „Opis” przy zdjęciu, szukanie po opisie, zapis do XMP. P1 T S
+- [x] **Opisy zdjęć (podpisy)**: pole „Opis” przy zdjęciu, szukanie po opisie, zapis do XMP. P1 T S Gotowe: opis w podglądzie i szukanie po opisach. Zapis do XMP jeszcze nie (opis zostaje w bibliotece FIBO).
 - [ ] **Taca („Hold”)**: trwały koszyk zaznaczonych zdjęć, do którego dokładasz z różnych folderów, a potem robisz akcję na całości (album, eksport, kolaż). P2 T M
-- [ ] **Zmiana daty zdjęcia / przesunięcie dat** (np. zły zegar aparatu): ustaw datę lub przesuń o N godzin dla wielu zdjęć. P1 T M
+- [x] **Zmiana daty zdjęcia / przesunięcie dat** (np. zły zegar aparatu): ustaw datę lub przesuń o N godzin dla wielu zdjęć. P1 T M Gotowe w bibliotece FIBO (plików nie zmieniamy).
 - [ ] **Własne albumy: kolejność zdjęć** przeciąganiem, opis i data albumu. P3 T M
 - [ ] **Albumy inteligentne** (zapisane filtry, np. „5 gwiazdek z 2023”). P3 T M
 - [ ] **Wyszukiwanie po kolorze** dominującym. P4 T M
@@ -36,7 +36,7 @@ Lista powstała z pamięci o Picasie 3, z przeglądu FIBO i z oficjalnego podrę
 - [x] Rozpoznawanie twarzy lokalnie, grupowanie w osoby, imiona, łączenie, okładka, pomijanie
 - [x] Mapa z globusem, pinezki w kolorach, skupiska, dzień i noc z animacją
 - [x] Ręczne ustawianie lokalizacji (klik na mapie albo współrzędne)
-- [ ] **Chipy osób w podglądzie zdjęcia** (kto jest na tym zdjęciu) i ręczne przypisanie twarzy do osoby. P1 T M
+- [x] **Chipy osób w podglądzie zdjęcia** (kto jest na tym zdjęciu) i ręczne przypisanie twarzy do osoby. P1 T M Gotowe: znaczki osób i przejście do zdjęć osoby. Ręczne przypisanie twarzy nadal do zrobienia.
 - [ ] **Twarze, których nie znaleziono**: ręczne zaznaczenie twarzy na zdjęciu. P3 T M
 - [ ] **„Zdjęcia osoby A i osoby B razem”** (przecięcie osób). P3 T S
 - [ ] **Nazwy miejsc** (miasto, kraj) z lokalnego słownika współrzędnych, szukanie po miejscu. P3 T L
@@ -53,7 +53,7 @@ Lista powstała z pamięci o Picasie 3, z przeglądu FIBO i z oficjalnego podrę
 - [ ] **Neutralny kolor (zakraplacz)**: klik w szary punkt koryguje balans bieli. P2 T S
 - [ ] **Retusz** (usuwanie plam i skaz pędzlem). P2 T M
 - [ ] **Kadrowanie ręczne z ramką** i gotowe formaty wydruku 10x15, 13x18, A4 oraz obrót ramki. P3 T M
-- [ ] **Zastosuj te same zmiany do wielu zdjęć** (kopiuj i wklej edycję, edycja wsadowa). P1 T M
+- [x] **Zastosuj te same zmiany do wielu zdjęć** (kopiuj i wklej edycję, edycja wsadowa). P1 T M Gotowe: kopiuj i wklej edycję, wsadowo jako kopie.
 - [ ] **Obrót wielu zdjęć bez utraty jakości** (znacznik orientacji). P2 T S
 - [ ] **Poprawka perspektywy** (wyrównanie pionów). P4 T L
 - [ ] **Redukcja szumu**. P4 T M
@@ -129,7 +129,7 @@ Biblioteka i foldery:
 
 Widoki i wyszukiwanie:
 - [ ] **Oś czasu („Timeline”)**: przesuwanie suwakiem po całej bibliotece (miesiące i lata z miniaturami), dziś są tylko skoki do roku. P2 T M
-- [ ] **Szukanie obejmuje opisy, nazwy albumów, miejsce i dane EXIF aparatu** (dziś: nazwa pliku, aparat, tagi). P1 T S
+- [x] **Szukanie obejmuje opisy, nazwy albumów, miejsce i dane EXIF aparatu** (dziś: nazwa pliku, aparat, tagi). P1 T S Gotowe: opisy, albumy, foldery, aparat, tagi (bez pól EXIF takich jak ISO i obiektyw, zob. wyszukiwanie po danych aparatu).
 - [ ] **Przycisk „Filmy”** (tylko wideo) i **suwak daty** do szybkiego zawężania wyników. P3 T S
 - [ ] **Filmstrip w edytorze** (pasek miniatur zdjęć z albumu u góry, zamiast samych strzałek). P3 T S
 
@@ -139,7 +139,7 @@ Edytor, szczegóły z podręcznika:
 - [ ] **Filtered B&W**: czerń i biel z kolorowym filtrem (czerwony, żółty, zielony…). P3 T S
 - [ ] **Jednoprzyciskowe poprawki światła** obok suwaków doświetlenia, świateł i cieni (jak w Picasie). P3 T S
 - [ ] **Gotowe rozmiary kadru** z podręcznika (np. 4x6) z przeciąganiem ramki i zmianą proporcji rogami. P3 T M
-- [ ] **Opis pod zdjęciem w edytorze** z przełącznikiem „pokaż na zdjęciu”, zapis w metadanych, szukanie po opisach (zob. sekcja 1). P1 T S
+- [x] **Opis pod zdjęciem w edytorze** z przełącznikiem „pokaż na zdjęciu”, zapis w metadanych, szukanie po opisach (zob. sekcja 1). P1 T S Gotowe w panelu Informacje podglądu; przełącznik „pokaż na zdjęciu” nie zrobiony.
 - [ ] **Obrót zdjęcia „w programie”** bez ruszania pliku do czasu zapisu (przyciski w tacy). P4 T S
 
 Taca i wyjście:

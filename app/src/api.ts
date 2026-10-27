@@ -17,6 +17,7 @@ export type Photo = {
   lat: number | null
   lon: number | null
   albums: number[]
+  caption?: string | null
 }
 
 export type Album = { id: number; name: string; count: number }
@@ -54,6 +55,11 @@ export type PhotoImportReport = { copied: number; skipped: number; errors: strin
 export const importPhotos = (src: string, dest: string) => invoke<PhotoImportReport>('import_photos', { src, dest })
 export const backupLibrary = (dest: string) => invoke<string>('backup_library', { dest })
 export const restoreLibrary = (file: string) => invoke<number>('restore_library', { file })
+export const setCaption = (id: number, caption: string) => invoke('set_caption', { id, caption })
+export const setDate = (ids: number[], date: string) => invoke<number>('set_date', { ids, date })
+export const shiftDates = (ids: number[], minutes: number) => invoke<number>('shift_dates', { ids, minutes })
+export type PhotoPerson = { id: number; name: string | null; face: number }
+export const photoPeople = (id: number) => invoke<PhotoPerson[]>('photo_people', { id })
 export const exportPhotos = (ids: number[], dest: string, maxSide: number, quality: number) => invoke<MoveReport>('export_photos', { ids, dest, maxSide, quality })
 export const trashPhotos = (ids: number[], confirm?: string) => invoke<number>('trash_photos', { ids, confirm })
 export const hidePhotos = (ids: number[]) => invoke<number>('hide_photos', { ids })

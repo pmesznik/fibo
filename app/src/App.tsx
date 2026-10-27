@@ -5,12 +5,14 @@ import { People } from './People'
 import { ExportDialog } from './ExportDialog'
 import { LocationDialog } from './LocationDialog'
 import { RenameDialog } from './RenameDialog'
+import { DateDialog } from './DateDialog'
+import { getClip, pasteEditToPhotos } from './editor/batch'
 import { Duplicates } from './Duplicates'
 import { UpdateDialog, useUpdater } from './Updater'
 import { exportSidecars, getSidecarEnabled, importSidecars, setSidecarEnabled } from './api'
 import {
   addToAlbum, createAlbum, deleteAlbum, listAlbums, listRoots, movePhotos, removeFromAlbum, removeRoot,
-  renameAlbum, renamePhoto, rescanRoots, trashPhotos, importPhotos, backupLibrary, restoreLibrary, pickFile, facesStart, facesStatus, hidePhotos, hiddenCount, restoreHidden, type Album,
+  renameAlbum, renamePhoto, rescanRoots, trashPhotos, personPhotos, importPhotos, backupLibrary, restoreLibrary, pickFile, facesStart, facesStatus, hidePhotos, hiddenCount, restoreHidden, type Album,
 } from './api'
 import { AlbumPicker, PromptDialog } from './Dialogs'
 import { addTag, deleteTag, inTauri, listPhotos, pickFolder, refreshLibrary, removeTag, scanFolder, setFavorite, setRating, type Photo } from './api'
@@ -22,7 +24,7 @@ import { Justified } from './Justified'
 import { Chip, Sec, Toast } from './ui'
 import {
   Images, FolderOpen, Users, MapPin, Heart, Star, Plus, Play, Maximize2, X,
-  SlidersHorizontal, Search as SearchIcon, ImageUp, Ruler, LayoutDashboard, Check, ListChecks, Tag, CalendarDays, Copy, RefreshCw, Download, Save, Pencil, Trash2, Eye, EyeOff, ChevronLeft,
+  SlidersHorizontal, Search as SearchIcon, ImageUp, Ruler, LayoutDashboard, Check, ListChecks, Tag, CalendarDays, Copy, RefreshCw, Download, Save, Pencil, Trash2, Eye, EyeOff, ChevronLeft, Wand2,
 } from './FiboIcons'
 
 type Mode = 'library' | 'albums' | 'favs' | 'people' | 'map'
@@ -126,6 +128,7 @@ export default function App() {
   useEffect(() => { reload() }, [reload])
   const reloadAlbums = useCallback(async () => { if (inTauri) setAlbums(await listAlbums()) }, [])
   const reloadRoots = useCallback(async () => { if (inTauri) setRoots(await listRoots()) }, [])
+  const [dateIds, setDateIds] = useState<number[] | null>(null)
   const [renameIds, setRenameIds] = useState<number[] | null>(null)
   const [locIds, setLocIds] = useState<number[] | null>(null)
   const [exportIds, setExportIds] = useState<number[] | null>(null)
@@ -252,6 +255,7 @@ export default function App() {
     }
   }
 
+  const albumNames = useMemo(() => new Map(albums.map((a) => [a.id, a.name] as [number, string])), [albums])
   const onlyFav = mode === 'favs'
   const photos = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -265,14 +269,14 @@ export default function App() {
       (!dateTo || whenOf(p).slice(0, 10).replace(/:/g, '-') <= dateTo) &&
       (missing === '' || (missing === 'tags' ? p.tags.length === 0 : missing === 'geo' ? p.lat == null || p.lon == null : p.rating === 0)) &&
       activeTags.every((t) => p.tags.includes(t)) &&
-      (!q || `${p.name} ${p.camera ?? ''} ${p.tags.join(' ')}`.toLowerCase().includes(q)),
+      (!q || `${p.name} ${p.camera ?? ''} ${p.caption ?? ''} ${p.tags.join(' ')} ${p.albums.map((a) => albumNames.get(a) ?? '').join(' ')} ${folderName(dirOf(p.path))}`.toLowerCase().includes(q)),
     )
     if (sort === 'name') list.sort((a, b) => a.name.localeCompare(b.name, 'pl', { numeric: true }))
     else if (sort === 'rating') list.sort((a, b) => b.rating - a.rating || whenOf(b).localeCompare(whenOf(a)))
     else if (sort === 'size') list.sort((a, b) => b.size - a.size)
     else list.sort((a, b) => (sort === 'date-desc' ? whenOf(b).localeCompare(whenOf(a)) : whenOf(a).localeCompare(whenOf(b))))
     return list
-  }, [all, query, folder, albumId, person, onlyFav, minStars, dateFrom, dateTo, missing, sort, activeTags])
+  }, [all, albumNames, query, folder, albumId, person, onlyFav, minStars, dateFrom, dateTo, missing, sort, activeTags])
 
   // Foldery od najnowszego; rok albumu to rok jego najnowszego zdjęcia (jak w Picasie).
   const folders = useMemo(() => {
@@ -513,6 +517,25 @@ export default function App() {
     setConfirm({
       text: `Przenieść ${what}: ${summary} do Kosza Windows? Możesz je stamtąd przywrócić.`, yes: 'Przenieś do Kosza',
       run: async () => { try { await run() } catch (e) { say(`Nie udało się przenieść do Kosza: ${e}`, 'err'); await reload() } },
+    })
+  }
+  /** Wkleja skopiowaną edycję (korekty, efekty, napisy) na wiele zdjęć naraz; wyniki są zapisywane jako kopie obok oryginałów. */
+  const pasteEditSelected = () => {
+    setMenu(null)
+    const ids = realIds()
+    if (!ids.length) return
+    if (!getClip()) return say('Schowek edycji jest pusty. Otwórz zdjęcie, zmień je i użyj „Kopiuj edycję”.')
+    const list = all.filter((p) => ids.includes(p.id))
+    setConfirm({
+      text: `Zastosować skopiowaną edycję do ${list.length} ${pl(list.length, 'zdjęcia', 'zdjęć', 'zdjęć')}? Wyniki zostaną zapisane jako nowe kopie obok oryginałów (oryginały zostają bez zmian).`, yes: 'Zastosuj',
+      run: async () => {
+        try {
+          setBusy(true)
+          const r = await pasteEditToPhotos(list, (d, t) => say(`Przetwarzam zdjęcia: ${d} z ${t}…`))
+          await reload()
+          say(r.errors.length ? `Gotowe: ${r.done}, błędy: ${r.errors.length} (${r.errors[0]})` : `Gotowe: ${r.done} ${pl(r.done, 'kopia', 'kopie', 'kopii')} z zastosowaną edycją`, r.errors.length ? 'err' : 'ok')
+        } catch (e) { say(`Błąd: ${e}`, 'err') } finally { setBusy(false) }
+      },
     })
   }
   const trashSelected = () => { setMenu(null); askTrash(realIds(), 'zaznaczone') }
@@ -1035,6 +1058,8 @@ export default function App() {
             )}
             <button className="text menu-item" role="menuitem" onClick={() => moveSelected(false)}><ImageUp size={18} /> Przenieś do folderu…</button>
             <button className="text menu-item" role="menuitem" onClick={() => moveSelected(true)}><Copy size={18} /> Kopiuj do folderu…</button>
+            <button className="text menu-item" role="menuitem" onClick={() => { setMenu(null); setDateIds(realIds()) }}><CalendarDays size={18} /> Zmień datę…</button>
+            <button className="text menu-item" role="menuitem" onClick={pasteEditSelected}><Wand2 size={18} /> Wklej edycję do zaznaczonych…</button>
             <button className="text menu-item" role="menuitem" onClick={() => { setMenu(null); setLocIds(realIds()) }}><MapPin size={18} /> Ustaw lokalizację…</button>
             <button className="text menu-item" role="menuitem" onClick={() => { setMenu(null); setExportIds(realIds()) }}><Download size={18} /> Eksportuj pomniejszone…</button>
             <button className="text menu-item" role="menuitem" onClick={hideSelected}><EyeOff size={18} /> Usuń z biblioteki (pliki zostają)…</button>
@@ -1049,6 +1074,10 @@ export default function App() {
       {picker && sel.length > 0 && (
         <AlbumPicker albums={albums} count={realIds().length} onPick={pickAlbum} onClose={() => setPicker(false)}
           onCreate={() => { setPicker(false); newAlbum(true) }} />
+      )}
+      {dateIds && dateIds.length > 0 && (
+        <DateDialog photos={dateIds.map((id) => all.find((p) => p.id === id)).filter((p): p is Photo => !!p)} say={say}
+          onDone={() => { reload() }} onClose={() => setDateIds(null)} />
       )}
       {renameIds && renameIds.length > 1 && (
         <RenameDialog photos={renameIds.map((id) => all.find((p) => p.id === id)).filter((p): p is Photo => !!p)} say={say}
@@ -1091,6 +1120,13 @@ export default function App() {
           onClose={() => { setSelected(viewer.id); setViewer(null) }}
           onPatch={patch}
           onSaved={async (newId) => { await reload(); setSelected(newId) }}
+          onOpenPerson={async (pid, name) => {
+            try {
+              const ids = await personPhotos(pid)
+              setPerson({ name: name ?? 'Nieznana osoba', ids: new Set(ids) }); setAlbumId(null); setFolder(null); setMode('library')
+              setViewer(null)
+            } catch (e) { say(`Błąd: ${e}`, 'err') }
+          }}
         />
       )}
     </div>

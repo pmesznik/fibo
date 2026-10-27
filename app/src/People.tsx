@@ -7,7 +7,7 @@ import {
 } from './api'
 import { PromptDialog } from './Dialogs'
 
-function FaceImg({ id, size = 120 }: { id: number; size?: number }) {
+export function FaceImg({ id, size = 120 }: { id: number; size?: number }) {
   const [src, setSrc] = useState<string | null>(null)
   useEffect(() => {
     let url: string | null = null, dead = false
@@ -198,6 +198,9 @@ export function People({ say, ask, onOpenPerson, onChanged }: {
               <button className="ico" style={{ minWidth: 40, minHeight: 36 }} aria-label="Połącz z inną osobą" title="To ta sama osoba co inna: połącz" onClick={() => setMergeFrom(p)}><Users size={16} /></button>
               <button className="ico" style={{ minWidth: 40, minHeight: 36 }} aria-label={p.ignored ? 'Przywróć osobę na listę' : 'Pomiń tę osobę'} title={p.ignored ? 'Przywróć' : 'Pomiń (np. przypadkowy przechodzień)'}
                 onClick={async () => { await ignorePerson(p.id, !p.ignored); refresh() }}>{p.ignored ? <Eye size={16} /> : <EyeOff size={16} />}</button>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'center', marginTop: 2 }}>
+              <button className="chip" onClick={() => pickCover(p)} aria-label={`Zmień okładkę osoby ${p.name ?? 'Nieznana osoba'}`}><Star size={13} /> Zmień okładkę</button>
             </div>
           </div>
         ))}

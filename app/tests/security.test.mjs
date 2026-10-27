@@ -427,3 +427,16 @@ describe('Okno: przeciąganie', () => {
     assert.equal(c.app.windows[0].dragDropEnabled, false)
   })
 })
+
+describe('Edycja wsadowa i opisy', () => {
+  test('wklejanie edycji do wielu zdjęć zawsze zapisuje kopie (nie nadpisuje oryginałów)', () => {
+    const b = readFileSync(new URL('../src/editor/batch.ts', import.meta.url), 'utf8')
+    assert.match(b, /saveEdit\(.*'copy'/)
+    assert.ok(!/'overwrite'/.test(b))
+  })
+  test('opis zdjęcia ma limit długości i wycięte znaki sterujące w backendzie', () => {
+    const rs = readFileSync(new URL('../src-tauri/src/main.rs', import.meta.url), 'utf8')
+    assert.match(rs, /const MAX_CAPTION: usize = 2000/)
+    assert.match(rs, /is_control\(\)/)
+  })
+})
