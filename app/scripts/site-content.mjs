@@ -145,7 +145,7 @@ export const PL = {
         <li><strong>Zapis:</strong> nowy plik JPG o szerokości 2800 px, <code>kolaz_RRRRMMDD_GGMMSS.jpg</code>, w folderze pierwszego zdjęcia. Oryginały nie są zmieniane.</li>
       </ul>` },
     { id: 'map', t: 'Mapa', h: `
-      <p>Zakładka <strong>Mapa</strong> pokazuje globus z pinezkami w miejscach, gdzie zrobiono zdjęcia. Zdjęcia z jednego miejsca łączą się w jedną pinezkę z liczbą, a bliskie pinezki w skupisko. Kliknięcie skupiska przybliża widok, a kliknięcie pinezki otwiera panel z miniaturami. Kliknięcie miniatury otwiera podgląd.</p>
+      <p>Zakładka <strong>Mapa</strong> pokazuje globus z pinezkami w miejscach, gdzie zrobiono zdjęcia. Pinezki mają różne kolory w różnych okolicach. Zdjęcia z jednego miejsca łączą się w jedną pinezkę z liczbą, a bliskie pinezki w większą pinezkę ze skupiskiem. Kliknięcie skupiska przybliża widok, a kliknięcie pinezki otwiera panel z miniaturami. Kliknięcie miniatury otwiera podgląd.</p>
       <p>Mapa pokazuje, gdzie w tej chwili jest dzień, a gdzie noc, razem ze smugą zmierzchu. Na dole jest zegar, suwak czasu (±12 godzin), przycisk <strong>Teraz</strong> i przycisk <strong>animacji doby</strong>, który w kilkanaście sekund przesuwa cały dzień. Pozycja Słońca jest liczona na komputerze.</p>
       <ul>
         <li>Pozycje pochodzą z danych GPS w zdjęciach (EXIF). Zdjęcia bez GPS nie pojawiają się na mapie, a licznik w rogu pokazuje, ile ich jest.</li>
@@ -365,7 +365,7 @@ export const EN = {
         <li><strong>Saving:</strong> a new 2800 px wide JPG, <code>kolaz_YYYYMMDD_HHMMSS.jpg</code>, in the first photo’s folder. Originals are never changed.</li>
       </ul>` },
     { id: 'map', t: 'Map', h: `
-      <p>The <strong>Map</strong> tab shows a globe with pins where your photos were taken. Photos from one place share a pin with a count, and nearby pins form a cluster. Click a cluster to zoom in, or a pin to open a panel with thumbnails. Click a thumbnail to open the viewer.</p>
+      <p>The <strong>Map</strong> tab shows a globe with pins where your photos were taken. Pins have different colours in different areas. Photos from one place share a pin with a count, and nearby pins form a larger cluster pin. Click a cluster to zoom in, or a pin to open a panel with thumbnails. Click a thumbnail to open the viewer.</p>
       <p>The map shows where it is day and where it is night right now, with a smooth twilight band. At the bottom are a clock, a time slider (±12 hours), a <strong>Now</strong> button and a <strong>day animation</strong> button that sweeps a whole day in a few seconds. The Sun's position is computed on your computer.</p>
       <ul>
         <li>Positions come from the GPS data in your photos (EXIF). Photos without GPS do not appear, and the counter in the corner shows how many there are.</li>

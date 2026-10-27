@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Map as MapLibre, setWorkerUrl, type CanvasSource, type GeoJSONSource, type MapLayerMouseEvent } from 'maplibre-gl'
+import { Map as MapLibre, setWorkerUrl, type CanvasSource, type ExpressionSpecification, type GeoJSONSource, type MapLayerMouseEvent } from 'maplibre-gl'
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url'
 import type { FeatureCollection, Point } from 'geojson'
 import 'maplibre-gl/dist/maplibre-gl.css'
@@ -17,9 +17,32 @@ const STYLE = 'https://tiles.openfreemap.org/styles/liberty'
 type Place = { key: string; lat: number; lon: number; photos: Photo[] }
 type Mode = 'live' | 'manual' | 'anim'
 
-const pinSvg = (color: string) =>
+// Kolory pinezek: zdjęcia z jednej okolicy mają ten sam kolor, a różne miejsca różne (jak pinezki w tablicy korkowej).
+const PIN_COLORS: [string, string, string][] = [
+  ['#ff6b5f', '#d62b21', '#8e1510'], ['#5eaaff', '#1f6fd6', '#0f3f86'], ['#5fd27a', '#25a244', '#12642a'],
+  ['#ffc75a', '#f08c00', '#a35a00'], ['#c58bff', '#8a3fd1', '#53228a'], ['#4fd8e6', '#12a4b8', '#0a6573'],
+]
+const colorIndex = (lat: number, lon: number) => ((Math.floor(lon / 4) * 7 + Math.floor(lat / 4) * 3) % 6 + 6) % 6
+
+/** Pinezka z plastikową główką i metalową igłą, lekko pochylona. Czubek igły jest w dolnym środku obrazu (punkt zakotwiczenia). */
+const pinSvg = ([light, mid, dark]: [string, string, string], i: number) =>
   `data:image/svg+xml;utf8,${encodeURIComponent(
-    `<svg xmlns="http://www.w3.org/2000/svg" width="48" height="60" viewBox="0 0 48 60"><path d="M24 2C12.4 2 3 11.2 3 22.6 3 38 24 58 24 58s21-20 21-35.4C45 11.2 35.6 2 24 2z" fill="${color}" stroke="#fff" stroke-width="3"/><circle cx="24" cy="23" r="8" fill="#fff"/></svg>`,
+    `<svg xmlns="http://www.w3.org/2000/svg" width="80" height="88" viewBox="-8 0 80 88">
+<defs>
+<linearGradient id="b${i}" x1="0" x2="1"><stop offset="0" stop-color="${dark}"/><stop offset=".35" stop-color="${light}"/><stop offset="1" stop-color="${dark}"/></linearGradient>
+<linearGradient id="n${i}" x1="0" x2="1"><stop offset="0" stop-color="#6b7480"/><stop offset=".45" stop-color="#e8ecf1"/><stop offset="1" stop-color="#7d8794"/></linearGradient>
+<radialGradient id="h${i}" cx=".38" cy=".3" r=".8"><stop offset="0" stop-color="${light}"/><stop offset="1" stop-color="${mid}"/></radialGradient>
+</defs>
+<ellipse cx="38" cy="85" rx="8" ry="2.2" fill="#000" opacity=".22"/>
+<g transform="rotate(16 32 85)">
+<polygon points="29.2,60 34.8,60 32,85" fill="url(#n${i})"/>
+<path d="M13 58 Q13 47 32 45 Q51 47 51 58 Q51 65 32 66 Q13 65 13 58Z" fill="url(#b${i})"/>
+<ellipse cx="32" cy="57.5" rx="19" ry="6" fill="${mid}" opacity=".55"/>
+<rect x="23" y="22" width="18" height="29" rx="7" fill="url(#b${i})"/>
+<ellipse cx="32" cy="21" rx="23" ry="11" fill="${dark}"/>
+<ellipse cx="32" cy="18.5" rx="22" ry="10" fill="url(#h${i})"/>
+<ellipse cx="25" cy="14" rx="9" ry="3.4" fill="#fff" opacity=".55"/>
+</g></svg>`,
   )}`
 
 const MINUTES_PER_SECOND = 60 // animacja doby: godzina na sekundę, doba w 24 sekundy
@@ -87,14 +110,13 @@ export function MapView({ photos, total, refreshing, onRefresh, onOpen }: {
     features: list.map((pl) => ({
       type: 'Feature',
       geometry: { type: 'Point', coordinates: [pl.lon, pl.lat] },
-      properties: { key: pl.key, n: pl.photos.length },
+      properties: { key: pl.key, n: pl.photos.length, ci: colorIndex(pl.lat, pl.lon) },
     })),
   })
 
   // Utworzenie mapy (raz).
   useEffect(() => {
     if (!box.current) return
-    const accentNow = () => getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#6d5bf0'
     const first = placesRef.current
     const center: [number, number] = first.length
       ? [first.reduce((a, p) => a + p.lon, 0) / first.length, first.reduce((a, p) => a + p.lat, 0) / first.length]
@@ -133,40 +155,49 @@ export function MapView({ photos, total, refreshing, onRefresh, onOpen }: {
         paint(simDate())
       }
 
-      const accent = accentNow()
-      const img = new Image(48, 60)
-      img.src = pinSvg(accent)
-      await img.decode()
+      for (let i = 0; i < PIN_COLORS.length; i++) {
+        const img = new Image(80, 88)
+        img.src = pinSvg(PIN_COLORS[i], i)
+        await img.decode()
+        if (map.hasImage(`pin-${i}`)) map.removeImage(`pin-${i}`)
+        map.addImage(`pin-${i}`, img, { pixelRatio: 2 })
+      }
       if (map.getSource('photos')) return
-      if (map.hasImage('pin')) map.removeImage('pin')
-      map.addImage('pin', img, { pixelRatio: 2 })
 
       map.addSource('photos', {
         type: 'geojson', data: toGeoJson(placesRef.current),
         cluster: true, clusterRadius: 48, clusterMaxZoom: 13,
-        clusterProperties: { sum: ['+', ['get', 'n']] },
+        clusterProperties: { sum: ['+', ['get', 'n']], ci: ['max', ['get', 'ci']] },
       })
       const font = ['Noto Sans Regular']
+      const pinIcon: ExpressionSpecification = ['concat', 'pin-', ['to-string', ['get', 'ci']]]
+      // Skupisko to większa pinezka z liczbą zdjęć; im więcej zdjęć, tym większa.
       map.addLayer({
-        id: 'clusters', type: 'circle', source: 'photos', filter: ['has', 'point_count'],
-        paint: {
-          'circle-color': accent, 'circle-stroke-color': '#fff', 'circle-stroke-width': 3,
-          'circle-radius': ['step', ['get', 'sum'], 18, 10, 22, 50, 27, 200, 33],
+        id: 'clusters', type: 'symbol', source: 'photos', filter: ['has', 'point_count'],
+        layout: {
+          'icon-image': pinIcon, 'icon-anchor': 'bottom', 'icon-allow-overlap': true,
+          'icon-size': ['step', ['get', 'sum'], 0.85, 10, 1, 50, 1.15, 200, 1.35],
         },
       })
       map.addLayer({
         id: 'cluster-count', type: 'symbol', source: 'photos', filter: ['has', 'point_count'],
-        layout: { 'text-field': ['to-string', ['get', 'sum']], 'text-font': font, 'text-size': 13, 'text-allow-overlap': true },
-        paint: { 'text-color': '#fff' },
+        layout: {
+          'text-field': ['to-string', ['get', 'sum']], 'text-font': font, 'text-size': 13, 'text-allow-overlap': true,
+          'text-anchor': 'bottom', 'text-offset': [0.55, -2.45], 'text-ignore-placement': true,
+        },
+        paint: { 'text-color': '#ffffff', 'text-halo-color': 'rgba(0,0,0,.55)', 'text-halo-width': 1.4 },
       })
       map.addLayer({
         id: 'pins', type: 'symbol', source: 'photos', filter: ['!', ['has', 'point_count']],
-        layout: { 'icon-image': 'pin', 'icon-anchor': 'bottom', 'icon-allow-overlap': true },
+        layout: { 'icon-image': pinIcon, 'icon-anchor': 'bottom', 'icon-allow-overlap': true, 'icon-size': 0.8 },
       })
       map.addLayer({
         id: 'pin-count', type: 'symbol', source: 'photos', filter: ['all', ['!', ['has', 'point_count']], ['>', ['get', 'n'], 1]],
-        layout: { 'text-field': ['to-string', ['get', 'n']], 'text-font': font, 'text-size': 11, 'text-offset': [0, -1.5], 'text-allow-overlap': true },
-        paint: { 'text-color': accent },
+        layout: {
+          'text-field': ['to-string', ['get', 'n']], 'text-font': font, 'text-size': 11, 'text-allow-overlap': true,
+          'text-anchor': 'bottom', 'text-offset': [0.5, -2.1], 'text-ignore-placement': true,
+        },
+        paint: { 'text-color': '#ffffff', 'text-halo-color': 'rgba(0,0,0,.55)', 'text-halo-width': 1.2 },
       })
 
       if (handlersAdded) return
