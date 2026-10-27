@@ -11,7 +11,7 @@ import { Thumb } from './Thumb'
 import { Chip, Sec, Toast } from './ui'
 import { TagEditor, type TagCount } from './TagEditor'
 import {
-  EFFECTS, EMPTY_EDIT, ZERO_ADJUST, isEdited, renderEdit, renderGeometry, neutralFromSample, MAX_TEXTS, MAX_TEXT_LEN, type TextItem,
+  EFFECTS, EMPTY_EDIT, ZERO_ADJUST, isEdited, renderEdit, renderGeometry, MAX_SPOTS, neutralFromSample, MAX_TEXTS, MAX_TEXT_LEN, type TextItem,
   type Adjust, type EditState,
 } from './editor/effects'
 
@@ -94,6 +94,8 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
   const [tab, setTab] = useState<Tab>('basic')
   const [redEyeMode, setRedEyeMode] = useState(false)
   const [neutralMode, setNeutralMode] = useState(false)
+  const [retouchMode, setRetouchMode] = useState(false)
+  const [retouchSize, setRetouchSize] = useState(2)
   const [playing, setPlaying] = useState(autoplay)
   // Muzyka do pokazu slajdów: plik z dysku trafia do odtwarzacza jako blob (bez sieci), gra w pętli tylko podczas pokazu.
   const [music, setMusic] = useState<{ url: string; name: string } | null>(null)
@@ -185,7 +187,7 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
     setZoom(Math.min(8, Math.max(2, z100)))
   }
   const onPanStart = (e: React.PointerEvent) => {
-    if (zoom <= 1 || redEyeMode || neutralMode) return
+    if (zoom <= 1 || redEyeMode || neutralMode || retouchMode) return
     drag.current = { x: e.clientX, y: e.clientY, px: pan.x, py: pan.y }
     e.currentTarget.setPointerCapture(e.pointerId)
   }
@@ -316,6 +318,7 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
       else if (e.key === 'Escape') {
         if (redEyeMode) setRedEyeMode(false)
         else if (neutralMode) setNeutralMode(false)
+        else if (retouchMode) setRetouchMode(false)
         else if (pendingNav !== null) setPendingNav(null)
         else if (sheet) setSheet(false)
         else if (document.fullscreenElement) document.exitFullscreen()
@@ -343,6 +346,11 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
       if (!n) { say('Ten punkt jest zbyt ciemny. Kliknij fragment, który ma być szary lub biały.'); return }
       change((s) => ({ ...s, neutral: n }))
       setNeutralMode(false)
+      return
+    }
+    if (retouchMode) {
+      if (edit.spots.length >= MAX_SPOTS) { say('Osiągnięto limit poprawek retuszu'); return }
+      change((s) => ({ ...s, spots: [...s.spots, { x: (e.clientX - r0.left) / r0.width, y: (e.clientY - r0.top) / r0.height, r: retouchSize / 100 }] }))
       return
     }
     if (!redEyeMode) return
@@ -379,7 +387,7 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
           className={bitmap ? '' : 'hidden'}
           style={{
             maxWidth: '100%', maxHeight: '100%', borderRadius: 'var(--r-md)', boxShadow: '0 10px 40px rgba(0,0,0,.4)',
-            cursor: redEyeMode || neutralMode ? 'crosshair' : zoom > 1 ? 'grab' : 'zoom-in', touchAction: 'none',
+            cursor: redEyeMode || neutralMode || retouchMode ? 'crosshair' : zoom > 1 ? 'grab' : 'zoom-in', touchAction: 'none',
             transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: 'center center',
           }}
         />
@@ -519,9 +527,17 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
                   <button className="ico" aria-label="Obróć w prawo" title="Obróć w prawo" onClick={() => change((s) => ({ ...s, geo: { ...s.geo, rot: (s.geo.rot + 1) % 4 } }))}><RotateCw size={20} /></button>
                   <button className={`ico ${edit.geo.flipH ? 'on' : ''}`} aria-label="Odbij poziomo" title="Odbij poziomo" onClick={() => change((s) => ({ ...s, geo: { ...s.geo, flipH: !s.geo.flipH } }))}><FlipHorizontal size={20} /></button>
                   <button className={`ico ${edit.geo.flipV ? 'on' : ''}`} aria-label="Odbij pionowo" title="Odbij pionowo" onClick={() => change((s) => ({ ...s, geo: { ...s.geo, flipV: !s.geo.flipV } }))}><FlipVertical size={20} /></button>
+                  <button className={`ico ${retouchMode ? 'on' : ''}`} aria-label="Retusz plam" aria-pressed={retouchMode} title="Retusz: kliknij plamę lub pyłek, a zniknie" onClick={() => { setRetouchMode((v) => !v); setNeutralMode(false); setRedEyeMode(false); setSheet(true) }}><Wand2 size={20} /></button>
                   <button className={`ico ${neutralMode ? 'on' : ''}`} aria-label="Neutralny kolor (zakraplacz)" aria-pressed={neutralMode} title="Neutralny kolor: kliknij to, co ma być szare lub białe" onClick={() => { setNeutralMode((v) => !v); setRedEyeMode(false); setSheet(true) }}><Palette size={20} /></button>
                   <button className={`ico ${redEyeMode ? 'on' : ''}`} aria-label="Czerwone oczy" aria-pressed={redEyeMode} title="Czerwone oczy" onClick={() => { setRedEyeMode((v) => !v); setSheet(true) }}><Eye size={20} /></button>
                 </div>
+                {retouchMode && (
+                  <>
+                    <p style={{ margin: '8px 0 0', fontSize: 13, color: 'var(--muted)' }}>Kliknij plamę lub pyłek na zdjęciu. Rozmiar pędzla dobierz do plamy. Esc kończy.</p>
+                    <Slider label="Rozmiar pędzla (% krótszego boku)" value={retouchSize} min={0.5} max={8} onStart={() => {}} onChange={setRetouchSize} />
+                  </>
+                )}
+                {edit.spots.length > 0 && <button className="wide" onClick={() => change((s) => ({ ...s, spots: [] }))}>Usuń retusz ({edit.spots.length})</button>}
                 {neutralMode && <p style={{ margin: '8px 0 0', fontSize: 13, color: 'var(--muted)' }}>Kliknij na zdjęciu miejsce, które powinno być szare lub białe. Esc kończy.</p>}
                 {edit.neutral && <button className="wide" onClick={() => change((s) => ({ ...s, neutral: null }))}>Usuń korektę neutralnego koloru</button>}
                 {redEyeMode && <p style={{ margin: '8px 0 0', fontSize: 13, color: 'var(--muted)' }}>Kliknij środek oka na zdjęciu. Esc kończy.</p>}

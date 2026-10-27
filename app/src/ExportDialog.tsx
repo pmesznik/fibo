@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { X, Download } from './FiboIcons'
-import { exportGallery, exportGif, exportGpx, exportPhotos, pickFile, pickFolder, type Watermark } from './api'
+import { exportGallery, exportGif, exportGpx, exportPdf, exportPhotos, pickFile, pickFolder, type Watermark } from './api'
 
 const SIZES: [number, string][] = [[1024, '1024 px (e-mail)'], [1600, '1600 px'], [2048, '2048 px'], [0, 'Oryginalny rozmiar']]
 const QUALITIES: [number, string][] = [[75, 'Mała'], [88, 'Dobra'], [95, 'Najlepsza']]
@@ -28,6 +28,7 @@ export function ExportDialog({ ids, onClose, say }: { ids: number[]; onClose: ()
   const watermark: Watermark | null = useWm && wm ? { ...wm } : null
   const [title, setTitle] = useState('Galeria')
   const [delay, setDelay] = useState(1000)
+  const [layout, setLayout] = useState<[number, number]>([2, 2])
 
   const run = async () => {
     try {
@@ -52,6 +53,15 @@ export function ExportDialog({ ids, onClose, say }: { ids: number[]; onClose: ()
     } catch (e) { say(`Błąd galerii: ${e}`, 'err') } finally { setBusy(false) }
   }
 
+  const runPdf = async () => {
+    try {
+      const dir = await pickFolder('Wybierz folder na plik PDF')
+      if (!dir) return
+      setBusy(true)
+      const [file, pages] = await exportPdf(ids, dir, layout[0], layout[1], 1800, quality)
+      say(`PDF gotowy (${pages} ${pages === 1 ? 'strona' : 'stron'} A4): ${file}. Otwórz go i wydrukuj albo wyślij dalej`, 'ok')
+    } catch (e) { say(`${e}`, 'err') } finally { setBusy(false) }
+  }
   const runGpx = async () => {
     try {
       const dir = await pickFolder('Wybierz folder na plik GPX')
@@ -120,6 +130,14 @@ export function ExportDialog({ ids, onClose, say }: { ids: number[]; onClose: ()
           <label htmlFor="gal-title" style={{ marginTop: 0 }}>Tytuł galerii (nazwa folderu)</label>
           <input id="gal-title" type="text" value={title} maxLength={80} autoComplete="off" onChange={(e) => setTitle(e.target.value)} />
           <button className="wide" disabled={busy || !title.trim()} onClick={runGallery}>Utwórz galerię HTML</button>
+          <h3 style={{ margin: '18px 0 4px', fontSize: 14 }}>PDF do druku</h3>
+          <p style={{ margin: '0 0 6px', color: 'var(--muted)', fontSize: 13 }}>Strony A4 ze zdjęciami (jakość jak wyżej). Plik otworzysz w dowolnym programie do PDF i wydrukujesz lub wyślesz.</p>
+          <div className="chips">
+            {([[[1, 1], '1 na stronie'], [[2, 2], '4 na stronie'], [[2, 3], '6 na stronie'], [[3, 4], 'Arkusz kontaktowy (12)']] as [[number, number], string][]).map(([v, l]) => (
+              <button key={l} className={`chip${layout[0] === v[0] && layout[1] === v[1] ? ' on' : ''}`} aria-pressed={layout[0] === v[0] && layout[1] === v[1]} onClick={() => setLayout(v)}>{l}</button>
+            ))}
+          </div>
+          <button className="wide" disabled={busy} onClick={runPdf}>Utwórz PDF</button>
           <h3 style={{ margin: '18px 0 4px', fontSize: 14 }}>Animowany GIF</h3>
           <p style={{ margin: '0 0 6px', color: 'var(--muted)', fontSize: 13 }}>Z zaznaczonych zdjęć (2 do 60, w widocznej kolejności) powstaje animacja do 480 px.</p>
           <div className="chips">

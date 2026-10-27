@@ -288,7 +288,7 @@ export default function App() {
       (!dateTo || whenOf(p).slice(0, 10).replace(/:/g, '-') <= dateTo) &&
       (missing === '' || (missing === 'tags' ? p.tags.length === 0 : missing === 'geo' ? p.lat == null || p.lon == null : p.rating === 0)) &&
       activeTags.every((t) => p.tags.includes(t)) &&
-      (!q || `${p.name} ${p.camera ?? ''} ${p.caption ?? ''} ${p.tags.join(' ')} ${p.albums.map((a) => `${albumNames.get(a) ?? ''} ${propText('album', String(a))}`).join(' ')} ${folderName(dirOf(p.path))} ${propText('folder', dirOf(p.path))}`.toLowerCase().includes(q)),
+      (!q || `${p.name} ${p.camera ?? ''} ${p.exif ?? ''} ${p.caption ?? ''} ${p.tags.join(' ')} ${p.albums.map((a) => `${albumNames.get(a) ?? ''} ${propText('album', String(a))}`).join(' ')} ${folderName(dirOf(p.path))} ${propText('folder', dirOf(p.path))}`.toLowerCase().includes(q)),
     )
     if (sort === 'name') list.sort((a, b) => a.name.localeCompare(b.name, 'pl', { numeric: true }))
     else if (sort === 'rating') list.sort((a, b) => b.rating - a.rating || whenOf(b).localeCompare(whenOf(a)))

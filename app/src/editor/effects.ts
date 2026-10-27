@@ -23,8 +23,38 @@ export const MAX_TEXTS = 20
 export const MAX_TEXT_LEN = 200
 /** Mnożniki kanałów R, G, B z zakraplacza „neutralny kolor” (balans bieli). */
 export type Neutral = { r: number; g: number; b: number }
-export type EditState = { geo: Geometry; adj: Adjust; fx: EffectInst[]; redeye: RedEye[]; texts: TextItem[]; neutral: Neutral | null }
-export const EMPTY_EDIT: EditState = { geo: ZERO_GEO, adj: ZERO_ADJUST, fx: [], redeye: [], texts: [], neutral: null }
+/** Retusz plamy (kurzu, skazy): środek i promień jako ułamki wymiarów zdjęcia (promień względem krótszego boku). */
+export type Spot = { x: number; y: number; r: number }
+export const MAX_SPOTS = 200
+export type EditState = { geo: Geometry; adj: Adjust; fx: EffectInst[]; redeye: RedEye[]; texts: TextItem[]; neutral: Neutral | null; spots: Spot[] }
+export const EMPTY_EDIT: EditState = { geo: ZERO_GEO, adj: ZERO_ADJUST, fx: [], redeye: [], texts: [], neutral: null, spots: [] }
+
+/** Zamalowuje plamę kolorem z jej otoczenia: mediana z pierścienia wokół plamy (osobno dla każdego kanału), z miękkim brzegiem. */
+export function healSpot(img: { d: Uint8ClampedArray | Uint8Array; w: number; h: number }, s: Spot) {
+  const { d, w, h } = img
+  const rad = Math.max(1.5, s.r * Math.min(w, h))
+  const cx = s.x * w, cy = s.y * h
+  const samples: number[][] = [[], [], []]
+  for (let k = 0; k < 32; k++) {
+    const a = (k / 32) * Math.PI * 2
+    const rr = rad * (1.5 + (k % 3) * 0.25)
+    const x = Math.round(cx + Math.cos(a) * rr), y = Math.round(cy + Math.sin(a) * rr)
+    if (x < 0 || y < 0 || x >= w || y >= h) continue
+    const i = (y * w + x) * 4
+    for (let c = 0; c < 3; c++) samples[c].push(d[i + c])
+  }
+  if (samples[0].length < 6) return
+  const med = samples.map((v) => { v.sort((p, q) => p - q); return v[v.length >> 1] })
+  const x0 = Math.max(0, Math.floor(cx - rad * 1.3)), x1 = Math.min(w - 1, Math.ceil(cx + rad * 1.3))
+  const y0 = Math.max(0, Math.floor(cy - rad * 1.3)), y1 = Math.min(h - 1, Math.ceil(cy + rad * 1.3))
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+    const dist = Math.hypot(x - cx, y - cy)
+    const k = dist <= rad ? 1 : Math.max(0, 1 - (dist - rad) / (rad * 0.3))
+    if (k <= 0) continue
+    const i = (y * w + x) * 4
+    for (let c = 0; c < 3; c++) d[i + c] = d[i + c] + (med[c] - d[i + c]) * k
+  }
+}
 
 /** Mnożniki, które zamieniają próbkowany punkt na neutralny (szary): średnia z małego otoczenia kliknięcia. */
 export function neutralFromSample(canvas: HTMLCanvasElement, fx: number, fy: number): Neutral | null {
@@ -321,6 +351,7 @@ export function applyColor(canvas: HTMLCanvasElement, st: EditState) {
   const ctx = canvas.getContext('2d', { willReadFrequently: true })!
   const data = ctx.getImageData(0, 0, canvas.width, canvas.height)
   const img: Img = { d: data.data, w: canvas.width, h: canvas.height }
+  for (const sp of st.spots.slice(0, MAX_SPOTS)) healSpot(img, sp)
   for (const e of st.redeye) redEyeFix(img, e)
   if (st.neutral) {
     const { r, g, b } = st.neutral

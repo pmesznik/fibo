@@ -15,6 +15,7 @@ mod backup;
 mod faces;
 mod gallery;
 mod locks;
+mod pdf;
 mod people;
 mod secure;
 mod watermark;
@@ -53,6 +54,7 @@ struct Photo {
     lon: Option<f64>,
     albums: Vec<i64>,
     caption: Option<String>,
+    exif: Option<String>,
 }
 
 fn open_db(path: &Path) -> rusqlite::Result<Connection> {
@@ -108,6 +110,8 @@ fn open_db(path: &Path) -> rusqlite::Result<Connection> {
     let _ = conn.execute("ALTER TABLE photos ADD COLUMN geo_manual INTEGER NOT NULL DEFAULT 0", []);
     // Migracje: opis zdjęcia oraz data ustawiona ręcznie (ma pierwszeństwo przed datą z pliku).
     let _ = conn.execute("ALTER TABLE photos ADD COLUMN caption TEXT", []);
+    // Migracja: tekst z danych EXIF (aparat, obiektyw, ISO, przysłona…) do szukania; uzupełnia się przy skanowaniu lub „Odśwież dane zdjęć”.
+    let _ = conn.execute("ALTER TABLE photos ADD COLUMN exif_text TEXT", []);
     let _ = conn.execute("ALTER TABLE photos ADD COLUMN taken_manual INTEGER NOT NULL DEFAULT 0", []);
     Ok(conn)
 }
@@ -121,6 +125,8 @@ struct ExifInfo {
     /// Słowa kluczowe i ocena zapisane w EXIF (np. „Tagi” i „Oceny” z Eksploratora Windows).
     keywords: Vec<String>,
     rating: i64,
+    /// Najważniejsze dane EXIF jako jeden tekst do przeszukiwania (np. „Canon EOS R6 ISO 400 f/4”).
+    summary: String,
 }
 
 /// Stopnie, minuty i sekundy z EXIF na stopnie dziesiętne; S i W dają wartość ujemną.
@@ -139,7 +145,7 @@ fn gps_coord(exif: &exif::Exif, tag: exif::Tag, ref_tag: exif::Tag) -> Option<f6
 }
 
 fn read_exif(path: &Path) -> ExifInfo {
-    let mut info = ExifInfo { taken: None, camera: None, orientation: 1, lat: None, lon: None, keywords: Vec::new(), rating: 0 };
+    let mut info = ExifInfo { taken: None, camera: None, orientation: 1, lat: None, lon: None, keywords: Vec::new(), rating: 0, summary: String::new() };
     let Ok(file) = File::open(path) else { return info };
     let Ok(exif) = exif::Reader::new().read_from_container(&mut BufReader::new(file)) else {
         return info;
@@ -150,6 +156,7 @@ fn read_exif(path: &Path) -> ExifInfo {
             .filter(|s| !s.is_empty())
     };
     info.taken = text(exif::Tag::DateTimeOriginal);
+    info.summary = exif_summary(&exif);
     info.camera = text(exif::Tag::Model);
     info.orientation = exif
         .get_field(exif::Tag::Orientation, exif::In::PRIMARY)
@@ -247,11 +254,11 @@ fn flush(state: &AppState, rows: &mut Vec<Row>) -> Result<(), String> {
         let existed = tx.query_row("SELECT 1 FROM photos WHERE path = ?1", [&r.path], |_| Ok(())).is_ok();
         // Ocena i ulubione zostają, gdy zdjęcie jest skanowane ponownie.
         tx.execute(
-            "INSERT INTO photos (path, folder, name, size, modified, taken, width, height, camera, lat, lon)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
-             ON CONFLICT(path) DO UPDATE SET size=?4, modified=?5, taken=CASE WHEN taken_manual = 1 THEN taken ELSE ?6 END, width=?7, height=?8, camera=?9,
+            "INSERT INTO photos (path, folder, name, size, modified, taken, width, height, camera, lat, lon, exif_text)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+             ON CONFLICT(path) DO UPDATE SET exif_text=?12, size=?4, modified=?5, taken=CASE WHEN taken_manual = 1 THEN taken ELSE ?6 END, width=?7, height=?8, camera=?9,
                  lat=CASE WHEN geo_manual = 1 THEN lat ELSE COALESCE(?10, lat) END, lon=CASE WHEN geo_manual = 1 THEN lon ELSE COALESCE(?11, lon) END",
-            params![r.path, r.folder, r.name, r.size, r.modified, r.exif.taken, r.dims.0, r.dims.1, r.exif.camera, r.exif.lat, r.exif.lon],
+            params![r.path, r.folder, r.name, r.size, r.modified, r.exif.taken, r.dims.0, r.dims.1, r.exif.camera, r.exif.lat, r.exif.lon, r.exif.summary],
         )
         .map_err(|e| e.to_string())?;
         // Nowe zdjęcie z plikiem XMP: przywracamy jego tagi, ocenę i ulubione (np. po odtworzeniu biblioteki).
@@ -371,7 +378,7 @@ fn list_photos(state: State<'_, AppState>) -> Result<Vec<Photo>, String> {
             "SELECT id, path, name, size, modified, taken, width, height, camera, rating, favorite,
                     (SELECT group_concat(t.name, char(31)) FROM photo_tags pt JOIN tags t ON t.id = pt.tag_id
                      WHERE pt.photo_id = photos.id), lat, lon,
-                    (SELECT group_concat(album_id) FROM album_photos WHERE photo_id = photos.id), caption
+                    (SELECT group_concat(album_id) FROM album_photos WHERE photo_id = photos.id), caption, exif_text
              FROM photos WHERE hidden = 0 ORDER BY COALESCE(taken, datetime(modified,'unixepoch')) DESC",
         )
         .map_err(|e| e.to_string())?;
@@ -400,6 +407,7 @@ fn list_photos(state: State<'_, AppState>) -> Result<Vec<Photo>, String> {
                     .map(|s| s.split(',').filter_map(|x| x.parse().ok()).collect())
                     .unwrap_or_default(),
                 caption: r.get(15)?,
+                exif: r.get(16)?,
             })
         })
         .map_err(|e| e.to_string())?
@@ -1532,9 +1540,8 @@ fn set_props(state: State<'_, AppState>, kind: String, key: String, description:
 }
 
 /// Dane EXIF zdjęcia do pokazania w panelu informacji: (nazwa po polsku, wartość). Tylko odczyt, wartości są przycinane.
-fn exif_details(path: &Path) -> Vec<(String, String)> {
-    let Ok(file) = File::open(path) else { return vec![] };
-    let Ok(exif) = exif::Reader::new().read_from_container(&mut BufReader::new(file)) else { return vec![] };
+/// Wybrane pola EXIF (nazwa po polsku, wartość), wartości przycięte do 200 znaków.
+fn exif_pairs(exif: &exif::Exif) -> Vec<(String, String)> {
     let wanted: [(exif::Tag, &str); 17] = [
         (exif::Tag::Make, "Producent aparatu"), (exif::Tag::Model, "Model aparatu"), (exif::Tag::LensModel, "Obiektyw"),
         (exif::Tag::DateTimeOriginal, "Data wykonania"), (exif::Tag::ExposureTime, "Czas naświetlania"), (exif::Tag::FNumber, "Przysłona"),
@@ -1547,10 +1554,26 @@ fn exif_details(path: &Path) -> Vec<(String, String)> {
         .iter()
         .filter_map(|(tag, label)| {
             let f = exif.get_field(*tag, exif::In::PRIMARY)?;
-            let v = f.display_value().with_unit(&exif).to_string().trim_matches('"').trim().to_string();
+            let v = f.display_value().with_unit(exif).to_string().trim_matches('"').trim().to_string();
             (!v.is_empty()).then(|| (label.to_string(), v.chars().take(200).collect()))
         })
         .collect()
+}
+
+/// Tekst do szukania po danych aparatu: model, obiektyw, ISO, przysłona, czas, ogniskowa (bez daty i orientacji).
+fn exif_summary(exif: &exif::Exif) -> String {
+    let s: Vec<String> = exif_pairs(exif)
+        .into_iter()
+        .filter(|(k, _)| k != "Data wykonania" && k != "Orientacja" && k != "Oprogramowanie" && k != "Autor")
+        .map(|(k, v)| if k == "ISO" { format!("ISO {v}") } else { v })
+        .collect();
+    s.join(" ").chars().take(400).collect()
+}
+
+fn exif_details(path: &Path) -> Vec<(String, String)> {
+    let Ok(file) = File::open(path) else { return vec![] };
+    let Ok(exif) = exif::Reader::new().read_from_container(&mut BufReader::new(file)) else { return vec![] };
+    exif_pairs(&exif)
 }
 
 #[tauri::command]
@@ -2961,7 +2984,7 @@ fn main() {
             app.manage(AppState { db: Mutex::new(db), thumbs, sidecar: AtomicBool::new(sidecar) });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![list_roots, remove_root, rescan_roots, list_albums, create_album, rename_album, delete_album, add_to_album, remove_from_album, rename_photo, move_photos, get_sidecar_enabled, set_sidecar_enabled, export_sidecars, import_sidecars, scan_folder, refresh_library, find_duplicates, trash_photos, export_photos, set_location, rename_batch, import_photos, gallery::export_gallery, gallery::export_gpx, gallery::export_gif, gallery::rename_folder, locks::list_locked, locks::set_folder_locked, set_date, shift_dates, set_caption, photo_exif, list_props, set_props, people::photo_people, people::reassign_person_faces, backup::backup_library, backup::restore_library, hide_photos, hidden_count, restore_hidden, people::faces_status, people::set_faces_enabled, people::faces_start, people::faces_stop, people::faces_delete_all, people::list_people, people::person_photos, people::person_faces, people::set_person_cover, people::rename_person, people::merge_people, people::ignore_person, list_photos, thumbnail, thumbnail_data, people::face_crop, set_rating, set_favorite, add_tag, remove_tag, delete_tag, save_edit, save_collage, read_image, read_audio, has_original, restore_original])
+        .invoke_handler(tauri::generate_handler![list_roots, remove_root, rescan_roots, list_albums, create_album, rename_album, delete_album, add_to_album, remove_from_album, rename_photo, move_photos, get_sidecar_enabled, set_sidecar_enabled, export_sidecars, import_sidecars, scan_folder, refresh_library, find_duplicates, trash_photos, export_photos, set_location, rename_batch, import_photos, gallery::export_gallery, gallery::export_gpx, gallery::export_gif, pdf::export_pdf, gallery::rename_folder, locks::list_locked, locks::set_folder_locked, set_date, shift_dates, set_caption, photo_exif, list_props, set_props, people::photo_people, people::reassign_person_faces, backup::backup_library, backup::restore_library, hide_photos, hidden_count, restore_hidden, people::faces_status, people::set_faces_enabled, people::faces_start, people::faces_stop, people::faces_delete_all, people::list_people, people::person_photos, people::person_faces, people::set_person_cover, people::rename_person, people::merge_people, people::ignore_person, list_photos, thumbnail, thumbnail_data, people::face_crop, set_rating, set_favorite, add_tag, remove_tag, delete_tag, save_edit, save_collage, read_image, read_audio, has_original, restore_original])
         .run(tauri::generate_context!())
         .expect("błąd uruchomienia aplikacji");
 }

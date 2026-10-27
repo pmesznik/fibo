@@ -24,7 +24,7 @@ Lista powstała z pamięci o Picasie 3, z przeglądu FIBO i z oficjalnego podrę
 - [ ] **Własne albumy: kolejność zdjęć** przeciąganiem. P3 T M (opis, miejsce i data albumu są już gotowe)
 - [ ] **Albumy inteligentne** (zapisane filtry, np. „5 gwiazdek z 2023”). P3 T M
 - [ ] **Wyszukiwanie po kolorze** dominującym. P4 T M
-- [ ] **Wyszukiwanie po danych aparatu** (model, obiektyw, ISO, przysłona, czas) i filtr „aparat”. P2 T M
+- [x] **Wyszukiwanie po danych aparatu** (model, obiektyw, ISO, przysłona, czas) i filtr „aparat”. P2 T M Gotowe w polu szukania (bez osobnego filtra „aparat”); starsze zdjęcia po „Odśwież dane zdjęć”.
 - [ ] **Zaznaczanie podobnych** do wybranego zdjęcia. P4 T M
 - [x] **Statystyki biblioteki** (liczba zdjęć, rozmiar, zdjęcia na rok, najczęstsze aparaty). P4 T S Gotowe (menu, szybkie akcje).
 - [x] **Blokowanie folderu** przed zmianami z poziomu FIBO (ochrona przed przypadkowym usunięciem). P3 T S Gotowe (menu → Foldery); ochrona działa w programie, nie w systemie plików.
@@ -51,7 +51,7 @@ Lista powstała z pamięci o Picasie 3, z przeglądu FIBO i z oficjalnego podrę
 - [x] Tekst na zdjęciu
 - [x] Cofnij i ponów, przywrócenie oryginału, porównanie z oryginałem
 - [x] **Neutralny kolor (zakraplacz)**: klik w szary punkt koryguje balans bieli. P2 T S Gotowe w edytorze.
-- [ ] **Retusz** (usuwanie plam i skaz pędzlem). P2 T M
+- [x] **Retusz** (usuwanie plam i skaz pędzlem). P2 T M Gotowe: kliknięcie plamy zamalowuje ją kolorem z otoczenia.
 - [ ] **Kadrowanie ręczne z ramką** i gotowe formaty wydruku 10x15, 13x18, A4 oraz obrót ramki. P3 T M
 - [x] **Zastosuj te same zmiany do wielu zdjęć** (kopiuj i wklej edycję, edycja wsadowa). P1 T M Gotowe: kopiuj i wklej edycję, wsadowo jako kopie.
 - [ ] **Obrót wielu zdjęć bez utraty jakości** (znacznik orientacji). P2 T S
@@ -76,8 +76,8 @@ Lista powstała z pamięci o Picasie 3, z przeglądu FIBO i z oficjalnego podrę
 - [x] Import z karty pamięci do folderów według daty
 - [x] Duplikaty do Kosza
 - [x] **Eksport galerii HTML** (strona offline do wysłania znajomym lub wgrania na serwer). P2 T M Gotowe (Eksportuj pomniejszone → Utwórz galerię HTML).
-- [ ] **Eksport do PDF** (album, arkusz kontaktowy). P2 T M
-- [ ] **Drukowanie** (układy: pojedyncze, 2x2, arkusz kontaktowy, rozmiar papieru). P2 T M
+- [x] **Eksport do PDF** (album, arkusz kontaktowy). P2 T M Gotowe: układy 1, 4, 6 na stronie i arkusz kontaktowy 12 (bez podpisów pod zdjęciami).
+- [x] **Drukowanie** (układy: pojedyncze, 2x2, arkusz kontaktowy, rozmiar papieru). P2 T M Częściowo przez PDF: układy i arkusz gotowe, własnego okna drukowania nie ma (drukujesz plik PDF).
 - [ ] **Wysyłka e-mailem**: tylko przygotowanie pomniejszonych kopii do załączenia (bez wysyłania przez FIBO). P3 T S
 - [ ] **Kopia zapasowa zdjęć na dysk zewnętrzny** (kopiowanie nowych i zmienionych plików, bez usuwania). P2 T L
 - [ ] **Ustaw jako tapetę** pulpitu. P4 T S

@@ -19,6 +19,7 @@ export type Photo = {
   lon: number | null
   albums: number[]
   caption?: string | null
+  exif?: string | null
 }
 
 export type Album = { id: number; name: string; count: number }
@@ -78,6 +79,7 @@ export const listLocked = () => invoke<string[]>('list_locked')
 export const setFolderLocked = (path: string, locked: boolean) => invoke('set_folder_locked', { path, locked })
 export const exportGpx = (ids: number[], dest: string) => invoke<[string, number]>('export_gpx', { ids, dest })
 export const exportGif = (ids: number[], dest: string, maxSide: number, delayMs: number) => invoke<string>('export_gif', { ids, dest, maxSide, delayMs })
+export const exportPdf = (ids: number[], dest: string, cols: number, rows: number, maxSide: number, quality: number) => invoke<[string, number]>('export_pdf', { ids, dest, cols, rows, maxSide, quality })
 export const exportPhotos = (ids: number[], dest: string, maxSide: number, quality: number, watermark: Watermark | null = null) => invoke<MoveReport>('export_photos', { ids, dest, maxSide, quality, watermark })
 export const trashPhotos = (ids: number[], confirm?: string) => invoke<number>('trash_photos', { ids, confirm })
 export const hidePhotos = (ids: number[]) => invoke<number>('hide_photos', { ids })
