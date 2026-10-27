@@ -78,7 +78,7 @@ Lista powstała z pamięci o Picasie 3, z przeglądu FIBO i z oficjalnego podrę
 - [x] **Eksport galerii HTML** (strona offline do wysłania znajomym lub wgrania na serwer). P2 T M Gotowe (Eksportuj pomniejszone → Utwórz galerię HTML).
 - [x] **Eksport do PDF** (album, arkusz kontaktowy). P2 T M Gotowe: układy 1, 4, 6 na stronie i arkusz kontaktowy 12 (bez podpisów pod zdjęciami).
 - [x] **Drukowanie** (układy: pojedyncze, 2x2, arkusz kontaktowy, rozmiar papieru). P2 T M Częściowo przez PDF: układy i arkusz gotowe, własnego okna drukowania nie ma (drukujesz plik PDF).
-- [ ] **Wysyłka e-mailem**: tylko przygotowanie pomniejszonych kopii do załączenia (bez wysyłania przez FIBO). P3 T S
+- [x] **Wysyłka e-mailem**: tylko przygotowanie pomniejszonych kopii do załączenia (bez wysyłania przez FIBO). P3 T S Załatwia to eksport pomniejszony do 1024 px (bez EXIF).
 - [ ] **Kopia zapasowa zdjęć na dysk zewnętrzny** (kopiowanie nowych i zmienionych plików, bez usuwania). P2 T L
 - [ ] **Ustaw jako tapetę** pulpitu. P4 T S
 - [ ] **Otwórz w zewnętrznym programie** (np. Photoshop, Paint) i wczytaj zmiany. P3 T S
@@ -101,7 +101,7 @@ Lista powstała z pamięci o Picasie 3, z przeglądu FIBO i z oficjalnego podrę
 - [x] **Pełny podgląd EXIF** (przysłona, czas, ISO, ogniskowa, obiektyw, flesz) i kopiowanie wartości. P2 T S Gotowe w panelu Informacje (kopiowanie wartości nie zrobione).
 - [ ] **Edycja EXIF/IPTC**: autor, prawa autorskie, opis (w XMP, bez ruszania pliku). P3 T M
 - [ ] **Usuwanie metadanych** z wybranych zdjęć (kopie bez GPS) jako osobna akcja. P3 T S
-- [ ] **Wykrywanie uszkodzonych plików** i raport. P4 T S
+- [x] **Wykrywanie uszkodzonych plików** i raport. P4 T S Gotowe (menu → Sprawdź pliki).
 
 ## 8. Wygląd i wygoda
 - [x] Motyw jasny, ciemny i systemowy, nowoczesne ikony, wysoki kontrast
@@ -120,7 +120,7 @@ Biblioteka i foldery:
 - [x] **Właściwości folderu i albumu**: tytuł, data, miejsce, opis (dwuklik w nagłówku), wszystko przeszukiwalne. P2 T M Gotowe (ikona informacji przy albumie, menu → Foldery).
 - [x] **Zmiana nazwy folderu z poziomu FIBO** (zmienia też folder na dysku, z ostrzeżeniem). P3 T M Gotowe (menu → Foldery).
 - [x] **„Pokaż w Eksploratorze”** dla folderu i zdjęcia. P2 T S Gotowe (wtyczka opener z jednym uprawnieniem: pokaż element w katalogu).
-- [ ] **Menedżer folderów**: dla każdego folderu „obserwuj zawsze”, „skanuj raz”, „usuń z FIBO” (dziś jest tylko obserwuj i przestań obserwować). P2 T S
+- [x] **Menedżer folderów**: dla każdego folderu „obserwuj zawsze”, „skanuj raz”, „usuń z FIBO” (dziś jest tylko obserwuj i przestań obserwować). P2 T S Częściowo: „Dodaj folder jednorazowo” (skanuj raz), obserwuj zawsze i usuń z listy obserwowanych już były.
 - [x] **Sortowanie listy folderów** (data utworzenia, nazwa, data zdjęć). P3 T S Gotowe: od najnowszych albo po nazwie.
 - [ ] **Przeciąganie zdjęcia na folder** przenosi plik (z potwierdzeniem), a na album dodaje do albumu. P3 T M
 - [ ] **Wykrywanie karty pamięci i aparatu** przy podłączeniu oraz wybór nazwy folderu przy imporcie. P3 T M

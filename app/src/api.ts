@@ -44,7 +44,7 @@ export const movePhotos = (ids: number[], dest: string, copy: boolean) => invoke
 export const inTauri = '__TAURI_INTERNALS__' in window
 
 export const listPhotos = () => invoke<Photo[]>('list_photos')
-export const scanFolder = (path: string) => invoke<number>('scan_folder', { path })
+export const scanFolder = (path: string, watch = true) => invoke<number>('scan_folder', { path, watch })
 export const setRating = (id: number, rating: number) => invoke('set_rating', { id, rating })
 export const setFavorite = (id: number, favorite: boolean) => invoke('set_favorite', { id, favorite })
 
@@ -80,6 +80,8 @@ export const setFolderLocked = (path: string, locked: boolean) => invoke('set_fo
 export const exportGpx = (ids: number[], dest: string) => invoke<[string, number]>('export_gpx', { ids, dest })
 export const exportGif = (ids: number[], dest: string, maxSide: number, delayMs: number) => invoke<string>('export_gif', { ids, dest, maxSide, delayMs })
 export const exportPdf = (ids: number[], dest: string, cols: number, rows: number, maxSide: number, quality: number) => invoke<[string, number]>('export_pdf', { ids, dest, cols, rows, maxSide, quality })
+export type BrokenFile = { id: number; path: string; error: string }
+export const checkFiles = (deep: boolean) => invoke<BrokenFile[]>('check_files', { deep })
 export const exportPhotos = (ids: number[], dest: string, maxSide: number, quality: number, watermark: Watermark | null = null) => invoke<MoveReport>('export_photos', { ids, dest, maxSide, quality, watermark })
 export const trashPhotos = (ids: number[], confirm?: string) => invoke<number>('trash_photos', { ids, confirm })
 export const hidePhotos = (ids: number[]) => invoke<number>('hide_photos', { ids })

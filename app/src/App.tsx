@@ -8,6 +8,7 @@ import { RenameDialog } from './RenameDialog'
 import { DateDialog } from './DateDialog'
 import { ShortcutsDialog, StatsDialog } from './HelpDialogs'
 import { PropsDialog } from './PropsDialog'
+import { CheckDialog } from './CheckDialog'
 import { getClip, pasteEditToPhotos } from './editor/batch'
 import { Duplicates } from './Duplicates'
 import { UpdateDialog, useUpdater } from './Updater'
@@ -144,7 +145,7 @@ export default function App() {
   const [folderSort, setFolderSort] = useState<'date' | 'name'>('date')
   const [tray, setTray] = useState<number[]>([])
   const [trayView, setTrayView] = useState(false)
-  const [helpDlg, setHelpDlg] = useState<null | 'keys' | 'stats'>(null)
+  const [helpDlg, setHelpDlg] = useState<null | 'keys' | 'stats' | 'check'>(null)
   const [dateIds, setDateIds] = useState<number[] | null>(null)
   const [renameIds, setRenameIds] = useState<number[] | null>(null)
   const [locIds, setLocIds] = useState<number[] | null>(null)
@@ -197,16 +198,16 @@ export default function App() {
     return () => { un.then((f) => f()) }
   }, [reload])
 
-  const addFolder = async () => {
+  const addFolder = async (watch = true) => {
     try {
       const dir = await pickFolder()
       if (!dir) return
       setDrawer(false)
       setBusy(true)
       setProgress(0)
-      const n = await scanFolder(dir)
+      const n = await scanFolder(dir, watch)
       await reload(); await reloadRoots()
-      say(n ? `Gotowe: ${n} ${pl(n, 'nowe zdjęcie', 'nowe zdjęcia', 'nowych zdjęć')}. Folder jest teraz obserwowany` : 'Brak nowych zdjęć w tym folderze', 'ok')
+      say(n ? `Gotowe: ${n} ${pl(n, 'nowe zdjęcie', 'nowe zdjęcia', 'nowych zdjęć')}. ${watch ? 'Folder jest teraz obserwowany' : 'Folder nie jest obserwowany (skan jednorazowy)'}` : 'Brak nowych zdjęć w tym folderze', 'ok')
     } catch (e) {
       say(`Błąd skanowania: ${e}`, 'err')
     } finally {
@@ -676,7 +677,7 @@ export default function App() {
         ))}
       </nav>
 
-      <button className="fab-pill glass" aria-label="Dodaj folder ze zdjęciami" title="Dodaj folder ze zdjęciami" onClick={addFolder}>
+      <button className="fab-pill glass" aria-label="Dodaj folder ze zdjęciami" title="Dodaj folder ze zdjęciami" onClick={() => addFolder(true)}>
         <Plus size={20} strokeWidth={2} /><span>Dodaj folder</span>
       </button>
 
@@ -701,7 +702,9 @@ export default function App() {
             <h5>Szybkie akcje</h5>
             <div className="grid grid-cols-2 gap-2">
               {[
-                { icon: ImageUp, label: 'Dodaj folder', fn: addFolder, on: false },
+                { icon: ImageUp, label: 'Dodaj folder', fn: () => addFolder(true), on: false },
+                { icon: ImageUp, label: 'Dodaj folder jednorazowo', fn: () => addFolder(false), on: false },
+                { icon: Info, label: 'Sprawdź pliki', fn: () => { setDrawer(false); setHelpDlg('check') }, on: false },
                 { icon: Download, label: 'Importuj z karty', fn: importFromCard, on: false },
                 { icon: ListChecks, label: 'Statystyki', fn: () => { setDrawer(false); setHelpDlg('stats') }, on: false },
                 { icon: SlidersHorizontal, label: 'Skróty klawiszowe', fn: () => { setDrawer(false); setHelpDlg('keys') }, on: false },
@@ -1197,6 +1200,7 @@ export default function App() {
         </>
       )}
       {propsFor && <PropsDialog kind={propsFor.kind} id={propsFor.id} title={propsFor.title} current={propOf.get(`${propsFor.kind}:${propsFor.id}`)} say={say} onSaved={reloadProps} onClose={() => setPropsFor(null)} />}
+      {helpDlg === 'check' && <CheckDialog say={say} onChanged={() => { reload(); reloadHidden() }} onClose={() => setHelpDlg(null)} />}
       {helpDlg === 'keys' && <ShortcutsDialog onClose={() => setHelpDlg(null)} />}
       {helpDlg === 'stats' && <StatsDialog photos={all} onClose={() => setHelpDlg(null)} />}
       {dateIds && dateIds.length > 0 && (

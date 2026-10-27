@@ -12,6 +12,7 @@ use std::{
 };
 
 mod backup;
+mod check;
 mod faces;
 mod gallery;
 mod locks;
@@ -320,13 +321,15 @@ fn scan_blocking(state: &AppState, root: &str, progress: &dyn Fn(usize)) -> Resu
 }
 
 #[tauri::command]
-async fn scan_folder(app: tauri::AppHandle, path: String) -> Result<usize, String> {
+async fn scan_folder(app: tauri::AppHandle, path: String, watch: Option<bool>) -> Result<usize, String> {
     // Skanowanie jest blokujące, więc nie powinno zajmować wątku interfejsu.
     tauri::async_runtime::spawn_blocking(move || {
         let emitter = app.clone();
         let state = app.state::<AppState>();
-        // Dodany folder jest od teraz obserwowany: nowe zdjęcia pojawią się same.
-        add_root(&state, &path)?;
+        // Dodany folder jest od teraz obserwowany (nowe zdjęcia pojawią się same), chyba że wybrano skan jednorazowy.
+        if watch.unwrap_or(true) {
+            add_root(&state, &path)?;
+        }
         // Ręczne dodanie folderu przywraca jego zdjęcia ukryte wcześniej.
         state.db.lock().map_err(|e| e.to_string())?
             .execute("UPDATE photos SET hidden = 0 WHERE hidden = 1 AND substr(path, 1, length(?1)) = ?1", [&path])
@@ -2984,7 +2987,7 @@ fn main() {
             app.manage(AppState { db: Mutex::new(db), thumbs, sidecar: AtomicBool::new(sidecar) });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![list_roots, remove_root, rescan_roots, list_albums, create_album, rename_album, delete_album, add_to_album, remove_from_album, rename_photo, move_photos, get_sidecar_enabled, set_sidecar_enabled, export_sidecars, import_sidecars, scan_folder, refresh_library, find_duplicates, trash_photos, export_photos, set_location, rename_batch, import_photos, gallery::export_gallery, gallery::export_gpx, gallery::export_gif, pdf::export_pdf, gallery::rename_folder, locks::list_locked, locks::set_folder_locked, set_date, shift_dates, set_caption, photo_exif, list_props, set_props, people::photo_people, people::reassign_person_faces, backup::backup_library, backup::restore_library, hide_photos, hidden_count, restore_hidden, people::faces_status, people::set_faces_enabled, people::faces_start, people::faces_stop, people::faces_delete_all, people::list_people, people::person_photos, people::person_faces, people::set_person_cover, people::rename_person, people::merge_people, people::ignore_person, list_photos, thumbnail, thumbnail_data, people::face_crop, set_rating, set_favorite, add_tag, remove_tag, delete_tag, save_edit, save_collage, read_image, read_audio, has_original, restore_original])
+        .invoke_handler(tauri::generate_handler![list_roots, remove_root, rescan_roots, list_albums, create_album, rename_album, delete_album, add_to_album, remove_from_album, rename_photo, move_photos, get_sidecar_enabled, set_sidecar_enabled, export_sidecars, import_sidecars, scan_folder, refresh_library, find_duplicates, trash_photos, export_photos, set_location, rename_batch, import_photos, gallery::export_gallery, gallery::export_gpx, gallery::export_gif, pdf::export_pdf, check::check_files, gallery::rename_folder, locks::list_locked, locks::set_folder_locked, set_date, shift_dates, set_caption, photo_exif, list_props, set_props, people::photo_people, people::reassign_person_faces, backup::backup_library, backup::restore_library, hide_photos, hidden_count, restore_hidden, people::faces_status, people::set_faces_enabled, people::faces_start, people::faces_stop, people::faces_delete_all, people::list_people, people::person_photos, people::person_faces, people::set_person_cover, people::rename_person, people::merge_people, people::ignore_person, list_photos, thumbnail, thumbnail_data, people::face_crop, set_rating, set_favorite, add_tag, remove_tag, delete_tag, save_edit, save_collage, read_image, read_audio, has_original, restore_original])
         .run(tauri::generate_context!())
         .expect("błąd uruchomienia aplikacji");
 }
