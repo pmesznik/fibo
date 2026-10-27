@@ -129,6 +129,9 @@ export default function App() {
   useEffect(() => { reload() }, [reload])
   const reloadAlbums = useCallback(async () => { if (inTauri) setAlbums(await listAlbums()) }, [])
   const reloadRoots = useCallback(async () => { if (inTauri) setRoots(await listRoots()) }, [])
+  // Taca: trwały koszyk zdjęć z różnych folderów i albumów; akcje działają na jej zawartości po „Zaznacz z tacy”.
+  const [tray, setTray] = useState<number[]>([])
+  const [trayView, setTrayView] = useState(false)
   const [helpDlg, setHelpDlg] = useState<null | 'keys' | 'stats'>(null)
   const [dateIds, setDateIds] = useState<number[] | null>(null)
   const [renameIds, setRenameIds] = useState<number[] | null>(null)
@@ -257,6 +260,7 @@ export default function App() {
     }
   }
 
+  useEffect(() => { setTray((t) => { const ids = new Set(all.map((p) => p.id)); const n = t.filter((i) => ids.has(i)); return n.length === t.length ? t : n }) }, [all])
   const albumNames = useMemo(() => new Map(albums.map((a) => [a.id, a.name] as [number, string])), [albums])
   const onlyFav = mode === 'favs'
   const photos = useMemo(() => {
@@ -265,6 +269,7 @@ export default function App() {
       (!folder || dirOf(p.path) === folder) &&
       (albumId === null || p.albums.includes(albumId)) &&
       (!person || person.ids.has(p.id)) &&
+      (!trayView || tray.includes(p.id)) &&
       (!onlyFav || p.favorite) &&
       p.rating >= minStars &&
       (!dateFrom || whenOf(p).slice(0, 10).replace(/:/g, '-') >= dateFrom) &&
@@ -278,7 +283,7 @@ export default function App() {
     else if (sort === 'size') list.sort((a, b) => b.size - a.size)
     else list.sort((a, b) => (sort === 'date-desc' ? whenOf(b).localeCompare(whenOf(a)) : whenOf(a).localeCompare(whenOf(b))))
     return list
-  }, [all, albumNames, query, folder, albumId, person, onlyFav, minStars, dateFrom, dateTo, missing, sort, activeTags])
+  }, [all, albumNames, query, folder, albumId, person, trayView, tray, onlyFav, minStars, dateFrom, dateTo, missing, sort, activeTags])
 
   // Foldery od najnowszego; rok albumu to rok jego najnowszego zdjęcia (jak w Picasie).
   const folders = useMemo(() => {
@@ -317,6 +322,7 @@ export default function App() {
     return out
   }, [photos, sort, group])
   const years = useMemo(() => [...new Set(sections.map((s) => s.year))].filter(Boolean), [sections])
+  const [timelineIdx, setTimelineIdx] = useState(0)
   const jumpToYear = (y: string) => document.getElementById(`g-${sections.find((s) => s.year === y)?.key}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 
   const allTags = useMemo<TagCount[]>(() => {
@@ -856,11 +862,21 @@ export default function App() {
                   {years.map((y) => <Chip key={y} onClick={() => jumpToYear(y)}>{y}</Chip>)}
                 </div>
               )}
-              {(query || folder || albumId !== null || person || minStars > 0 || dateFrom || dateTo || missing || activeTags.length > 0) && (
+              {sections.length > 3 && sections[0].key !== 'all' && (
+                <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10 }} role="group" aria-label="Oś czasu">
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--muted)', fontSize: 13 }}><CalendarDays size={15} /> Oś czasu</span>
+                  <input type="range" aria-label="Oś czasu: przesuń, aby przejść do miesiąca lub roku" min={0} max={sections.length - 1} step={1}
+                    value={timelineIdx} style={{ flex: 1, maxWidth: 420, direction: 'rtl' }}
+                    onChange={(e) => { const i = +e.target.value; setTimelineIdx(i); document.getElementById(`g-${sections[i].key}`)?.scrollIntoView({ block: 'start' }) }} />
+                  <span style={{ minWidth: 90, fontSize: 13, fontWeight: 600 }}>{sections[Math.min(timelineIdx, sections.length - 1)]?.title}</span>
+                </div>
+              )}
+              {(query || folder || albumId !== null || person || trayView || minStars > 0 || dateFrom || dateTo || missing || activeTags.length > 0) && (
                 <div className="chips" style={{ marginTop: 10 }}>
                   {activeTags.map((t) => <Chip key={t} on onClick={() => toggleTagFilter(t)} label={`Usuń filtr tagu ${t}`}><Tag size={13} /> {t} <X size={13} /></Chip>)}
                   {query && <Chip on onClick={() => setQuery('')} label="Usuń szukanie"><SearchIcon size={13} /> {query} <X size={13} /></Chip>}
                   {albumId !== null && <Chip on onClick={() => setAlbumId(null)} label="Pokaż całą bibliotekę"><FolderOpen size={13} /> Album: {albums.find((a) => a.id === albumId)?.name ?? '…'} <X size={13} /></Chip>}
+                  {trayView && <Chip on onClick={() => setTrayView(false)} label="Pokaż całą bibliotekę"><ListChecks size={13} /> Taca <X size={13} /></Chip>}
                   {person && <Chip on onClick={() => setPerson(null)} label="Pokaż całą bibliotekę"><Users size={13} /> {person.name} <X size={13} /></Chip>}
                   {folder && <Chip on onClick={() => setFolder(null)} label="Usuń filtr folderu"><FolderOpen size={13} /> {folderName(folder)} <X size={13} /></Chip>}
                   {(dateFrom || dateTo) && <Chip on onClick={() => { setDateFrom(''); setDateTo('') }} label="Usuń filtr dat"><CalendarDays size={13} /> {dateFrom || '…'} – {dateTo || '…'} <X size={13} /></Chip>}
@@ -1067,6 +1083,13 @@ export default function App() {
             {sel.length > 1 && (
               <button className="text menu-item" role="menuitem" onClick={() => { setMenu(null); startCollage() }}><LayoutDashboard size={18} /> Kolaż z zaznaczonych</button>
             )}
+            <button className="text menu-item" role="menuitem" onClick={() => {
+              const ids = realIds()
+              const allIn = ids.every((i) => tray.includes(i))
+              setTray((t) => (allIn ? t.filter((i) => !ids.includes(i)) : [...new Set([...t, ...ids])]))
+              setMenu(null)
+              say(allIn ? 'Usunięto z tacy' : `Dodano do tacy (razem ${new Set([...tray, ...ids]).size})`, 'ok')
+            }}><ListChecks size={18} /> {realIds().every((i) => tray.includes(i)) ? 'Usuń z tacy' : 'Dodaj do tacy'}</button>
             <button className="text menu-item" role="menuitem" onClick={() => { setMenu(null); setPicker(true) }}><FolderOpen size={18} /> Dodaj do albumu…</button>
             {albumId !== null && (
               <button className="text menu-item" role="menuitem" onClick={leaveAlbum}><X size={18} /> Usuń z tego albumu</button>
@@ -1096,6 +1119,15 @@ export default function App() {
       {picker && sel.length > 0 && (
         <AlbumPicker albums={albums} count={realIds().length} onPick={pickAlbum} onClose={() => setPicker(false)}
           onCreate={() => { setPicker(false); newAlbum(true) }} />
+      )}
+      {tray.length > 0 && (
+        <div className="glass fixed flex items-center gap-1" role="group" aria-label="Taca zdjęć"
+          style={{ left: 16, bottom: 'calc(16px + var(--sab))', zIndex: 1040, padding: '6px 8px 6px 14px', borderRadius: 'var(--r-lg)' }}>
+          <span style={{ fontWeight: 650, fontSize: 13.5, marginRight: 4 }}>Taca: {tray.length}</span>
+          <button className={`chip${trayView ? ' on' : ''}`} aria-pressed={trayView} onClick={() => { setTrayView((v) => !v); setMode('library'); setAlbumId(null); setFolder(null) }}>{trayView ? 'Pokaż wszystko' : 'Pokaż tacę'}</button>
+          <button className="chip" onClick={() => { setSel([...tray]); say(`Zaznaczono z tacy: ${tray.length}. Kliknij prawym przyciskiem, żeby wybrać akcję`, 'ok') }}>Zaznacz</button>
+          <button className="ico" aria-label="Wyczyść tacę" title="Wyczyść tacę" onClick={() => { setTray([]); setTrayView(false) }}><X size={18} /></button>
+        </div>
       )}
       {helpDlg === 'keys' && <ShortcutsDialog onClose={() => setHelpDlg(null)} />}
       {helpDlg === 'stats' && <StatsDialog photos={all} onClose={() => setHelpDlg(null)} />}

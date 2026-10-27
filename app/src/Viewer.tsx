@@ -94,6 +94,7 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
   const [redEyeMode, setRedEyeMode] = useState(false)
   const [neutralMode, setNeutralMode] = useState(false)
   const [playing, setPlaying] = useState(autoplay)
+  const [slideSecs, setSlideSecs] = useState(() => { try { const v = +(localStorage.getItem('slide-secs') ?? 4); return [2, 4, 7, 12].includes(v) ? v : 4 } catch { return 4 } })
   const [zoom, setZoom] = useState(1)
   const [pan, setPan] = useState({ x: 0, y: 0 })
   const [compare, setCompare] = useState(false)
@@ -221,9 +222,9 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
 
   useEffect(() => {
     if (!playing) return
-    const t = window.setInterval(() => go(1), 3500)
+    const t = window.setInterval(() => go(1), slideSecs * 1000)
     return () => window.clearInterval(t)
-  }, [playing, go])
+  }, [playing, go, slideSecs])
 
   const rate = (r: number) => {
     if (!photo) return
@@ -369,6 +370,11 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
           style={{ position: 'absolute', right: sheet ? 382 : 12, top: '50%', width: 48, height: 48, padding: 0, borderRadius: '50%', display: 'grid', placeItems: 'center', transition: 'right .3s var(--ease)' }}><ChevronRight size={24} /></button>
       )}
 
+      {playing && photo.caption && (
+        <div className="glass" role="status" style={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)', bottom: 'calc(40px + var(--sab))', maxWidth: 'min(80%, 720px)', padding: '10px 18px', borderRadius: 'var(--r-lg)', textAlign: 'center', fontSize: 16, zIndex: 3 }}>
+          {photo.caption}
+        </div>
+      )}
       {people.length > 0 && onOpenPerson && (
         <div className="flex gap-2" role="group" aria-label="Osoby na zdjęciu"
           style={{ position: 'absolute', left: 12, bottom: 'calc(112px + var(--sab))', maxWidth: `calc(100% - ${sheet ? 420 : 24}px)`, flexWrap: 'wrap', zIndex: 3 }}>
@@ -409,6 +415,8 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
         <button className="ico" aria-label="Cofnij" title="Cofnij (Ctrl+Z)" disabled={!undo.length} onClick={doUndo}><Undo2 size={19} /></button>
         <button className="ico" aria-label="Ponów" title="Ponów (Ctrl+Y)" disabled={!redo.length} onClick={doRedo}><Redo2 size={19} /></button>
         <button className={`ico ${playing ? 'on' : ''}`} aria-label="Pokaz slajdów" aria-pressed={playing} title="Pokaz slajdów (spacja)" onClick={() => setPlaying((p) => !p)}>{playing ? <Pause size={19} /> : <Play size={19} />}</button>
+        <button className="chip" aria-label={`Czas slajdu: ${slideSecs} sekund. Kliknij, aby zmienić`} title="Czas jednego slajdu w pokazie"
+          onClick={() => setSlideSecs((s) => { const n = ({ 2: 4, 4: 7, 7: 12, 12: 2 } as Record<number, number>)[s] ?? 4; try { localStorage.setItem('slide-secs', String(n)) } catch { /* brak pamięci przeglądarki */ } return n })}>{slideSecs} s</button>
         <button className="ico" aria-label="Pomniejsz" title="Pomniejsz (−)" disabled={zoom <= 1} onClick={() => zoomAt(1 / 1.4)}><ZoomOut size={19} /></button>
         <button className="ico" aria-label="Powiększ" title="Powiększ (+, kółko myszy, dwuklik: 100%)" onClick={() => zoomAt(1.4)}><ZoomIn size={19} /></button>
         <button className={`ico ${compare ? 'on' : ''}`} aria-label="Przytrzymaj, aby zobaczyć oryginał" aria-pressed={compare} title="Przytrzymaj, aby zobaczyć oryginał (B)"

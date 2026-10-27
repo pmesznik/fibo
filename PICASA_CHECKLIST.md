@@ -19,7 +19,7 @@ Lista powstała z pamięci o Picasie 3, z przeglądu FIBO i z oficjalnego podrę
 - [x] Sortowanie: data, nazwa, ocena, rozmiar
 - [x] Kopia zapasowa i przywracanie biblioteki
 - [x] **Opisy zdjęć (podpisy)**: pole „Opis” przy zdjęciu, szukanie po opisie, zapis do XMP. P1 T S Gotowe: opis w podglądzie i szukanie po opisach. Zapis do XMP jeszcze nie (opis zostaje w bibliotece FIBO).
-- [ ] **Taca („Hold”)**: trwały koszyk zaznaczonych zdjęć, do którego dokładasz z różnych folderów, a potem robisz akcję na całości (album, eksport, kolaż). P2 T M
+- [x] **Taca („Hold”)**: trwały koszyk zaznaczonych zdjęć, do którego dokładasz z różnych folderów, a potem robisz akcję na całości (album, eksport, kolaż). P2 T M Gotowe: Dodaj do tacy, pasek Taca (pokaż, zaznacz, wyczyść); akcje przez Zaznacz i menu.
 - [x] **Zmiana daty zdjęcia / przesunięcie dat** (np. zły zegar aparatu): ustaw datę lub przesuń o N godzin dla wielu zdjęć. P1 T M Gotowe w bibliotece FIBO (plików nie zmieniamy).
 - [ ] **Własne albumy: kolejność zdjęć** przeciąganiem, opis i data albumu. P3 T M
 - [ ] **Albumy inteligentne** (zapisane filtry, np. „5 gwiazdek z 2023”). P3 T M
@@ -128,7 +128,7 @@ Biblioteka i foldery:
 - [ ] **Formaty**: PSD, RAW (NEF, CRW, CR2, ARW, DNG), filmy MPG, AVI, WMV, MOV (zob. sekcja 1). P3 T L
 
 Widoki i wyszukiwanie:
-- [ ] **Oś czasu („Timeline”)**: przesuwanie suwakiem po całej bibliotece (miesiące i lata z miniaturami), dziś są tylko skoki do roku. P2 T M
+- [x] **Oś czasu („Timeline”)**: przesuwanie suwakiem po całej bibliotece (miesiące i lata z miniaturami), dziś są tylko skoki do roku. P2 T M Gotowe jako suwak nad zdjęciami (skok do miesiąca lub roku).
 - [x] **Szukanie obejmuje opisy, nazwy albumów, miejsce i dane EXIF aparatu** (dziś: nazwa pliku, aparat, tagi). P1 T S Gotowe: opisy, albumy, foldery, aparat, tagi (bez pól EXIF takich jak ISO i obiektyw, zob. wyszukiwanie po danych aparatu).
 - [ ] **Przycisk „Filmy”** (tylko wideo) i **suwak daty** do szybkiego zawężania wyników. P3 T S
 - [ ] **Filmstrip w edytorze** (pasek miniatur zdjęć z albumu u góry, zamiast samych strzałek). P3 T S
@@ -145,7 +145,7 @@ Edytor, szczegóły z podręcznika:
 Taca i wyjście:
 - [ ] **Taca zdjęć** z przyciskami **Zatrzymaj, Wyczyść, Dodaj do albumu, Gwiazdka, Obróć** oraz akcjami **Drukuj, E-mail, Kolaż, Eksport** na całej zawartości. P2 T M
 - [ ] **Kolaż: zapis jako tapeta pulpitu lub wygaszacz**, tło ze zdjęcia lub kolor (czarny, biały, szary), efekt filmowej wielokrotnej ekspozycji. P3 T M
-- [ ] **Pokaz slajdów: pokaz opisów, obracanie, ocenianie gwiazdkami i ustawienie czasu slajdu w trakcie pokazu**. P2 T S
+- [x] **Pokaz slajdów: pokaz opisów, obracanie, ocenianie gwiazdkami i ustawienie czasu slajdu w trakcie pokazu**. P2 T S Gotowe: czas slajdu, opisy i ocenianie (obracanie w pokazie jeszcze nie).
 - [ ] **Płyta z prezentem → „Paczka prezentowa”**: zapis wybranych zdjęć w wybranym rozmiarze razem z samodzielnym pokazem HTML do folderu lub na pendrive. P3 T M
 - [ ] **Wydruk: układy na stronie** (np. 4 zdjęcia 9x13 na A4), przycisk „Przegląd” przed drukiem. P2 T M
 - [ ] 🚫 Albumy internetowe, wysyłka na blog (BlogThis!), konto Hello, zamawianie odbitek, wysyłka przez Gmail i Picasa Mail (chmura, konta, dane wychodzą z komputera)
