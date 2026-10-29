@@ -76,7 +76,7 @@ export function PersonPicker({ people, exclude, sugg, onPick, onNew }: {
   return (
     <div>
       <div style={{ position: 'relative', marginBottom: 8 }}>
-        <input type="text" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Szukaj osoby po imieniu…" aria-label="Szukaj osoby" autoComplete="off" style={{ paddingLeft: 34 }} />
+        <input type="text" aria-label="Szukaj osoby" placeholder="Szukaj osoby po imieniu…" autoComplete="off" value={q} onChange={(e) => setQ(e.target.value)} style={{ paddingLeft: 34 }} />
         <span aria-hidden style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)' }}><Search size={16} /></span>
       </div>
       {onNew && <button className="wide" style={{ marginTop: 0, marginBottom: 8 }} onClick={onNew}><Users size={16} /> Nowa osoba (osobna grupa)</button>}
