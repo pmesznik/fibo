@@ -89,6 +89,7 @@ pub fn backup_photos_core(photos: &[PathBuf], roots: &[PathBuf], dest: &Path, mu
 #[tauri::command]
 pub async fn backup_photos(app: tauri::AppHandle, dest: String) -> Result<BackupReport, String> {
     tauri::async_runtime::spawn_blocking(move || {
+        let _job = crate::jobs::Guard::new("backup");
         let state = app.state::<AppState>();
         let (photos, roots): (Vec<PathBuf>, Vec<PathBuf>) = {
             let conn = state.db.lock().map_err(|e| e.to_string())?;
@@ -100,6 +101,7 @@ pub async fn backup_photos(app: tauri::AppHandle, dest: String) -> Result<Backup
         };
         let mut last = 0usize;
         backup_photos_core(&photos, &roots, Path::new(&dest), |done, total| {
+            crate::jobs::tick("backup", done, total);
             // Zdarzenia co 10 plików, żeby nie zalewać interfejsu przy tysiącach małych zdjęć.
             if done == total || done >= last + 10 {
                 last = done;

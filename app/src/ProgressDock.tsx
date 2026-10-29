@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { listen } from '@tauri-apps/api/event'
-import { Check, Images, Users, X } from './FiboIcons'
+import { Check, Copy, Download, Images, RefreshCw, RotateCw, Save, Users, Wand2, X } from './FiboIcons'
 import { facesStop, inTauri, type FacesProgress } from './api'
 
-type Kind = 'scan' | 'faces'
+type Kind = 'scan' | 'faces' | 'dups' | 'backup' | 'colors' | 'rotate' | 'export' | 'gallery' | 'pdf' | 'gif' | 'import' | 'check' | 'refresh' | 'sidecar' | 'paste'
 type Job = {
   kind: Kind
   done: number
@@ -19,11 +19,32 @@ type Job = {
   rate: number
   history: number[]
   doneAt: number | null
+  /** Opis etapu, gdy zadanie ma kilka (np. „Porównuję zdjęcia…”). */
+  label: string | null
 }
 
+const PHOTOS: [string, string, string] = ['zdjęcie', 'zdjęcia', 'zdjęć']
 const META: Record<Kind, { title: string; unit: [string, string, string]; Icon: typeof Images }> = {
-  scan: { title: 'Dodawanie zdjęć do biblioteki', unit: ['zdjęcie', 'zdjęcia', 'zdjęć'], Icon: Images },
-  faces: { title: 'Rozpoznawanie twarzy', unit: ['zdjęcie', 'zdjęcia', 'zdjęć'], Icon: Users },
+  scan: { title: 'Dodawanie zdjęć do biblioteki', unit: PHOTOS, Icon: Images },
+  faces: { title: 'Rozpoznawanie twarzy', unit: PHOTOS, Icon: Users },
+  dups: { title: 'Szukanie duplikatów', unit: PHOTOS, Icon: Copy },
+  backup: { title: 'Kopia zdjęć na dysk', unit: PHOTOS, Icon: Save },
+  colors: { title: 'Liczenie kolorów zdjęć', unit: PHOTOS, Icon: Images },
+  rotate: { title: 'Obracanie zdjęć', unit: PHOTOS, Icon: RotateCw },
+  export: { title: 'Eksport zdjęć', unit: PHOTOS, Icon: Download },
+  gallery: { title: 'Tworzenie galerii HTML', unit: PHOTOS, Icon: Download },
+  pdf: { title: 'Tworzenie pliku PDF', unit: PHOTOS, Icon: Download },
+  gif: { title: 'Tworzenie animowanego GIF', unit: PHOTOS, Icon: Download },
+  import: { title: 'Import z karty pamięci', unit: PHOTOS, Icon: Download },
+  check: { title: 'Sprawdzanie plików', unit: ['plik', 'pliki', 'plików'], Icon: Check },
+  refresh: { title: 'Odświeżanie danych zdjęć', unit: PHOTOS, Icon: RefreshCw },
+  sidecar: { title: 'Zapis metadanych do plików XMP', unit: PHOTOS, Icon: Save },
+  paste: { title: 'Wklejanie edycji do zdjęć', unit: PHOTOS, Icon: Wand2 },
+}
+
+/** Zadanie z interfejsu (np. wklejanie edycji do wielu zdjęć) zgłasza postęp do okna postępu tak samo jak zadania z programu. */
+export function reportJob(kind: Kind, done: number, total: number, finished = false) {
+  window.dispatchEvent(new CustomEvent('fibo-job', { detail: { kind, done, total, finished } }))
 }
 
 const pl = (n: number, a: string, b: string, c: string) => (n === 1 ? a : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? b : c)
@@ -78,8 +99,9 @@ function Card({ job, min, onMin, onStop }: { job: Job; min: boolean; onMin: () =
   const left = job.total - job.done
   const sec = job.rate > 0 ? left / job.rate : Infinity
   const waiting = Date.now() - job.start < 2500 || job.pts.length < 3
-  const indeterminate = job.grouping || job.total === 0
-  const status = job.finished ? (job.error ? 'Przerwano' : 'Gotowe') : job.grouping ? 'Grupowanie osób…' : null
+  const staged = !!job.label && job.total > 0 && job.done >= job.total
+  const indeterminate = job.grouping || job.total === 0 || staged
+  const status = job.finished ? (job.error ? 'Przerwano' : 'Gotowe') : job.grouping ? 'Grupowanie osób…' : staged ? job.label : null
 
   return (
     <div className="glass pd-card" role="status" aria-live="polite" aria-label={`${title}: ${Math.round(pct)}%`}>
@@ -98,8 +120,8 @@ function Card({ job, min, onMin, onStop }: { job: Job; min: boolean; onMin: () =
           <div className="pd-main">
             <span className="pd-pct">{job.finished && !job.error ? 100 : Math.floor(pct)}<small>%</small></span>
             <span className="pd-count">
-              {fmt(job.done)} z {fmt(job.total)} {pl(job.total, unit[0], unit[1], unit[2])}
-              {status && <b> · {status}</b>}
+              {job.total > 0 ? `${fmt(job.done)} z ${fmt(job.total)} ${pl(job.total, unit[0], unit[1], unit[2])}` : (job.label ?? (job.done > 0 ? fmt(job.done) : 'Przygotowuję…'))}
+              {status && <b>{job.total > 0 ? ' · ' : ''}{status}</b>}
             </span>
           </div>
 
@@ -113,7 +135,7 @@ function Card({ job, min, onMin, onStop }: { job: Job; min: boolean; onMin: () =
               <SpeedChart values={job.history} id={`pd-${job.kind}`} />
               <div className="pd-stats">
                 <div><span>Prędkość</span><b>{job.rate > 0 ? `${job.rate >= 10 ? Math.round(job.rate) : job.rate.toFixed(1).replace('.', ',')} / s` : '…'}</b></div>
-                <div><span>Pozostało</span><b>{job.grouping ? 'chwila' : waiting ? 'liczę…' : eta(sec)}</b></div>
+                <div><span>Pozostało</span><b>{job.grouping ? 'chwila' : indeterminate ? '…' : waiting ? 'liczę…' : eta(sec)}</b></div>
                 {job.kind === 'faces' ? <div><span>Twarze</span><b>{fmt(job.faces)}</b></div> : <div><span>Upłynęło</span><b>{dur(Date.now() - job.start)}</b></div>}
               </div>
               {onStop && <button className="wide pd-stop" onClick={onStop}><X size={15} /> Wstrzymaj (można wznowić)</button>}
@@ -141,7 +163,7 @@ export function ProgressDock() {
         let j = all[kind]
         // Nowe zadanie (inny rozmiar albo licznik cofnięty) zaczyna pomiar od zera.
         if (!j || j.finished || total !== j.total || done < j.done) {
-          j = { kind, done: 0, total, faces: 0, grouping: false, finished: false, error: null, start: now, pts: [], rate: 0, history: [], doneAt: null }
+          j = { kind, done: 0, total, faces: 0, grouping: false, finished: false, error: null, start: now, pts: [], rate: 0, history: [], doneAt: null, label: null }
         }
         const pts = [...j.pts, { t: now, d: done }].filter((p) => now - p.t <= 12000)
         let { rate, history } = j
@@ -166,7 +188,16 @@ export function ProgressDock() {
       timers.current[kind] = window.setTimeout(() => setJobs((all) => { const { [kind]: _drop, ...rest } = all; return rest }), 6000)
     }
 
+    // Ogólne zadania z programu i z interfejsu: { kind, done, total, finished, label }.
+    const onJob = (d: { kind: Kind; done: number; total: number; finished?: boolean; label?: string | null }) => {
+      if (!(d.kind in META)) return
+      if (d.finished) finish(d.kind)
+      else touch(d.kind, d.done, d.total, { label: d.label ?? null })
+    }
+    const onWindowJob = (e: Event) => onJob((e as CustomEvent).detail)
+    window.addEventListener('fibo-job', onWindowJob)
     const subs = [
+      listen<{ kind: Kind; done: number; total: number; finished: boolean; label: string | null }>('job-progress', (e) => onJob(e.payload)),
       listen<[number, number]>('scan-stats', (e) => {
         const [done, total] = e.payload
         if (total === 0) return
@@ -181,11 +212,11 @@ export function ProgressDock() {
       }),
     ]
     const t = window.setInterval(() => tick((n) => n + 1), 1000)
-    return () => { subs.forEach((s) => s.then((f) => f())); window.clearInterval(t); Object.values(timers.current).forEach((x) => window.clearTimeout(x)) }
+    return () => { window.removeEventListener('fibo-job', onWindowJob); subs.forEach((s) => s.then((f) => f())); window.clearInterval(t); Object.values(timers.current).forEach((x) => window.clearTimeout(x)) }
   }, [])
 
   // Małe zadania (kilka zdjęć) nie migają oknem: pokazujemy je od 30 pozycji albo gdy trwają dłużej niż 1,5 s.
-  const shown = (['scan', 'faces'] as Kind[]).map((k) => jobs[k]).filter((j): j is Job => !!j && (j.total >= 30 || Date.now() - j.start > 1500))
+  const shown = (Object.keys(META) as Kind[]).map((k) => jobs[k]).filter((j): j is Job => !!j && (j.total >= 30 || Date.now() - j.start > 1500))
   if (!shown.length) return null
   return (
     <div className="pd-dock">

@@ -59,6 +59,7 @@ fn check_file(path: &Path, deep: bool) -> Option<String> {
 }
 
 pub fn check_core(state: &AppState, deep: bool, progress: &dyn Fn(usize, usize)) -> Result<Vec<Broken>, String> {
+    let _job = crate::jobs::Guard::new("check");
     let rows: Vec<(i64, String)> = {
         let conn = state.db.lock().map_err(|e| e.to_string())?;
         let mut stmt = conn.prepare("SELECT id, path FROM photos WHERE hidden = 0 ORDER BY id").map_err(|e| e.to_string())?;
@@ -84,6 +85,7 @@ pub async fn check_files(app: tauri::AppHandle, deep: bool) -> Result<Vec<Broken
         let emitter = app.clone();
         check_core(&app.state::<AppState>(), deep, &move |d, t| {
             let _ = emitter.emit("check-progress", (d, t));
+            crate::jobs::tick("check", d, t);
         })
     })
     .await

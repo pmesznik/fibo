@@ -81,6 +81,7 @@ pub struct ColorReport {
 #[tauri::command]
 pub async fn index_colors(app: tauri::AppHandle) -> Result<ColorReport, String> {
     tauri::async_runtime::spawn_blocking(move || {
+        let _job = crate::jobs::Guard::new("colors");
         let state = app.state::<AppState>();
         let todo: Vec<(i64, i64)> = {
             let conn = state.db.lock().map_err(|e| e.to_string())?;
@@ -90,6 +91,7 @@ pub async fn index_colors(app: tauri::AppHandle) -> Result<ColorReport, String> 
         };
         let mut done = 0;
         for (i, (id, modified)) in todo.iter().enumerate() {
+            crate::jobs::tick("colors", i, todo.len());
             let thumb = state.thumbs.join(format!("{id}_{modified}.jpg"));
             if let Some(c) = dominant_of_file(&thumb) {
                 if let Ok(conn) = state.db.lock() {

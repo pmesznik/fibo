@@ -89,6 +89,7 @@ fn stamp() -> String {
 /// Tworzy PDF ze zdjęć (w podanej kolejności): `cols` x `rows` zdjęć na stronie A4. Zdjęcia są zmniejszane do `max_side` i zapisywane
 /// jako JPEG bez EXIF. Oryginały nie są ruszane, istniejące pliki nie są nadpisywane. Zwraca ścieżkę pliku i liczbę stron.
 pub fn pdf_core(state: &AppState, ids: &[i64], dest: &Path, cols: u32, rows: u32, max_side: u32, quality: u8) -> Result<(PathBuf, usize), String> {
+    let _job = crate::jobs::Guard::new("pdf");
     if !dest.is_dir() {
         return Err("Folder docelowy nie istnieje".into());
     }
@@ -102,7 +103,8 @@ pub fn pdf_core(state: &AppState, ids: &[i64], dest: &Path, cols: u32, rows: u32
         return Err("Rozmiar zdjęć poza zakresem 300-4000 px".into());
     }
     let mut images = Vec::new();
-    for &id in ids {
+    for (k, &id) in ids.iter().enumerate() {
+        crate::jobs::tick("pdf", k, ids.len());
         let (path, _, _) = photo_path(state, id)?;
         let src = PathBuf::from(&path);
         let (mut img, orientation) = crate::formats::open(&src).map_err(|e| format!("{path}: {e}"))?;

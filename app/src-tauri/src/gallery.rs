@@ -16,6 +16,7 @@ const THUMB: u32 = 360;
 /// Tworzy w `dest` nowy folder z galerią: `index.html` (bez żadnych zewnętrznych zasobów i skryptów z internetu),
 /// pomniejszone zdjęcia i miniatury. Zdjęcia są kopiowane jako JPEG bez EXIF (bez lokalizacji), oryginały nie są ruszane.
 pub fn gallery_core(state: &AppState, ids: &[i64], dest: &Path, title: &str, max_side: u32, quality: u8) -> Result<(PathBuf, MoveReport), String> {
+    let _job = crate::jobs::Guard::new("gallery");
     if !dest.is_dir() {
         return Err("Folder docelowy nie istnieje".into());
     }
@@ -43,6 +44,7 @@ pub fn gallery_core(state: &AppState, ids: &[i64], dest: &Path, title: &str, max
             .map_err(|e| e.to_string())?
             .query_row("SELECT caption FROM photos WHERE id = ?1", [id], |r| r.get(0))
             .unwrap_or(None);
+        crate::jobs::tick("gallery", n, ids.len());
         let file = format!("{:04}.jpg", n + 1);
         let result = (|| -> Result<(), String> {
             let (mut img, orientation) = crate::formats::open(&src)?;
@@ -150,6 +152,7 @@ pub fn export_gpx(state: State<'_, AppState>, ids: Vec<i64>, dest: String) -> Re
 
 /// Tworzy animowany GIF z wybranych zdjęć (w podanej kolejności). Wszystkie klatki mają rozmiar pierwszego zdjęcia (po zmniejszeniu do `max_side`).
 pub fn gif_core(state: &AppState, ids: &[i64], dest: &Path, max_side: u32, delay_ms: u32) -> Result<PathBuf, String> {
+    let _job = crate::jobs::Guard::new("gif");
     use image::{codecs::gif::{GifEncoder, Repeat}, Delay, Frame};
     if !dest.is_dir() {
         return Err("Folder docelowy nie istnieje".into());
@@ -166,7 +169,8 @@ pub fn gif_core(state: &AppState, ids: &[i64], dest: &Path, max_side: u32, delay
     enc.set_repeat(Repeat::Infinite).map_err(|e| e.to_string())?;
     let mut size: Option<(u32, u32)> = None;
     let result = (|| -> Result<(), String> {
-        for &id in ids {
+        for (k, &id) in ids.iter().enumerate() {
+            crate::jobs::tick("gif", k, ids.len());
             let (path, _, _) = photo_path(state, id)?;
             let src = PathBuf::from(&path);
             let (mut img, orientation) = crate::formats::open(&src).map_err(|e| format!("{path}: {e}"))?;

@@ -191,9 +191,11 @@ fn rotate_one(state: &AppState, id: i64, cw: bool) -> Result<bool, String> {
 #[tauri::command]
 pub async fn rotate_photos(app: tauri::AppHandle, ids: Vec<i64>, clockwise: bool) -> Result<RotateReport, String> {
     tauri::async_runtime::spawn_blocking(move || {
+        let _job = crate::jobs::Guard::new("rotate");
         let state = app.state::<AppState>();
         let mut rep = RotateReport::default();
         for (i, id) in ids.iter().enumerate() {
+            crate::jobs::tick("rotate", i, ids.len());
             match rotate_one(&state, *id, clockwise) {
                 Ok(true) => rep.done += 1,
                 Ok(false) => rep.skipped += 1,

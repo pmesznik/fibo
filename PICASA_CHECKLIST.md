@@ -208,3 +208,4 @@ Udostępnianie i wygoda:
 - [ ] **Wersja angielska i inne języki interfejsu**. P3 T L
 - [ ] **Pokaz slajdów na kilku monitorach** i sterowanie z pilota. P4 T S
 - [x] **Widok twarzy osoby jak w Picasie**: kafelki to wycinki twarzy, niepewne przypisania mają pomarańczowy znak „?” oraz przyciski „to ta osoba” i „to nie ta osoba”, całe zdjęcie otwiera się po kliknięciu twarzy, a na karcie osoby widać liczbę twarzy do potwierdzenia.
+- [x] **Okna postępu przy każdej dłuższej operacji** (z paskiem, prędkością, czasem do końca i wykresem): dodawanie zdjęć, rozpoznawanie twarzy, szukanie duplikatów, kopia zdjęć, eksport, galeria HTML, PDF, GIF, import z karty, sprawdzanie plików, odświeżanie danych, zapis XMP, obracanie, kolory i wklejanie edycji. Kilka operacji naraz daje kilka okien.

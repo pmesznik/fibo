@@ -3,7 +3,7 @@ import { listen } from '@tauri-apps/api/event'
 import { MapView } from './MapView'
 import { People, FaceImg } from './People'
 import { ExportDialog } from './ExportDialog'
-import { ProgressDock } from './ProgressDock'
+import { ProgressDock, reportJob } from './ProgressDock'
 import { CreditsDialog } from './CreditsDialog'
 import { PersonFacesView } from './PersonFacesView'
 import { MoveFacesDialog } from './MergePeople'
@@ -697,10 +697,10 @@ export default function App() {
       run: async () => {
         try {
           setBusy(true)
-          const r = await pasteEditToPhotos(list, (d, t) => say(`Przetwarzam zdjęcia: ${d} z ${t}…`))
+          const r = await pasteEditToPhotos(list, (d, t) => { say(`Przetwarzam zdjęcia: ${d} z ${t}…`); reportJob('paste', d, t) })
           await reload()
           say(r.errors.length ? `Gotowe: ${r.done}, błędy: ${r.errors.length} (${r.errors[0]})` : `Gotowe: ${r.done} ${pl(r.done, 'kopia', 'kopie', 'kopii')} z zastosowaną edycją`, r.errors.length ? 'err' : 'ok')
-        } catch (e) { say(`Błąd: ${e}`, 'err') } finally { setBusy(false) }
+        } catch (e) { say(`Błąd: ${e}`, 'err') } finally { setBusy(false); reportJob('paste', 0, 0, true) }
       },
     })
   }

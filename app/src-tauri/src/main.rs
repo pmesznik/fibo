@@ -14,6 +14,7 @@ use std::{
 mod backup;
 mod color;
 mod formats;
+mod jobs;
 mod photos_backup;
 mod rotate;
 mod check;
@@ -388,6 +389,7 @@ async fn scan_folder(app: tauri::AppHandle, path: String, watch: Option<bool>) -
 #[tauri::command]
 async fn refresh_library(app: tauri::AppHandle) -> Result<usize, String> {
     tauri::async_runtime::spawn_blocking(move || {
+        let _job = jobs::Guard::new("refresh");
         let state = app.state::<AppState>();
         let paths: Vec<String> = {
             let conn = state.db.lock().map_err(|e| e.to_string())?;
@@ -397,11 +399,13 @@ async fn refresh_library(app: tauri::AppHandle) -> Result<usize, String> {
         };
         let mut batch = Vec::new();
         let mut count = 0;
-        for p in paths {
+        let total = paths.len();
+        for (k, p) in paths.into_iter().enumerate() {
             if let Some(row) = build_row(Path::new(&p)) {
                 batch.push(row);
                 count += 1;
             }
+            jobs::tick("refresh", k + 1, total);
             if batch.len() >= 50 {
                 flush(&state, &mut batch)?;
                 let _ = app.emit("scan-progress", count);
@@ -1203,8 +1207,12 @@ fn all_photo_ids(state: &AppState) -> Result<Vec<(i64, String)>, String> {
 async fn export_sidecars(app: tauri::AppHandle) -> Result<SidecarReport, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
+        let _job = jobs::Guard::new("sidecar");
         let mut rep = SidecarReport::default();
-        for (n, (id, _)) in all_photo_ids(&state)?.into_iter().enumerate() {
+        let all_ids = all_photo_ids(&state)?;
+        let total = all_ids.len();
+        for (n, (id, _)) in all_ids.into_iter().enumerate() {
+            jobs::tick("sidecar", n, total);
             match write_sidecar(&state, id) {
                 Ok(SidecarOutcome::Written) => rep.written += 1,
                 Ok(SidecarOutcome::Removed) => rep.removed += 1,
@@ -1663,6 +1671,7 @@ struct PhotoImportReport {
 /// Pliki źródłowe nie są zmieniane ani usuwane. Zdjęcie już zaimportowane (ta sama nazwa i rozmiar w folderze dnia) jest pomijane,
 /// a inny plik o tej samej nazwie dostaje końcówkę _1, _2, nic nie jest nadpisywane.
 fn import_blocking(src: &Path, dest: &Path, progress: &dyn Fn(usize)) -> Result<PhotoImportReport, String> {
+    let _job = jobs::Guard::new("import");
     if !src.is_dir() || !dest.is_dir() {
         return Err("Folder źródłowy i docelowy muszą istnieć".into());
     }
@@ -1738,6 +1747,7 @@ async fn import_photos(app: tauri::AppHandle, src: String, dest: String) -> Resu
         let emitter = app.clone();
         import_blocking(Path::new(&src), Path::new(&dest), &move |n| {
             let _ = emitter.emit("scan-progress", n);
+            jobs::stage("import", n, 0, &format!("Skopiowano zdjęć: {n}"));
         })
     })
     .await
@@ -2042,6 +2052,7 @@ fn set_location(state: State<'_, AppState>, ids: Vec<i64>, lat: Option<f64>, lon
 /// Kopie nie zawierają metadanych EXIF (w tym lokalizacji GPS), więc nadają się do wysłania znajomym. Oryginały nie są ruszane,
 /// a istniejące pliki nie są nadpisywane.
 fn export_photos_blocking(state: &AppState, ids: &[i64], dest: &Path, max_side: u32, quality: u8, wm: Option<&watermark::Watermark>) -> Result<MoveReport, String> {
+    let _job = jobs::Guard::new("export");
     if !dest.is_dir() {
         return Err("Folder docelowy nie istnieje".into());
     }
@@ -2052,7 +2063,8 @@ fn export_photos_blocking(state: &AppState, ids: &[i64], dest: &Path, max_side: 
     // Logo znaku wodnego sprawdzamy i wczytujemy raz, przed kopiowaniem czegokolwiek.
     let logo = wm.map(watermark::load_logo).transpose()?;
     let mut rep = MoveReport::default();
-    for &id in ids {
+    for (k, &id) in ids.iter().enumerate() {
+        jobs::tick("export", k, ids.len());
         let (path, _, _) = photo_path(state, id)?;
         let src = PathBuf::from(&path);
         let result = (|| -> Result<(), String> {
@@ -2160,6 +2172,7 @@ fn union(parent: &mut Vec<usize>, a: usize, b: usize) {
 }
 
 fn find_duplicates_blocking(app: &tauri::AppHandle, max_distance: Option<u32>) -> Result<Vec<DupGroup>, String> {
+    let _job = jobs::Guard::new("dups");
     let state = app.state::<AppState>();
     let mut recs: Vec<Rec> = Vec::new();
     let mut stale: Vec<bool> = Vec::new();
@@ -2243,7 +2256,9 @@ fn find_duplicates_blocking(app: &tauri::AppHandle, max_distance: Option<u32>) -
         }
         done += batch.len();
         let _ = app.emit("dup-progress", (done, total));
+        jobs::tick("dups", done, total);
     }
+    jobs::stage("dups", total, total, "Porównuję zdjęcia…");
     let _ = stale; // informacja pomocnicza, wynik zapisany w bazie przez hashed_mod
 
     let mut parent: Vec<usize> = (0..recs.len()).collect();
@@ -3353,6 +3368,7 @@ fn main() {
                 .unwrap_or(false);
             formats::set_skip_gif_png(skip);
             people::set_thumbs_dir(&thumbs);
+            jobs::init(app.handle().clone());
             app.manage(AppState { db: Mutex::new(db), thumbs, sidecar: AtomicBool::new(sidecar) });
             Ok(())
         })
