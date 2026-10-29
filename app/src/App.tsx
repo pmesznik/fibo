@@ -308,9 +308,9 @@ export default function App() {
   const [moveFaces, setMoveFaces] = useState<number[] | null>(null)
   const photosOfPerson = () => (person?.id === undefined ? [] : realIds().filter((i) => person.ids.has(i)))
   const dropFromPerson = (ids: number[]) => setPerson((p) => (p ? { ...p, ids: new Set([...p.ids].filter((i) => !ids.includes(i))) } : p))
-  const rejectFromPerson = async () => {
+  const rejectFromPerson = async (given?: number[]) => {
     setMenu(null)
-    const ids = photosOfPerson()
+    const ids = given ?? photosOfPerson()
     if (person?.id === undefined || !ids.length) return
     try {
       await rejectPersonInPhotos(person.id, ids)
@@ -1307,6 +1307,12 @@ export default function App() {
           <button className="ico" aria-label="Tagi" title="Tagi" onClick={() => setTagDlg(true)}><Tag size={20} /></button>
           <button className="ico" aria-label="Kolaż z zaznaczonych" title="Kolaż: zaznacz więcej zdjęć (Ctrl lub Shift)" onClick={startCollage}><LayoutDashboard size={20} /></button>
           <button className="ico" aria-label="Odznacz" onClick={() => setSelected(null)}><X size={20} /></button>
+          {person?.id !== undefined && person.ids.has(current.id) && (
+            <>
+              <button className="ico" style={{ minWidth: 'auto', padding: '0 12px', gap: 6, display: 'flex', alignItems: 'center', fontWeight: 600, color: 'var(--err)' }} aria-label={`To nie ${person.name}: odepnij od tej osoby`} title="Ta twarz nie należy do tej osoby: zdjęcie znika z jej widoku" onClick={() => rejectFromPerson([current.id])}><X size={18} /> Nie ta osoba</button>
+              <button className="ico" style={{ minWidth: 'auto', padding: '0 12px', gap: 6, display: 'flex', alignItems: 'center', fontWeight: 600 }} aria-label="To inna osoba: przenieś twarz" title="Wskaż, kim jest ta osoba naprawdę" onClick={() => setMoveFaces([current.id])}><Users size={18} /> Przenieś…</button>
+            </>
+          )}
         </div>
       )}
       {sel.length > 1 && !viewer && !collage && (
@@ -1421,7 +1427,7 @@ export default function App() {
             <button className="text menu-item" role="menuitem" onClick={() => { setMenu(null); setDateIds(realIds()) }}><CalendarDays size={18} /> Zmień datę…</button>
             {person?.id !== undefined && photosOfPerson().length > 0 && (
               <>
-                <button className="text menu-item" role="menuitem" onClick={rejectFromPerson}><X size={18} /> To nie „{person.name}”: odepnij od tej osoby</button>
+                <button className="text menu-item" role="menuitem" onClick={() => rejectFromPerson()}><X size={18} /> To nie „{person.name}”: odepnij od tej osoby</button>
                 <button className="text menu-item" role="menuitem" onClick={() => { setMenu(null); setMoveFaces(photosOfPerson()) }}><Users size={18} /> To inna osoba: przenieś twarz…</button>
               </>
             )}
