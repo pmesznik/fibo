@@ -6,6 +6,7 @@ import { ExportDialog } from './ExportDialog'
 import { ProgressDock, reportJob } from './ProgressDock'
 import { CreditsDialog } from './CreditsDialog'
 import { PersonFacesView } from './PersonFacesView'
+import { TimelineRail } from './TimelineRail'
 import { MoveFacesDialog } from './MergePeople'
 import { LocationDialog } from './LocationDialog'
 import { RenameDialog } from './RenameDialog'
@@ -456,6 +457,10 @@ export default function App() {
   }, [photos, sort, group, albumId])
   const years = useMemo(() => [...new Set(sections.map((s) => s.year))].filter(Boolean), [sections])
   const [timelineIdx, setTimelineIdx] = useState(0)
+  // Oś czasu: przy prawej krawędzi (domyślnie), jako pasek na górze albo wyłączona.
+  type TimelineMode = 'rail' | 'bar' | 'off'
+  const [timelineMode, setTimelineModeState] = useState<TimelineMode>(() => { try { const v = localStorage.getItem('timeline-mode'); return v === 'bar' || v === 'off' ? v : 'rail' } catch { return 'rail' } })
+  const setTimelineMode = (m: TimelineMode) => { setTimelineModeState(m); try { localStorage.setItem('timeline-mode', m) } catch { /* brak pamięci */ } }
   // Oś czasu podąża za przewijaniem: aktywna jest ostatnia sekcja, której górna krawędź minęła nagłówek.
   const scrollTick = useRef(0)
   const syncTimeline = () => {
@@ -729,6 +734,11 @@ export default function App() {
   // Widok osoby: domyślnie wycinki twarzy jak w Picasie (z potwierdzaniem niepewnych), a po przełączeniu zwykła siatka zdjęć.
   const [personFacesMode, setPersonFacesMode] = useState(true)
   const faceView = mode === 'library' && person?.id !== undefined && personFacesMode
+  const timelineAvailable = sections.length > 3 && sections[0].key !== 'all' && !faceView && (mode === 'library' || mode === 'favs')
+  const railOn = timelineMode === 'rail' && timelineAvailable
+  const jumpToSection = (i: number) => { setTimelineIdx(i); document.getElementById(`g-${sections[i]?.key}`)?.scrollIntoView({ block: 'start' }) }
+  // Po przejściu do innej zakładki, osoby, albumu albo folderu widok zaczyna się od góry (a nie od miejsca przewinięcia poprzedniego widoku).
+  useEffect(() => { document.querySelector('main')?.scrollTo({ top: 0 }) }, [mode, person?.id, albumId, folder])
   const slideshow = () => {
     if (!photos.length) return say('Brak zdjęć do pokazu. Dodaj folder przyciskiem +.')
     setDrawer(false)
@@ -969,12 +979,10 @@ export default function App() {
                 <div style={{ flex: 1 }}><label htmlFor="date-from" style={{ marginTop: 0, fontSize: 12 }}>Od</label><input id="date-from" type="date" value={dateFrom} max={dateTo || undefined} onChange={(e) => setDateFrom(e.target.value)} /></div>
                 <div style={{ flex: 1 }}><label htmlFor="date-to" style={{ marginTop: 0, fontSize: 12 }}>Do</label><input id="date-to" type="date" value={dateTo} min={dateFrom || undefined} onChange={(e) => setDateTo(e.target.value)} /></div>
               </div>
-              <label>Kolor dominujący</label>
-              <div className="chips" role="group" aria-label="Kolor dominujący zdjęcia">
+              <label>Kolor dominujący{color !== null ? `: ${COLORS[color].name}` : ''}</label>
+              <div className="swatches" role="group" aria-label="Kolor dominujący zdjęcia">
                 {COLORS.map((c, i) => (
-                  <Chip key={c.name} on={color === i} onClick={() => setColor(color === i ? null : i)} label={`Kolor: ${c.name}`}>
-                    <span aria-hidden style={{ width: 14, height: 14, borderRadius: '50%', background: c.css, border: '1px solid var(--glass-line)', display: 'inline-block' }} /> {c.name}
-                  </Chip>
+                  <button key={c.name} className={`swatch${color === i ? ' on' : ''}`} style={{ background: c.css }} aria-label={`Kolor: ${c.name}`} aria-pressed={color === i} title={c.name} onClick={() => setColor(color === i ? null : i)} />
                 ))}
               </div>
               <label>Pokaż tylko zdjęcia</label>
@@ -1103,6 +1111,12 @@ export default function App() {
                 <Chip on={original} onClick={() => setGridMode(true)}>Oryginalne proporcje</Chip>
                 <Chip on={!original} onClick={() => setGridMode(false)}>Równe kafelki</Chip>
               </div>
+              <label>Oś czasu</label>
+              <div className="chips">
+                {([['rail', 'Przy krawędzi'], ['bar', 'Pasek na górze'], ['off', 'Wyłączona']] as [TimelineMode, string][]).map(([v, l]) => (
+                  <Chip key={v} on={timelineMode === v} onClick={() => setTimelineMode(v)}>{l}</Chip>
+                ))}
+              </div>
               <label>Grupowanie według daty zdjęcia</label>
               <div className="chips">
                 {([['year', 'Lata'], ['month', 'Miesiące'], ['none', 'Bez grup']] as [Group, string][]).map(([v, l]) => (
@@ -1117,7 +1131,7 @@ export default function App() {
         </div>
       </aside>
 
-      <main className="h-full overflow-y-auto" onScroll={syncTimeline} style={{ padding: 'calc(82px + var(--sat)) 20px 100px' }}>
+      <main className="h-full overflow-y-auto" onScroll={syncTimeline} style={{ padding: `calc(82px + var(--sat)) ${railOn ? 58 : 20}px 100px 20px` }}>
         {(mode === 'library' || mode === 'favs') && (
           <>
             <div style={{ marginBottom: 14 }}>
@@ -1134,7 +1148,7 @@ export default function App() {
                 const meta = [pr.date && pr.date.split('-').reverse().join('.'), pr.place].filter(Boolean).join(' · ')
                 return <div style={{ marginTop: 6, fontSize: 13.5 }}>{meta && <b>{meta}</b>}{meta && pr.description ? ' · ' : ''}<span style={{ color: 'var(--muted)' }}>{pr.description}</span></div>
               })()}
-              {!faceView && years.length > 1 && (
+              {!faceView && !railOn && years.length > 1 && (
                 <div className="chips" style={{ marginTop: 10 }} role="navigation" aria-label="Przejdź do roku">
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--muted)', fontSize: 13 }}><CalendarDays size={15} /> Rok</span>
                   {years.map((y) => <Chip key={y} onClick={() => jumpToYear(y)}>{y}</Chip>)}
@@ -1161,7 +1175,7 @@ export default function App() {
               )}
             </div>
 
-            {!faceView && sections.length > 3 && sections[0].key !== 'all' && (
+            {timelineMode === 'bar' && timelineAvailable && (
               <div style={{ position: 'sticky', top: 'calc(70px + var(--sat))', zIndex: 5, margin: '-6px -20px 14px', padding: '8px 20px', background: 'var(--glass)', backdropFilter: 'blur(12px)', display: 'flex', alignItems: 'center', gap: 10 }} role="group" aria-label="Oś czasu">
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--muted)', fontSize: 13 }}><CalendarDays size={15} /> Oś czasu</span>
                 <input type="range" aria-label="Oś czasu: przesuń, aby przejść do miesiąca lub roku" min={0} max={sections.length - 1} step={1}
@@ -1297,6 +1311,7 @@ export default function App() {
             onOpenPerson={(name, ids, id) => { setPersonFacesMode(true); setPerson({ id, name, ids: new Set(ids) }); setAlbumId(null); setFolder(null); setMode('library') }} />
         )}
       </main>
+      {railOn && <TimelineRail sections={sections.map((x) => ({ key: x.key, title: x.title, year: x.year, count: x.items.length }))} active={Math.min(timelineIdx, sections.length - 1)} onJump={jumpToSection} />}
 
       {mode === 'map' && (
         <MapView
@@ -1382,8 +1397,9 @@ export default function App() {
       {menu && sel.length > 0 && (
         <>
           <div className="fixed inset-0 z-[1890]" onClick={() => setMenu(null)} onContextMenu={(e) => { e.preventDefault(); setMenu(null) }} />
-          <div className="glass fixed z-[1900] flex w-[270px] flex-col overflow-y-auto p-2" role="menu" aria-label="Akcje dla zaznaczonych zdjęć"
-            style={{ borderRadius: 'var(--r-card)', left: Math.max(8, Math.min(menu.x, window.innerWidth - 278)), top: Math.max(8, Math.min(menu.y, window.innerHeight - 560)), maxHeight: 'calc(100vh - 16px)' }}>
+          <div className="glass fixed z-[1900] flex w-[370px] flex-col overflow-y-auto p-2" role="menu" aria-label="Akcje dla zaznaczonych zdjęć"
+            ref={(el) => { if (el) el.style.top = `${Math.max(8, Math.min(menu.y, window.innerHeight - el.offsetHeight - 8))}px` }}
+            style={{ borderRadius: 'var(--r-card)', left: Math.max(8, Math.min(menu.x, window.innerWidth - 378)), top: menu.y, maxHeight: 'calc(100vh - 16px)' }}>
             <div style={{ padding: '6px 10px 8px', fontSize: 12.5, color: 'var(--muted)', fontWeight: 600 }}>
               {sel.length === 1 ? (all.find((p) => p.id === sel[0])?.name ?? '') : `${sel.length} ${pl(sel.length, 'zdjęcie', 'zdjęcia', 'zdjęć')}`}
             </div>
@@ -1397,12 +1413,13 @@ export default function App() {
               ))}
               <button className="ico" style={{ minWidth: 34, minHeight: 36 }} aria-label="Wyczyść ocenę" title="Wyczyść ocenę" onClick={() => rateSelected(0)}><X size={16} /></button>
             </div>
+            <div className="menu-grid">
             <button className="text menu-item" role="menuitem" onClick={favSelected}>
-              <Heart size={18} /> {all.filter((p) => sel.includes(p.id)).every((p) => p.favorite) ? 'Usuń z ulubionych' : 'Dodaj do ulubionych'}
+              <Heart size={18} /> {all.filter((p) => sel.includes(p.id)).every((p) => p.favorite) ? 'Z ulubionych' : 'Do ulubionych'}
             </button>
             <button className="text menu-item" role="menuitem" onClick={() => { setMenu(null); setTagDlg(true) }}><Tag size={18} /> Tagi…</button>
             {sel.length > 1 && (
-              <button className="text menu-item" role="menuitem" onClick={() => { setMenu(null); startCollage() }}><LayoutDashboard size={18} /> Kolaż z zaznaczonych</button>
+              <button className="text menu-item" role="menuitem" onClick={() => { setMenu(null); startCollage() }}><LayoutDashboard size={18} /> Kolaż</button>
             )}
             <button className="text menu-item" role="menuitem" onClick={() => {
               const ids = realIds()
@@ -1410,22 +1427,39 @@ export default function App() {
               setTray((t) => (allIn ? t.filter((i) => !ids.includes(i)) : [...new Set([...t, ...ids])]))
               setMenu(null)
               say(allIn ? 'Usunięto z tacy' : `Dodano do tacy (razem ${new Set([...tray, ...ids]).size})`, 'ok')
-            }}><ListChecks size={18} /> {realIds().every((i) => tray.includes(i)) ? 'Usuń z tacy' : 'Dodaj do tacy'}</button>
-            <button className="text menu-item" role="menuitem" onClick={() => { setMenu(null); setPicker(true) }}><FolderOpen size={18} /> Dodaj do albumu…</button>
+            }}><ListChecks size={18} /> {realIds().every((i) => tray.includes(i)) ? 'Z tacy' : 'Do tacy'}</button>
+            <button className="text menu-item" role="menuitem" onClick={() => { setMenu(null); setPicker(true) }}><FolderOpen size={18} /> Do albumu…</button>
             {albumId !== null && (
-              <button className="text menu-item" role="menuitem" onClick={leaveAlbum}><X size={18} /> Usuń z tego albumu</button>
+              <button className="text menu-item" role="menuitem" onClick={leaveAlbum}><X size={18} /> Z albumu</button>
             )}
-            <div style={{ height: 1, background: 'var(--glass-line)', margin: '4px 6px' }} />
+            </div>
+            <div className="menu-h" role="presentation">Edycja</div>
+            <div className="menu-grid">
+            <button className="text menu-item" role="menuitem" onClick={() => { setMenu(null); setDateIds(realIds()) }}><CalendarDays size={18} /> Zmień datę…</button>
+            {person?.id !== undefined && photosOfPerson().length > 0 && (
+              <>
+                <button className="text menu-item" role="menuitem" style={{ gridColumn: '1 / -1' }} onClick={() => rejectFromPerson()}><X size={18} /> To nie „{person.name}”: odepnij od tej osoby</button>
+                <button className="text menu-item" role="menuitem" style={{ gridColumn: '1 / -1' }} onClick={() => { setMenu(null); setMoveFaces(photosOfPerson()) }}><Users size={18} /> To inna osoba: przenieś twarz…</button>
+              </>
+            )}
+            <button className="text menu-item" role="menuitem" onClick={() => { setMenu(null); setCreditIds(realIds()) }}><Pencil size={18} /> Autor i prawa…</button>
+            <button className="text menu-item" role="menuitem" title="Bez utraty jakości (JPEG): zmienia tylko znacznik orientacji" onClick={() => rotateSelected(true)}><RotateCw size={18} /> Obróć w prawo</button>
+            <button className="text menu-item" role="menuitem" title="Bez utraty jakości (JPEG): zmienia tylko znacznik orientacji" onClick={() => rotateSelected(false)}><RotateCcw size={18} /> Obróć w lewo</button>
+            <button className="text menu-item" role="menuitem" onClick={pasteEditSelected}><Wand2 size={18} /> Wklej edycję…</button>
+            <button className="text menu-item" role="menuitem" onClick={() => { setMenu(null); setLocIds(realIds()) }}><MapPin size={18} /> Lokalizacja…</button>
+            </div>
+            <div className="menu-h" role="presentation">Plik</div>
+            <div className="menu-grid">
             {sel.length === 1 && (
-              <button className="text menu-item" role="menuitem" onClick={renameSelected}><Pencil size={18} /> Zmień nazwę pliku…</button>
+              <button className="text menu-item" role="menuitem" onClick={renameSelected}><Pencil size={18} /> Zmień nazwę…</button>
             )}
             {sel.length > 1 && (
-              <button className="text menu-item" role="menuitem" onClick={() => { setMenu(null); setRenameIds(realIds()) }}><Pencil size={18} /> Zmień nazwy zaznaczonych…</button>
+              <button className="text menu-item" role="menuitem" onClick={() => { setMenu(null); setRenameIds(realIds()) }}><Pencil size={18} /> Zmień nazwy…</button>
             )}
-            <button className="text menu-item" role="menuitem" onClick={() => moveSelected(false)}><ImageUp size={18} /> Przenieś do folderu…</button>
-            <button className="text menu-item" role="menuitem" onClick={() => moveSelected(true)}><Copy size={18} /> Kopiuj do folderu…</button>
-            {sel.length === 1 && <button className="text menu-item" role="menuitem" onClick={async () => { setMenu(null); const p = all.find((x) => x.id === sel[0]); if (p) { try { await revealInExplorer(p.path) } catch (e) { say(`Nie udało się otworzyć Eksploratora: ${e}`, 'err') } } }}><FolderOpen size={18} /> Pokaż w Eksploratorze</button>}
-            {sel.length === 1 && sel[0] >= 0 && <button className="text menu-item" role="menuitem" onClick={async () => { setMenu(null); try { await openPhotoExternal(sel[0]) } catch (e) { say(`Nie udało się otworzyć w programie: ${e}`, 'err') } }}><ImageUp size={18} /> Otwórz w domyślnym programie</button>}
+            <button className="text menu-item" role="menuitem" onClick={() => moveSelected(false)}><ImageUp size={18} /> Przenieś…</button>
+            <button className="text menu-item" role="menuitem" onClick={() => moveSelected(true)}><Copy size={18} /> Kopiuj…</button>
+            {sel.length === 1 && <button className="text menu-item" role="menuitem" onClick={async () => { setMenu(null); const p = all.find((x) => x.id === sel[0]); if (p) { try { await revealInExplorer(p.path) } catch (e) { say(`Nie udało się otworzyć Eksploratora: ${e}`, 'err') } } }}><FolderOpen size={18} /> W Eksploratorze</button>}
+            {sel.length === 1 && sel[0] >= 0 && <button className="text menu-item" role="menuitem" onClick={async () => { setMenu(null); try { await openPhotoExternal(sel[0]) } catch (e) { say(`Nie udało się otworzyć w programie: ${e}`, 'err') } }}><ImageUp size={18} /> W programie</button>}
             {sel.length === 1 && sel[0] >= 0 && <button className="text menu-item" role="menuitem" onClick={async () => {
               setMenu(null)
               const id = sel[0]
@@ -1438,24 +1472,17 @@ export default function App() {
                 else { setSel(found); say(`Zaznaczono ${found.length} podobnych zdjęć (z wybranym)`, 'ok') }
               } catch (e) { say(`Błąd: ${e}`, 'err') }
             }}><Copy size={18} /> Zaznacz podobne</button>}
-            <button className="text menu-item" role="menuitem" onClick={() => { setMenu(null); setDateIds(realIds()) }}><CalendarDays size={18} /> Zmień datę…</button>
-            {person?.id !== undefined && photosOfPerson().length > 0 && (
-              <>
-                <button className="text menu-item" role="menuitem" onClick={() => rejectFromPerson()}><X size={18} /> To nie „{person.name}”: odepnij od tej osoby</button>
-                <button className="text menu-item" role="menuitem" onClick={() => { setMenu(null); setMoveFaces(photosOfPerson()) }}><Users size={18} /> To inna osoba: przenieś twarz…</button>
-              </>
-            )}
-            <button className="text menu-item" role="menuitem" onClick={() => { setMenu(null); setCreditIds(realIds()) }}><Pencil size={18} /> Autor i prawa autorskie…</button>
-            <button className="text menu-item" role="menuitem" onClick={() => rotateSelected(true)}><RotateCw size={18} /> Obróć w prawo (bez utraty jakości)</button>
-            <button className="text menu-item" role="menuitem" onClick={() => rotateSelected(false)}><RotateCcw size={18} /> Obróć w lewo (bez utraty jakości)</button>
-            <button className="text menu-item" role="menuitem" onClick={pasteEditSelected}><Wand2 size={18} /> Wklej edycję do zaznaczonych…</button>
-            <button className="text menu-item" role="menuitem" onClick={() => { setMenu(null); setLocIds(realIds()) }}><MapPin size={18} /> Ustaw lokalizację…</button>
-            <button className="text menu-item" role="menuitem" onClick={() => { setMenu(null); setExportIds(realIds()) }}><Download size={18} /> Eksportuj pomniejszone…</button>
+            <button className="text menu-item" role="menuitem" onClick={() => { setMenu(null); setExportIds(realIds()) }}><Download size={18} /> Eksportuj…</button>
+            </div>
+            <div className="menu-h" role="presentation">Usuwanie</div>
             <button className="text menu-item" role="menuitem" onClick={hideSelected}><EyeOff size={18} /> Usuń z biblioteki (pliki zostają)…</button>
             <button className="text menu-item" role="menuitem" style={{ color: 'var(--err)' }} onClick={trashSelected}><Trash2 size={18} /> Przenieś do Kosza…</button>
-            <div style={{ height: 1, background: 'var(--glass-line)', margin: '4px 6px' }} />
+            <div style={{ height: 1, background: 'var(--glass-line)', margin: '6px 6px 2px' }} />
+            <div className="menu-grid">
             <button className="text menu-item" role="menuitem" onClick={() => { setSel(photos.map((p) => p.id)); setMenu(null) }}><ListChecks size={18} /> Zaznacz wszystkie ({photos.length})</button>
             <button className="text menu-item" role="menuitem" onClick={() => { setSelected(null); setMenu(null) }}><X size={18} /> Odznacz</button>
+            </div>
+
           </div>
         </>
       )}
