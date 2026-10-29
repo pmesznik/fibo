@@ -152,7 +152,11 @@ export async function faceBlob(id: number) {
 // ---- Rozpoznawanie twarzy (wszystko lokalnie) ----
 export type FacesStatus = { enabled: boolean; models_ok: boolean; running: boolean; photos: number; scanned: number; faces: number; people: number; unassigned: number; rejected: number }
 export type FacesProgress = { done: number; total: number; faces: number; finished: boolean; grouping?: boolean; error: string | null }
-export type Person = { id: number; name: string | null; count: number; photos: number; cover: number | null; ignored: boolean }
+export type Person = { id: number; name: string | null; count: number; photos: number; cover: number | null; ignored: boolean; unsure: number }
+/** Twarz w widoku osoby: `unsure` = program nie jest pewien przypisania (czeka na potwierdzenie). */
+export type FaceCard = { face: number; photo: number; unsure: boolean }
+export const personFaceCards = (id: number) => invoke<FaceCard[]>('person_face_cards', { id })
+export const confirmFaces = (ids: number[]) => invoke<number>('confirm_faces', { ids })
 export const facesStatus = () => invoke<FacesStatus>('faces_status')
 export const setFacesEnabled = (on: boolean) => invoke('set_faces_enabled', { on })
 export const facesStart = () => invoke<boolean>('faces_start')

@@ -186,6 +186,7 @@ export function People({ say, ask, onOpenPerson, onChanged }: {
               </div>
               <div className="mt-2 truncate" style={{ fontWeight: 600 }}>{p.name ?? 'Nieznana osoba'}</div>
               <div style={{ color: 'var(--muted)', fontSize: 13 }}>{p.photos} {pl(p.photos, 'zdjęcie', 'zdjęcia', 'zdjęć')}</div>
+              {p.unsure > 0 && <div style={{ color: '#d97706', fontSize: 12.5, fontWeight: 600 }} title="Twarze, których program nie jest pewien">? {p.unsure} do potwierdzenia</div>}
             </button>
             {(() => {
               const sg = !p.name && !p.ignored ? sugg.get(p.id) : undefined

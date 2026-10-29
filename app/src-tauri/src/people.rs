@@ -62,6 +62,8 @@ pub fn init_schema(conn: &Connection) -> rusqlite::Result<()> {
     let _ = conn.execute("ALTER TABLE people ADD COLUMN cover_face INTEGER", []);
     // Migracja: twarz odrzucona przez użytkownika („to nie ta osoba” albo usunięta osoba): grupowanie nie przypisuje jej już do nikogo.
     let _ = conn.execute("ALTER TABLE faces ADD COLUMN rejected INTEGER NOT NULL DEFAULT 0", []);
+    // Migracja: pewność przypisania twarzy do osoby (podobieństwo do środka osoby, 0-1); NULL = jeszcze nie policzona.
+    let _ = conn.execute("ALTER TABLE faces ADD COLUMN conf REAL", []);
     Ok(())
 }
 
@@ -435,6 +437,8 @@ fn regroup(conn: &Connection, snapshot: Option<Vec<AnchorFace>>, reanalyzed: &Ha
     // Osoby bez twarzy znikają, o ile nie mają imienia i nie zostały pominięte przez użytkownika.
     tx.execute("DELETE FROM people WHERE name IS NULL AND ignored = 0 AND id NOT IN (SELECT person_id FROM faces WHERE person_id IS NOT NULL)", []).map_err(|e| e.to_string())?;
     tx.commit().map_err(|e| e.to_string())?;
+    // Pewność przypisań (widok „do potwierdzenia”): liczona po każdym grupowaniu; błąd nie psuje samego grupowania.
+    let _ = compute_conf(conn, None);
     Ok(order.len())
 }
 
@@ -676,6 +680,96 @@ async fn tokio_sleep() {
     tauri::async_runtime::spawn_blocking(|| std::thread::sleep(std::time::Duration::from_millis(50))).await.ok();
 }
 
+/// Twarz z podobieństwem do środka osoby poniżej tej wartości (i bez ręcznego potwierdzenia) czeka na potwierdzenie, jak w Picasie.
+const UNSURE_BELOW: f32 = 0.5;
+
+/// Liczy pewność przypisania twarzy: podobieństwo twarzy do środka jej osoby. Środek liczą wszystkie twarze osoby, ale ręcznie
+/// potwierdzone liczą się potrójnie, więc jedna pomyłka w grupie nie przesuwa środka. `only` ogranicza liczenie do jednej osoby.
+pub fn compute_conf(conn: &Connection, only: Option<i64>) -> Result<usize, String> {
+    let mut stmt = conn
+        .prepare("SELECT id, person_id, emb, COALESCE(quality, 0.6), manual FROM faces WHERE person_id IS NOT NULL AND (?1 IS NULL OR person_id = ?1)")
+        .map_err(|e| e.to_string())?;
+    let rows: Vec<(i64, i64, Vec<u8>, f64, i64)> =
+        stmt.query_map([only], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))).map_err(|e| e.to_string())?.filter_map(Result::ok).collect();
+    drop(stmt);
+    let mut groups: HashMap<i64, Vec<(i64, Vec<f32>, f32, bool)>> = HashMap::new();
+    for (id, person, blob, q, manual) in rows {
+        if let Ok(emb) = open_embedding(&blob) {
+            if emb.len() == EMB_LEN {
+                groups.entry(person).or_default().push((id, emb, q as f32, manual != 0));
+            }
+        }
+    }
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    let mut n = 0;
+    for faces in groups.values() {
+        let mut c = vec![0.0f32; EMB_LEN];
+        for (_, e, q, manual) in faces {
+            let w = q.max(0.05) * if *manual { 3.0 } else { 1.0 };
+            c.iter_mut().zip(e).for_each(|(a, b)| *a += b * w);
+        }
+        normalize(&mut c);
+        for (id, e, _, _) in faces {
+            tx.execute("UPDATE faces SET conf = ?2 WHERE id = ?1", params![id, cosine(&c, e) as f64]).map_err(|e| e.to_string())?;
+            n += 1;
+        }
+    }
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(n)
+}
+
+/// Kafelek twarzy w widoku osoby: wycinek twarzy, zdjęcie, z którego pochodzi, i czy czeka na potwierdzenie.
+#[derive(Serialize)]
+pub struct FaceCard {
+    face: i64,
+    photo: i64,
+    unsure: bool,
+}
+
+/// Twarze osoby do widoku jak w Picasie: najpierw te do potwierdzenia (od najmniej pewnych), potem potwierdzone.
+#[tauri::command]
+pub async fn person_face_cards(app: tauri::AppHandle, id: i64) -> Result<Vec<FaceCard>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let conn = state.db.lock().map_err(|e| e.to_string())?;
+        let missing: i64 = conn.query_row("SELECT COUNT(*) FROM faces WHERE person_id = ?1 AND conf IS NULL", [id], |r| r.get(0)).map_err(|e| e.to_string())?;
+        if missing > 0 {
+            compute_conf(&conn, Some(id))?;
+        }
+        let mut stmt = conn
+            .prepare(
+                "SELECT f.id, f.photo_id, (f.manual = 0 AND f.conf IS NOT NULL AND f.conf < ?2) AS unsure
+                 FROM faces f JOIN photos ph ON ph.id = f.photo_id AND ph.hidden = 0
+                 WHERE f.person_id = ?1
+                 ORDER BY unsure DESC, CASE WHEN unsure THEN f.conf END ASC, f.score * f.w DESC LIMIT 3000",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(params![id, UNSURE_BELOW as f64], |r| Ok(FaceCard { face: r.get(0)?, photo: r.get(1)?, unsure: r.get::<_, i64>(2)? != 0 }))
+            .map_err(|e| e.to_string())?
+            .filter_map(Result::ok)
+            .collect();
+        Ok(rows)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Zatwierdza twarze („to na pewno ta osoba”): przestają być niepewne i stają się wzorcem dla grupowania.
+pub fn confirm_faces_core(conn: &Connection, ids: &[i64]) -> Result<usize, String> {
+    let mut n = 0;
+    for id in ids {
+        n += conn.execute("UPDATE faces SET manual = 1, rejected = 0 WHERE id = ?1 AND person_id IS NOT NULL", [id]).map_err(|e| e.to_string())?;
+    }
+    Ok(n)
+}
+
+#[tauri::command]
+pub fn confirm_faces(state: State<'_, AppState>, ids: Vec<i64>) -> Result<usize, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    confirm_faces_core(&conn, &ids)
+}
+
 #[derive(Serialize)]
 pub struct Person {
     id: i64,
@@ -684,6 +778,8 @@ pub struct Person {
     photos: i64,
     cover: Option<i64>,
     ignored: bool,
+    /// Twarze osoby czekające na potwierdzenie (niepewne przypisanie).
+    unsure: i64,
 }
 
 #[tauri::command]
@@ -693,13 +789,14 @@ pub fn list_people(state: State<'_, AppState>) -> Result<Vec<Person>, String> {
         .prepare(
             "SELECT p.id, p.name, p.ignored, COUNT(f.id), COUNT(DISTINCT f.photo_id),
                     COALESCE((SELECT f3.id FROM faces f3 WHERE f3.id = p.cover_face AND f3.person_id = p.id),
-                             (SELECT f2.id FROM faces f2 WHERE f2.person_id = p.id ORDER BY f2.score * f2.w DESC LIMIT 1))
+                             (SELECT f2.id FROM faces f2 WHERE f2.person_id = p.id ORDER BY f2.score * f2.w DESC LIMIT 1)),
+                    SUM(CASE WHEN f.manual = 0 AND f.conf IS NOT NULL AND f.conf < ?1 THEN 1 ELSE 0 END)
              FROM people p JOIN faces f ON f.person_id = p.id JOIN photos ph ON ph.id = f.photo_id AND ph.hidden = 0
              GROUP BY p.id ORDER BY (p.name IS NULL), COUNT(DISTINCT f.photo_id) DESC",
         )
         .map_err(|e| e.to_string())?;
     let rows = stmt
-        .query_map([], |r| {
+        .query_map([UNSURE_BELOW as f64], |r| {
             Ok(Person {
                 id: r.get(0)?,
                 name: r.get(1)?,
@@ -707,6 +804,7 @@ pub fn list_people(state: State<'_, AppState>) -> Result<Vec<Person>, String> {
                 count: r.get(3)?,
                 photos: r.get(4)?,
                 cover: r.get(5)?,
+                unsure: r.get::<_, Option<i64>>(6)?.unwrap_or(0),
             })
         })
         .map_err(|e| e.to_string())?
@@ -763,7 +861,7 @@ pub fn reassign_core(conn: &Connection, photo_id: i64, from: i64, to: Option<i64
             conn.last_insert_rowid()
         }
     };
-    let n = conn.execute("UPDATE faces SET person_id = ?3, manual = 1 WHERE photo_id = ?1 AND person_id = ?2", params![photo_id, from, target]).map_err(|e| e.to_string())?;
+    let n = conn.execute("UPDATE faces SET person_id = ?3, manual = 1, conf = NULL WHERE photo_id = ?1 AND person_id = ?2", params![photo_id, from, target]).map_err(|e| e.to_string())?;
     if n == 0 {
         if to.is_none() {
             let _ = conn.execute("DELETE FROM people WHERE id = ?1", [target]);
@@ -843,7 +941,7 @@ pub fn merge_core(conn: &Connection, from: i64, into: i64, name: Option<&str>) -
             return Err("Nie ma takiej osoby".into());
         }
     }
-    conn.execute("UPDATE faces SET person_id = ?1, manual = 1 WHERE person_id = ?2", params![into, from]).map_err(|e| e.to_string())?;
+    conn.execute("UPDATE faces SET person_id = ?1, manual = 1, conf = NULL WHERE person_id = ?2", params![into, from]).map_err(|e| e.to_string())?;
     conn.execute("UPDATE people SET name = COALESCE(name, (SELECT name FROM people WHERE id = ?2)) WHERE id = ?1", params![into, from]).map_err(|e| e.to_string())?;
     // Osoba pominięta, połączona z widoczną, ma być widoczna.
     conn.execute("UPDATE people SET ignored = MIN(ignored, COALESCE((SELECT ignored FROM people WHERE id = ?2), 0)) WHERE id = ?1", params![into, from]).map_err(|e| e.to_string())?;
@@ -1009,7 +1107,7 @@ pub fn move_faces_core(conn: &Connection, ids: &[i64], to: Option<i64>) -> Resul
         }
     };
     for id in ids {
-        conn.execute("UPDATE faces SET person_id = ?2, manual = 1, rejected = 0 WHERE id = ?1", params![id, target]).map_err(|e| e.to_string())?;
+        conn.execute("UPDATE faces SET person_id = ?2, manual = 1, rejected = 0, conf = NULL WHERE id = ?1", params![id, target]).map_err(|e| e.to_string())?;
     }
     conn.execute("DELETE FROM people WHERE id NOT IN (SELECT person_id FROM faces WHERE person_id IS NOT NULL)", []).map_err(|e| e.to_string())?;
     Ok(target)
@@ -1528,5 +1626,27 @@ mod tests {
         // Do nowej osoby.
         let new = move_person_faces_core(&c, 1, &[3], None).unwrap();
         assert!(new > 2);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn unsure_faces_are_flagged_and_confirming_clears_them() {
+        let (c, tmp) = lib_with_photos(6);
+        // Pięć twarzy jednej osoby (prawie ten sam wektor) i jedna obca, błędnie do niej przypisana.
+        for (i, e) in [unit(0), near(0, 1, 0.05), near(0, 2, 0.06), near(0, 3, 0.05), near(0, 4, 0.07), unit(9)].into_iter().enumerate() {
+            store_faces(&c, &tmp, i as i64 + 1, 5, vec![new_face(e, 0.9)]).unwrap();
+        }
+        c.execute_batch("INSERT INTO people (id, name) VALUES (1, 'Dziadek'); UPDATE faces SET person_id = 1;").unwrap();
+        assert_eq!(compute_conf(&c, None).unwrap(), 6);
+        let unsure = |c: &Connection| -> Vec<i64> {
+            let mut s = c.prepare("SELECT photo_id FROM faces WHERE manual = 0 AND conf < ?1 ORDER BY photo_id").unwrap();
+            s.query_map([UNSURE_BELOW as f64], |r| r.get(0)).unwrap().filter_map(Result::ok).collect()
+        };
+        assert_eq!(unsure(&c), vec![6], "tylko obca twarz czeka na potwierdzenie");
+        let face: i64 = c.query_row("SELECT id FROM faces WHERE photo_id = 6", [], |r| r.get(0)).unwrap();
+        assert_eq!(confirm_faces_core(&c, &[face]).unwrap(), 1);
+        assert!(unsure(&c).is_empty(), "po zatwierdzeniu twarz nie jest już niepewna");
+        // Odrzucenie zostawia osobę bez tej twarzy.
+        assert_eq!(reject_faces_core(&c, &[face]).unwrap(), 1);
     }
 }

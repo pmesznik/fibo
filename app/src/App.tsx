@@ -5,6 +5,7 @@ import { People, FaceImg } from './People'
 import { ExportDialog } from './ExportDialog'
 import { ProgressDock } from './ProgressDock'
 import { CreditsDialog } from './CreditsDialog'
+import { PersonFacesView } from './PersonFacesView'
 import { MoveFacesDialog } from './MergePeople'
 import { LocationDialog } from './LocationDialog'
 import { RenameDialog } from './RenameDialog'
@@ -725,6 +726,9 @@ export default function App() {
     if (inTauri) setFavorite(current.id, !current.favorite)
   }
   const openViewer = (id: number, autoplay = false, list?: Photo[]) => { if (inTauri && id >= 0) setViewer({ id, autoplay, list }) }
+  // Widok osoby: domyślnie wycinki twarzy jak w Picasie (z potwierdzaniem niepewnych), a po przełączeniu zwykła siatka zdjęć.
+  const [personFacesMode, setPersonFacesMode] = useState(true)
+  const faceView = mode === 'library' && person?.id !== undefined && personFacesMode
   const slideshow = () => {
     if (!photos.length) return say('Brak zdjęć do pokazu. Dodaj folder przyciskiem +.')
     setDrawer(false)
@@ -1144,6 +1148,8 @@ export default function App() {
                   {(query.trim() || minStars > 0 || dateFrom || dateTo || missing || activeTags.length > 0) && <Chip onClick={saveSmartAlbum} label="Zapisz filtry jako album inteligentny"><Star size={13} /> Zapisz jako album inteligentny</Chip>}
                   {trayView && <Chip on onClick={() => setTrayView(false)} label="Pokaż całą bibliotekę"><ListChecks size={13} /> Taca <X size={13} /></Chip>}
                   {person && <Chip on onClick={() => setPerson(null)} label="Pokaż całą bibliotekę"><Users size={13} /> {person.name} <X size={13} /></Chip>}
+                  {person?.id !== undefined && <Chip on={personFacesMode} onClick={() => setPersonFacesMode(true)} label="Pokaż twarze">Twarze</Chip>}
+                  {person?.id !== undefined && <Chip on={!personFacesMode} onClick={() => setPersonFacesMode(false)} label="Pokaż zdjęcia">Zdjęcia</Chip>}
                   {person && <Chip onClick={slideshow} label="Pokaz zdjęć tej osoby"><Play size={13} /> Pokaz zdjęć</Chip>}
                   {person && <Chip onClick={async () => { try { setTogether((await listPeople()).filter((o) => !o.ignored)) } catch (e) { say(`Błąd: ${e}`, 'err') } }} label="Pokaż tylko zdjęcia razem z inną osobą"><Users size={13} /> Razem z…</Chip>}
                   {folder && <Chip on onClick={() => setFolder(null)} label="Usuń filtr folderu"><FolderOpen size={13} /> {folderName(folder)} <X size={13} /></Chip>}
@@ -1155,7 +1161,7 @@ export default function App() {
               )}
             </div>
 
-            {sections.length > 3 && sections[0].key !== 'all' && (
+            {!faceView && sections.length > 3 && sections[0].key !== 'all' && (
               <div style={{ position: 'sticky', top: 'calc(70px + var(--sat))', zIndex: 5, margin: '-6px -20px 14px', padding: '8px 20px', background: 'var(--glass)', backdropFilter: 'blur(12px)', display: 'flex', alignItems: 'center', gap: 10 }} role="group" aria-label="Oś czasu">
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--muted)', fontSize: 13 }}><CalendarDays size={15} /> Oś czasu</span>
                 <input type="range" aria-label="Oś czasu: przesuń, aby przejść do miesiąca lub roku" min={0} max={sections.length - 1} step={1}
@@ -1165,6 +1171,12 @@ export default function App() {
               </div>
             )}
 
+            {faceView && person?.id !== undefined ? (
+              <PersonFacesView personId={person.id} name={person.name} say={say}
+                onOpen={(pid) => openViewer(pid, false, photos.some((p) => p.id === pid) ? photos : undefined)}
+                onPhotoGone={(pid) => dropFromPerson([pid])} onChanged={() => {}} />
+            ) : (
+              <>
             {photos.length === 0 && (
               <div className="empty" style={{ height: '50vh' }}>
                 <div>
@@ -1193,6 +1205,8 @@ export default function App() {
                 )}
               </section>
             ))}
+              </>
+            )}
           </>
         )}
 
@@ -1280,7 +1294,7 @@ export default function App() {
 
         {mode === 'people' && (
           <People say={say} ask={setConfirm} onChanged={() => {}}
-            onOpenPerson={(name, ids, id) => { setPerson({ id, name, ids: new Set(ids) }); setAlbumId(null); setFolder(null); setMode('library') }} />
+            onOpenPerson={(name, ids, id) => { setPersonFacesMode(true); setPerson({ id, name, ids: new Set(ids) }); setAlbumId(null); setFolder(null); setMode('library') }} />
         )}
       </main>
 
@@ -1580,7 +1594,7 @@ export default function App() {
           onOpenPerson={async (pid, name) => {
             try {
               const ids = await personPhotos(pid)
-              setPerson({ id: pid, name: name ?? 'Nieznana osoba', ids: new Set(ids) }); setAlbumId(null); setFolder(null); setMode('library')
+              setPersonFacesMode(true); setPerson({ id: pid, name: name ?? 'Nieznana osoba', ids: new Set(ids) }); setAlbumId(null); setFolder(null); setMode('library')
               setViewer(null)
             } catch (e) { say(`Błąd: ${e}`, 'err') }
           }}
