@@ -135,7 +135,7 @@ export function Duplicates({ all, suspended, onClose, onOpen, onTrashed, say }: 
   return (
     <div className="fixed inset-0 z-[1500] overflow-y-auto" style={{ background: 'var(--bg)' }} role="dialog" aria-modal="true" aria-label="Duplikaty">
       <button className="glass" aria-label="Zamknij duplikaty" title="Zamknij (Esc)" onClick={onClose}
-        style={{ position: 'fixed', zIndex: 5, left: 12, top: 'calc(12px + var(--sat))', width: 46, height: 46, padding: 0, borderRadius: '50%', display: 'grid', placeItems: 'center' }}><X size={20} /></button>
+        style={{ position: 'fixed', zIndex: 5, left: 12, top: 'calc(12px + var(--sat))', width: 'var(--bar-h)', height: 'var(--bar-h)', padding: 0, borderRadius: '50%', display: 'grid', placeItems: 'center' }}><X size={20} /></button>
 
       <div style={{ maxWidth: 1100, margin: '0 auto', padding: 'calc(76px + var(--sat)) 20px 140px' }}>
         <h1 style={{ margin: 0, font: '700 22px/1.2 system-ui' }}>Duplikaty</h1>

@@ -76,3 +76,5 @@ export const ZoomOut = (p: IconProps) => <Base {...p}><circle className="fi" cx=
 export const Compare = (p: IconProps) => <Base {...p}><rect className="fi" x="3" y="4.5" width="9" height="15" rx="2.5" fill="currentColor" fillOpacity=".2" stroke="none" /><rect x="3" y="4.5" width="18" height="15" rx="2.5" /><path d="M12 4.5v15" /><path d="M6.6 14.8l1.9-2.3 1.5 1.7" /></Base>;
 
 export const FIBO_ICONS = { Images, FolderOpen, Heart, Users, MapPin, Plus, ImageUp, X, SlidersHorizontal, Ruler, Search, CalendarDays, Star, Maximize2, Play, Pause, ListChecks, Check, ChevronLeft, ChevronRight, Maximize, Info, Wand2, Zap, Sliders, Sparkles, RotateCcw, RotateCw, FlipHorizontal, FlipVertical, Eye, Crop, Sun, Palette, Aperture, History, Pencil, Undo2, Redo2, Save, CopyPlus, Trash2, LayoutDashboard, Shuffle, Tag, MapPinOff, RefreshCw, Menu, Copy, Crown, ScanSearch, Download, ZoomIn, ZoomOut, Compare };
+
+export const Printer = (p: IconProps) => <Base {...p}><path d="M7 9V3.5h10V9" /><rect x="3" y="9" width="18" height="8.5" rx="2.5" /><path d="M7 14.5h10V21H7Z" /></Base>;

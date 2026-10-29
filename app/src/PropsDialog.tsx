@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useEscape } from './ui'
 import { X } from './FiboIcons'
 import { setProps, type Prop } from './api'
 
@@ -12,6 +13,7 @@ export function PropsDialog({ kind, id, title, current, onClose, onSaved, say }:
   onSaved: () => void
   say: (m: string, k?: 'ok' | 'err') => void
 }) {
+  useEscape(onClose)
   const [description, setDescription] = useState(current?.description ?? '')
   const [place, setPlace] = useState(current?.place ?? '')
   const [date, setDate] = useState(current?.date ?? '')

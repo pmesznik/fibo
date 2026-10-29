@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useEscape } from './ui'
 import { pl } from './pl'
 import { X, Download } from './FiboIcons'
 import { Thumb } from './Thumb'
@@ -9,6 +10,7 @@ const QUALITIES: [number, string][] = [[75, 'Mała'], [88, 'Dobra'], [95, 'Najle
 
 /** Eksport kopii zaznaczonych zdjęć do wybranego folderu (pomniejszonych, bez metadanych i lokalizacji). */
 export function ExportDialog({ ids, onClose, say, initialSize, photos }: { ids: number[]; onClose: () => void; say: (m: string, kind?: 'ok' | 'err') => void; initialSize?: number; photos?: Photo[] }) {
+  useEscape(onClose)
   const [size, setSize] = useState(initialSize ?? 1600)
   const [quality, setQuality] = useState(88)
   const [busy, setBusy] = useState(false)

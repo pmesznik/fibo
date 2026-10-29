@@ -755,6 +755,17 @@ pub async fn person_face_cards(app: tauri::AppHandle, id: i64) -> Result<Vec<Fac
     .map_err(|e| e.to_string())?
 }
 
+/// Dla każdego zdjęcia z twarzami: liczba twarzy i jakość najlepszej z nich (0-1). Używane m.in. do wyboru zdjęć do kalendarza.
+#[tauri::command]
+pub fn photo_face_stats(state: State<'_, AppState>) -> Result<Vec<(i64, i64, f64)>, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare("SELECT f.photo_id, COUNT(*), MAX(COALESCE(f.quality, 0.6)) FROM faces f JOIN photos ph ON ph.id = f.photo_id AND ph.hidden = 0 WHERE f.rejected = 0 GROUP BY f.photo_id")
+        .map_err(|e| e.to_string())?;
+    let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).map_err(|e| e.to_string())?.filter_map(Result::ok).collect();
+    Ok(rows)
+}
+
 /// Zatwierdza twarze („to na pewno ta osoba”): przestają być niepewne i stają się wzorcem dla grupowania.
 pub fn confirm_faces_core(conn: &Connection, ids: &[i64]) -> Result<usize, String> {
     let mut n = 0;

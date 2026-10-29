@@ -232,8 +232,8 @@ export function Collage({ photos, onClose, onSaved, say }: {
       </div>
 
       <button className="glass" aria-label="Zamknij kolaż" title="Zamknij (Esc)" onClick={onClose}
-        style={{ position: 'absolute', left: 12, top: 'calc(12px + var(--sat))', width: 46, height: 46, padding: 0, borderRadius: '50%', display: 'grid', placeItems: 'center' }}><X size={20} /></button>
-      <div className="glass" style={{ position: 'absolute', left: 70, top: 'calc(12px + var(--sat))', height: 46, padding: '0 18px', borderRadius: 'var(--r-lg)', display: 'flex', alignItems: 'center', gap: 8 }}>
+        style={{ position: 'absolute', left: 12, top: 'calc(12px + var(--sat))', width: 'var(--bar-h)', height: 'var(--bar-h)', padding: 0, borderRadius: '50%', display: 'grid', placeItems: 'center' }}><X size={20} /></button>
+      <div className="glass" style={{ position: 'absolute', left: 'calc(24px + var(--bar-h))', top: 'calc(12px + var(--sat))', height: 'var(--bar-h)', padding: '0 18px', borderRadius: 'var(--r-lg)', display: 'flex', alignItems: 'center', gap: 8 }}>
         <b>Kolaż</b><span style={{ color: 'var(--muted)', fontSize: 13 }}>{items.length} {pl(items.length, 'zdjęcie', 'zdjęcia', 'zdjęć')}{photos.length > MAX_PHOTOS ? ` (maks. ${MAX_PHOTOS})` : ''}</span>
       </div>
 

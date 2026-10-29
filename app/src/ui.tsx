@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 
 const KEY = 'sec-open'
 const load = (): Record<string, boolean> => {
@@ -42,4 +42,14 @@ export function Chip({ on, off, onClick, children, label }: {
 export function Toast({ text, kind }: { text: string | null; kind?: 'ok' | 'err' }) {
   if (!text) return null
   return <div role="status" className={`toast ${kind ?? ''}`}>{text}</div>
+}
+
+/** Escape zamyka okno (jeden wspólny sposób we wszystkich oknach). `active` = false wyłącza nasłuch, gdy okno jest ukryte. */
+export function useEscape(onClose: () => void, active = true) {
+  useEffect(() => {
+    if (!active) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); onClose() } }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [onClose, active])
 }

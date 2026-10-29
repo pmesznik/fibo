@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useEscape } from './ui'
 import { X } from './FiboIcons'
 import { setDate, shiftDates, type Photo } from './api'
 
@@ -10,6 +11,7 @@ export function DateDialog({ photos, onClose, onDone, say }: {
   onDone: () => void
   say: (m: string, kind?: 'ok' | 'err') => void
 }) {
+  useEscape(onClose)
   const first = photos[0]
   const initial = (first?.taken ?? new Date((first?.modified ?? 0) * 1000).toISOString()).slice(0, 16).replace(/:/g, '-').replace(' ', 'T').replace(/^(\d{4}-\d{2}-\d{2})-(\d{2})-(\d{2})$/, '$1T$2:$3')
   const [mode, setMode] = useState<'set' | 'shift'>('shift')

@@ -7,6 +7,7 @@ import { ProgressDock, reportJob } from './ProgressDock'
 import { CreditsDialog } from './CreditsDialog'
 import { PersonFacesView } from './PersonFacesView'
 import { TimelineRail } from './TimelineRail'
+import { CalendarMaker } from './CalendarMaker'
 import { MoveFacesDialog } from './MergePeople'
 import { LocationDialog } from './LocationDialog'
 import { RenameDialog } from './RenameDialog'
@@ -29,7 +30,7 @@ import { Thumb } from './Thumb'
 import { Viewer } from './Viewer'
 import { Collage } from './Collage'
 import { Justified } from './Justified'
-import { Chip, Sec, Toast } from './ui'
+import { Chip, Sec, Toast, useEscape } from './ui'
 import {
   Images, FolderOpen, Users, MapPin, Heart, Star, Plus, Play, Maximize2, X,
   SlidersHorizontal, Search as SearchIcon, ImageUp, Ruler, LayoutDashboard, Check, ListChecks, Tag, CalendarDays, Copy, RefreshCw, Download, Save, Pencil, Trash2, Eye, EyeOff, ChevronLeft, Wand2, Info, RotateCw, RotateCcw,
@@ -172,6 +173,7 @@ export default function App() {
   const [dateIds, setDateIds] = useState<number[] | null>(null)
   const [renameIds, setRenameIds] = useState<number[] | null>(null)
   const [locIds, setLocIds] = useState<number[] | null>(null)
+  const [calOpen, setCalOpen] = useState(false)
   const [creditIds, setCreditIds] = useState<number[] | null>(null)
   const [exportIds, setExportIds] = useState<number[] | null>(null)
   const [exportSize, setExportSize] = useState<number | undefined>(undefined)
@@ -733,6 +735,7 @@ export default function App() {
   const openViewer = (id: number, autoplay = false, list?: Photo[]) => { if (inTauri && id >= 0) setViewer({ id, autoplay, list }) }
   // Widok osoby: domyślnie wycinki twarzy jak w Picasie (z potwierdzaniem niepewnych), a po przełączeniu zwykła siatka zdjęć.
   const [personFacesMode, setPersonFacesMode] = useState(true)
+  useEscape(() => setTogether(null), !!together)
   const faceView = mode === 'library' && person?.id !== undefined && personFacesMode
   const timelineAvailable = sections.length > 3 && sections[0].key !== 'all' && !faceView && (mode === 'library' || mode === 'favs')
   const railOn = timelineMode === 'rail' && timelineAvailable
@@ -949,6 +952,7 @@ export default function App() {
                 { icon: Play, label: 'Pokaz slajdów', fn: slideshow, on: false },
                 { icon: ListChecks, label: selectMode ? 'Zaznaczanie włączone' : 'Zaznaczanie wielu', fn: () => { setSelectMode((v) => !v); setDrawer(false) }, on: selectMode },
                 { icon: LayoutDashboard, label: chosen.length > 1 ? `Kolaż (${chosen.length})` : 'Kolaż', fn: () => { setDrawer(false); startCollage() }, on: false },
+                { icon: CalendarDays, label: 'Kalendarz', fn: () => { setDrawer(false); setCalOpen(true) }, on: false },
                 { icon: Copy, label: 'Duplikaty', fn: () => { setDrawer(false); setDupOpen(true) }, on: false },
                 { icon: RefreshCw, label: refreshing ? 'Odświeżanie…' : 'Odśwież dane zdjęć', fn: () => { setDrawer(false); refresh() }, on: false },
                 { icon: Download, label: updater.phase === 'checking' ? 'Sprawdzam…' : 'Sprawdź aktualizacje', fn: () => { setDrawer(false); updater.checkNow(true) }, on: false },
@@ -1582,6 +1586,7 @@ export default function App() {
         <MoveFacesDialog personId={person.id} personName={person.name} photoIds={moveFaces} say={say} onClose={() => setMoveFaces(null)}
           onDone={(ids) => { dropFromPerson(ids); setSel([]) }} />
       )}
+      {calOpen && <CalendarMaker photos={all} say={say} onClose={() => setCalOpen(false)} />}
       {creditIds && creditIds.length > 0 && <CreditsDialog photos={all.filter((p) => creditIds.includes(p.id))} say={say} onClose={() => setCreditIds(null)} onDone={reload} />}
       {cardOffer && (
         <div className="glass fixed left-3 z-[1550] flex flex-wrap items-center gap-3 p-3" style={{ bottom: 'calc(12px + var(--sab))', borderRadius: 'var(--r-lg)', maxWidth: 'min(92vw, 460px)' }} role="status">

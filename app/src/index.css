@@ -206,3 +206,22 @@ details.sec > .sec-body { padding:0 14px 14px; }
 .seg { display: flex; gap: 4px; padding: 4px; margin: 4px 0 12px; background: var(--tonal); border-radius: 99px; }
 .seg button { flex: 1; min-height: 34px; padding: 0 10px; border: 0; background: transparent; border-radius: 99px; font-size: 13px; color: var(--muted); }
 .seg button.on { background: var(--panel); color: var(--text); font-weight: 650; box-shadow: var(--elev-1); }
+
+/* Kalendarz ze zdjęć */
+.cal-grid { display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 900px) { .cal-grid { grid-template-columns: minmax(0, 1fr); } }
+.cal-side { position: sticky; top: 12px; }
+@media (max-width: 900px) { .cal-side { position: static; } }
+.cal-preview { display: block; width: auto; height: auto; max-width: 100%; max-height: min(66vh, 760px); }
+.cal-strip { display: flex; gap: 10px; overflow-x: auto; padding: 14px 4px 8px; margin-top: 6px; scroll-snap-type: x proximity; }
+.cal-mini { flex: none; display: flex; flex-direction: column; align-items: center; gap: 6px; min-height: 0; padding: 6px 6px 8px; border-radius: var(--r-md); border: 2px solid transparent; background: transparent; color: var(--muted); font-size: 12px; scroll-snap-align: center; }
+.cal-mini canvas { display: block; height: 118px; width: auto; border-radius: 3px; box-shadow: var(--elev-1); }
+.cal-mini.on { border-color: var(--accent); background: var(--tonal); color: var(--text); font-weight: 650; }
+#print-root { display: none; }
+@media print {
+  body > *:not(#print-root) { display: none !important; }
+  html, body { background: #fff !important; margin: 0 !important; }
+  #print-root { display: block !important; }
+  #print-root img { display: block; width: 100%; height: auto; break-after: page; page-break-after: always; }
+  #print-root img:last-child { break-after: auto; page-break-after: auto; }
+}

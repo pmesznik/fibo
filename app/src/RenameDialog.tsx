@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useEscape } from './ui'
 import { X } from './FiboIcons'
 import { renameBatch, type Photo } from './api'
 
@@ -14,6 +15,7 @@ export function RenameDialog({ photos, onClose, onDone, say }: {
   onDone: () => void
   say: (m: string, kind?: 'ok' | 'err') => void
 }) {
+  useEscape(onClose)
   const [prefix, setPrefix] = useState('')
   const [withDate, setWithDate] = useState(true)
   const [start, setStart] = useState(1)

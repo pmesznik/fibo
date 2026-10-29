@@ -6,6 +6,7 @@ import {
   renamePerson, setFacesEnabled, type FacesProgress, type FacesStatus, type MergeSuggestion, type Person,
 } from './api'
 import { PromptDialog } from './Dialogs'
+import { useEscape } from './ui'
 import { FaceImg } from './FaceImg'
 import { MergeDialog } from './MergePeople'
 
@@ -35,6 +36,7 @@ export function People({ say, ask, onOpenPerson, onChanged }: {
   const [overId, setOverId] = useState<number | null>(null)
   const [coverFor, setCoverFor] = useState<Person | null>(null)
   const [coverFaces, setCoverFaces] = useState<number[]>([])
+  useEscape(() => setCoverFor(null), !!coverFor)
 
   const refresh = useCallback(async () => {
     try {

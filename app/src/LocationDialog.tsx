@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useEscape } from './ui'
 import { Map as MapLibre, Marker } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { X, MapPin, MapPinOff } from './FiboIcons'
@@ -15,6 +16,7 @@ export function LocationDialog({ ids, initial, onClose, onSaved, say }: {
   onSaved: () => void
   say: (m: string, kind?: 'ok' | 'err') => void
 }) {
+  useEscape(onClose)
   const box = useRef<HTMLDivElement>(null)
   const markerRef = useRef<Marker | null>(null)
   const mapRef = useRef<MapLibre | null>(null)

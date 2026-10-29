@@ -473,9 +473,9 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
 
       {/* Górne elementy pływające */}
       <button id="viewerClose" className="glass" aria-label="Zamknij podgląd" title="Zamknij (Esc)" onClick={requestClose}
-        style={{ position: 'absolute', left: 12, top: 'calc(12px + var(--sat))', width: 46, height: 46, padding: 0, borderRadius: '50%', display: 'grid', placeItems: 'center' }}><X size={20} /></button>
+        style={{ position: 'absolute', left: 12, top: 'calc(12px + var(--sat))', width: 'var(--bar-h)', height: 'var(--bar-h)', padding: 0, borderRadius: '50%', display: 'grid', placeItems: 'center' }}><X size={20} /></button>
 
-      <div className="glass flex items-center gap-1" style={{ position: 'absolute', left: 70, top: 'calc(12px + var(--sat))', height: 46, padding: '0 8px 0 16px', borderRadius: 'var(--r-lg)', maxWidth: `calc(100% - ${sheet ? 480 : 140}px)` }}>
+      <div className="glass flex items-center gap-1" style={{ position: 'absolute', left: 'calc(24px + var(--bar-h))', top: 'calc(12px + var(--sat))', height: 'var(--bar-h)', padding: '0 8px 0 16px', borderRadius: 'var(--r-lg)', maxWidth: `calc(100% - ${sheet ? 480 : 140}px)` }}>
         <div className="min-w-0" style={{ marginRight: 8 }}>
           <div className="truncate" style={{ fontWeight: 600, fontSize: 14, lineHeight: 1.2 }}>{photo.name}</div>
           <div style={{ color: 'var(--muted)', fontSize: 11.5, lineHeight: 1.1 }}>{index + 1} / {photos.length}{dirty ? ' · zmieniono' : ''}</div>
@@ -510,9 +510,9 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
       {/* Panel edycji */}
       <aside className="sheet glass" aria-hidden={!sheet} inert={!sheet}
         style={{ transform: sheet ? 'none' : 'translateX(110%)', visibility: sheet ? 'visible' : 'hidden', transition: 'transform .32s var(--ease), visibility 0s linear ' + (sheet ? '0s' : '.32s') }}>
-        <div className="chips" style={{ padding: 12 }}>
+        <div className="seg" role="tablist" aria-label="Panel edycji" style={{ margin: '12px 12px 4px' }}>
           {([['basic', 'Podstawowe', Wand2], ['tune', 'Dostrajanie', Sliders], ['fx', 'Efekty', Sparkles], ['info', 'Info', Info]] as [Tab, string, typeof Wand2][]).map(([t, l, I]) => (
-            <Chip key={t} on={tab === t} onClick={() => setTab(t)}><I size={14} /> {l}</Chip>
+            <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? 'on' : ''} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5, padding: '0 6px', fontSize: 12.5 }} onClick={() => setTab(t)}><I size={13} /> {l}</button>
           ))}
         </div>
 

@@ -110,6 +110,8 @@ function respond(cmd: string, args: Record<string, unknown> = {}): unknown | Pro
     case 'photo_exif': return [['Aparat', 'Canon EOS R6'], ['Czas naświetlania', '1/250 s'], ['Przysłona', 'f/2.8'], ['ISO', '200'], ['Ogniskowa', '50 mm']]
     case 'has_original': return false
     case 'find_duplicates': return [{ kind: 'exact', ids: [1, 13] }, { kind: 'similar', ids: [4, 5, 22] }, { kind: 'exact', ids: [30, 31] }]
+    case 'photo_face_stats': return photos.filter((p) => p.id % 3 === 0).map((p) => [p.id, 1 + (p.id % 3), 0.8])
+    case 'save_calendar_pdf': return 'C:\\Zdjecia\\Kalendarz_2027.pdf'
     case 'get_sidecar_enabled': return true
     case 'get_skip_gif_png': return false
     case 'hidden_count': return 0

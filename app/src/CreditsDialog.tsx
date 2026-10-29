@@ -1,9 +1,11 @@
 import { useState } from 'react'
+import { useEscape } from './ui'
 import { X } from './FiboIcons'
 import { setCredits, type Photo } from './api'
 
 /** Autor i prawa autorskie wybranych zdjęć. Zapisują się w bibliotece i w plikach XMP obok zdjęć (pliki zdjęć zostają nietknięte). */
 export function CreditsDialog({ photos, onClose, onDone, say }: { photos: Photo[]; onClose: () => void; onDone: () => void; say: (m: string, kind?: 'ok' | 'err') => void }) {
+  useEscape(onClose)
   const [author, setAuthor] = useState(photos[0]?.author ?? '')
   const [copyright, setCopyright] = useState(photos[0]?.copyright ?? '')
   const [busy, setBusy] = useState(false)

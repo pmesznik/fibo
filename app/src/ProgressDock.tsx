@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { listen } from '@tauri-apps/api/event'
-import { Check, Copy, Download, Images, RefreshCw, RotateCw, Save, Users, Wand2, X } from './FiboIcons'
+import { CalendarDays, Check, Copy, Download, Images, RefreshCw, RotateCw, Save, Users, Wand2, X } from './FiboIcons'
 import { facesStop, inTauri, type FacesProgress } from './api'
 
-type Kind = 'scan' | 'faces' | 'dups' | 'backup' | 'colors' | 'rotate' | 'export' | 'gallery' | 'pdf' | 'gif' | 'import' | 'check' | 'refresh' | 'sidecar' | 'paste'
+type Kind = 'scan' | 'faces' | 'dups' | 'backup' | 'colors' | 'rotate' | 'export' | 'gallery' | 'pdf' | 'gif' | 'import' | 'check' | 'refresh' | 'sidecar' | 'paste' | 'calendar'
 type Job = {
   kind: Kind
   done: number
@@ -40,6 +40,7 @@ const META: Record<Kind, { title: string; unit: [string, string, string]; Icon: 
   refresh: { title: 'Odświeżanie danych zdjęć', unit: PHOTOS, Icon: RefreshCw },
   sidecar: { title: 'Zapis metadanych do plików XMP', unit: PHOTOS, Icon: Save },
   paste: { title: 'Wklejanie edycji do zdjęć', unit: PHOTOS, Icon: Wand2 },
+  calendar: { title: 'Tworzenie kalendarza', unit: ['strona', 'strony', 'stron'], Icon: CalendarDays },
 }
 
 /** Zadanie z interfejsu (np. wklejanie edycji do wielu zdjęć) zgłasza postęp do okna postępu tak samo jak zadania z programu. */

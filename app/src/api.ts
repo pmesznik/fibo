@@ -139,6 +139,12 @@ export const detectCards = () => invoke<string[]>('detect_cards')
 export const setCredits = (ids: number[], author: string, copyright: string) => invoke<number>('set_credits', { ids, author, copyright })
 export const indexColors = () => invoke<{ done: number }>('index_colors')
 
+/** Dla zdjęć z twarzami: [numer zdjęcia, liczba twarzy, jakość najlepszej twarzy]. */
+export const photoFaceStats = () => invoke<[number, number, number][]>('photo_face_stats')
+/** Zapisuje kalendarz jako PDF: `body` to strony JPEG w ramkach (liczba, potem długość i bajty każdej). Zwraca ścieżkę pliku. */
+export const saveCalendarPdf = (body: ArrayBuffer, dest: string, name: string, paper: string, landscape: boolean) =>
+  invoke<string>('save_calendar_pdf', body, { headers: { dest: encodeURIComponent(dest), name, size: paper, landscape: landscape ? '1' : '0' } })
+
 export const readImage = (id: number) => invoke<ArrayBuffer>('read_image', { id })
 
 /** Miniatura jako Blob (bajty przez IPC); wywołujący tworzy i zwalnia adres blob:. */
