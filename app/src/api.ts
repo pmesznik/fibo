@@ -22,7 +22,7 @@ export type Photo = {
   exif?: string | null
 }
 
-export type Album = { id: number; name: string; count: number }
+export type Album = { id: number; name: string; count: number; hidden: boolean }
 export type RescanReport = { added: number; removed: number; roots: number }
 export type MoveReport = { done: number; errors: string[] }
 
@@ -33,6 +33,7 @@ export const removeRoot = (path: string) => invoke('remove_root', { path })
 export const listAlbums = () => invoke<Album[]>('list_albums')
 export const createAlbum = (name: string) => invoke<Album>('create_album', { name })
 export const renameAlbum = (id: number, name: string) => invoke('rename_album', { id, name })
+export const setAlbumHidden = (id: number, hidden: boolean) => invoke('set_album_hidden', { id, hidden })
 export const deleteAlbum = (id: number) => invoke('delete_album', { id })
 export const addToAlbum = (albumId: number, ids: number[]) => invoke('add_to_album', { albumId, ids })
 export const removeFromAlbum = (albumId: number, ids: number[]) => invoke('remove_from_album', { albumId, ids })
@@ -74,6 +75,8 @@ export const setProps = (kind: string, key: string, description: string, place: 
 export const readAudio = (path: string) => invoke<ArrayBuffer>('read_audio', { path })
 export type Watermark = { path: string; position: string; sizePct: number; opacity: number }
 /** Pokazuje plik lub folder w Eksploratorze Windows (zaznacza go w oknie folderu). */
+export const openPhotoExternal = (id: number) => invoke('open_photo_external', { id })
+export const setWallpaper = (id: number) => invoke('set_wallpaper', { id })
 export const revealInExplorer = (path: string) => revealItemInDir(path)
 export const listLocked = () => invoke<string[]>('list_locked')
 export const setFolderLocked = (path: string, locked: boolean) => invoke('set_folder_locked', { path, locked })

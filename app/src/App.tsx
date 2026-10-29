@@ -14,8 +14,8 @@ import { Duplicates } from './Duplicates'
 import { UpdateDialog, useUpdater } from './Updater'
 import { exportSidecars, getSidecarEnabled, importSidecars, setSidecarEnabled } from './api'
 import {
-  addToAlbum, createAlbum, deleteAlbum, listAlbums, listRoots, movePhotos, removeFromAlbum, removeRoot,
-  renameAlbum, renamePhoto, rescanRoots, trashPhotos, listSmart, saveSmart, deleteSmart, type SmartAlbum, listLocked, setFolderLocked, revealInExplorer, listPeople, listProps, renameFolder, type Prop, type Person, personPhotos, importPhotos, backupLibrary, restoreLibrary, pickFile, facesStart, facesStatus, hidePhotos, hiddenCount, restoreHidden, type Album,
+  addToAlbum, createAlbum, deleteAlbum, setAlbumHidden, listAlbums, listRoots, movePhotos, removeFromAlbum, removeRoot,
+  renameAlbum, renamePhoto, rescanRoots, trashPhotos, listSmart, saveSmart, deleteSmart, type SmartAlbum, listLocked, setFolderLocked, revealInExplorer, openPhotoExternal, setWallpaper, findDuplicates, listPeople, listProps, renameFolder, type Prop, type Person, personPhotos, importPhotos, backupLibrary, restoreLibrary, pickFile, facesStart, facesStatus, hidePhotos, hiddenCount, restoreHidden, type Album,
 } from './api'
 import { AlbumPicker, PromptDialog } from './Dialogs'
 import { addTag, deleteTag, inTauri, listPhotos, pickFolder, refreshLibrary, removeTag, scanFolder, setFavorite, setRating, type Photo } from './api'
@@ -68,7 +68,9 @@ const dirOf = (path: string) => path.replace(/[\\/][^\\/]*$/, '')
 
 export default function App() {
   const [mode, setMode] = useState<Mode>('library')
-  const [size, setSize] = useState(200)
+  // Wielkość miniatur jest zapamiętywana między uruchomieniami.
+  const [size, setSizeState] = useState(() => { try { const v = +(localStorage.getItem('thumb-size') ?? ''); return v >= 120 && v <= 360 ? v : 200 } catch { return 200 } })
+  const setSize = (v: number) => { setSizeState(v); try { localStorage.setItem('thumb-size', String(v)) } catch { /* brak pamięci */ } }
   const [sel, setSel] = useState<number[]>([])
   const [anchor, setAnchor] = useState<number | null>(null)
   const [selectMode, setSelectMode] = useState(false)
@@ -278,7 +280,21 @@ export default function App() {
   }
 
   useEffect(() => { setTray((t) => { const ids = new Set(all.map((p) => p.id)); const n = t.filter((i) => ids.has(i)); return n.length === t.length ? t : n }) }, [all])
-  const albumNames = useMemo(() => new Map(albums.map((a) => [a.id, a.name] as [number, string])), [albums])
+  // Ukryte albumy nie pojawiają się na listach, w wyborze albumu ani w szukaniu.
+  const visibleAlbums = useMemo(() => albums.filter((a) => !a.hidden), [albums])
+  const hiddenAlbums = useMemo(() => albums.filter((a) => a.hidden), [albums])
+  const albumNames = useMemo(() => new Map(visibleAlbums.map((a) => [a.id, a.name] as [number, string])), [visibleAlbums])
+  const [showHiddenAlbums, setShowHiddenAlbums] = useState(false)
+  // Albumy od najnowszego: wg daty najnowszego zdjęcia, puste na końcu.
+  const albumsNewestFirst = useMemo(() => {
+    const newest = new Map<number, string>()
+    for (const p of all) for (const a of p.albums) { const w = whenOf(p); if (w > (newest.get(a) ?? '')) newest.set(a, w) }
+    return [...(showHiddenAlbums ? albums : visibleAlbums)].sort((a, b) => (newest.get(b.id) ?? '').localeCompare(newest.get(a.id) ?? '') || a.name.localeCompare(b.name, 'pl'))
+  }, [all, albums, visibleAlbums, showHiddenAlbums])
+  const toggleAlbumHidden = async (a: Album) => {
+    try { await setAlbumHidden(a.id, !a.hidden); await reloadAlbums(); say(a.hidden ? `Album „${a.name}” znów jest widoczny` : `Ukryto album „${a.name}” (nic nie skasowano; przywrócisz go przyciskiem „Pokaż ukryte albumy”)`, 'ok') }
+    catch (e) { say(`Błąd: ${e}`, 'err') }
+  }
   const onlyFav = mode === 'favs'
   const photos = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -340,6 +356,23 @@ export default function App() {
   }, [photos, sort, group])
   const years = useMemo(() => [...new Set(sections.map((s) => s.year))].filter(Boolean), [sections])
   const [timelineIdx, setTimelineIdx] = useState(0)
+  // Oś czasu podąża za przewijaniem: aktywna jest ostatnia sekcja, której górna krawędź minęła nagłówek.
+  const scrollTick = useRef(0)
+  const syncTimeline = () => {
+    if (scrollTick.current) return
+    scrollTick.current = requestAnimationFrame(() => {
+      scrollTick.current = 0
+      if (sections.length < 2 || sections[0].key === 'all') return
+      const edge = 150
+      let idx = 0
+      for (let i = 0; i < sections.length; i++) {
+        const el = document.getElementById(`g-${sections[i].key}`)
+        if (!el) continue
+        if (el.getBoundingClientRect().top <= edge) idx = i; else break
+      }
+      setTimelineIdx((c) => (c === idx ? c : idx))
+    })
+  }
   const jumpToYear = (y: string) => document.getElementById(`g-${sections.find((s) => s.year === y)?.key}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 
   const allTags = useMemo<TagCount[]>(() => {
@@ -904,7 +937,7 @@ export default function App() {
         </div>
       </aside>
 
-      <main className="h-full overflow-y-auto" style={{ padding: 'calc(82px + var(--sat)) 20px 100px' }}>
+      <main className="h-full overflow-y-auto" onScroll={syncTimeline} style={{ padding: 'calc(82px + var(--sat)) 20px 100px' }}>
         {(mode === 'library' || mode === 'favs') && (
           <>
             <div style={{ marginBottom: 14 }}>
@@ -927,15 +960,6 @@ export default function App() {
                   {years.map((y) => <Chip key={y} onClick={() => jumpToYear(y)}>{y}</Chip>)}
                 </div>
               )}
-              {sections.length > 3 && sections[0].key !== 'all' && (
-                <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10 }} role="group" aria-label="Oś czasu">
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--muted)', fontSize: 13 }}><CalendarDays size={15} /> Oś czasu</span>
-                  <input type="range" aria-label="Oś czasu: przesuń, aby przejść do miesiąca lub roku" min={0} max={sections.length - 1} step={1}
-                    value={timelineIdx} style={{ flex: 1, maxWidth: 420, direction: 'rtl' }}
-                    onChange={(e) => { const i = +e.target.value; setTimelineIdx(i); document.getElementById(`g-${sections[i].key}`)?.scrollIntoView({ block: 'start' }) }} />
-                  <span style={{ minWidth: 90, fontSize: 13, fontWeight: 600 }}>{sections[Math.min(timelineIdx, sections.length - 1)]?.title}</span>
-                </div>
-              )}
               {(query || folder || albumId !== null || person || trayView || minStars > 0 || dateFrom || dateTo || missing || activeTags.length > 0) && (
                 <div className="chips" style={{ marginTop: 10 }}>
                   {activeTags.map((t) => <Chip key={t} on onClick={() => toggleTagFilter(t)} label={`Usuń filtr tagu ${t}`}><Tag size={13} /> {t} <X size={13} /></Chip>)}
@@ -952,6 +976,16 @@ export default function App() {
                 </div>
               )}
             </div>
+
+            {sections.length > 3 && sections[0].key !== 'all' && (
+              <div style={{ position: 'sticky', top: 'calc(70px + var(--sat))', zIndex: 5, margin: '-6px -20px 14px', padding: '8px 20px', background: 'var(--glass)', backdropFilter: 'blur(12px)', display: 'flex', alignItems: 'center', gap: 10 }} role="group" aria-label="Oś czasu">
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--muted)', fontSize: 13 }}><CalendarDays size={15} /> Oś czasu</span>
+                <input type="range" aria-label="Oś czasu: przesuń, aby przejść do miesiąca lub roku" min={0} max={sections.length - 1} step={1}
+                  value={Math.min(timelineIdx, sections.length - 1)} style={{ flex: 1, maxWidth: 420, direction: 'rtl' }}
+                  onChange={(e) => { const i = +e.target.value; setTimelineIdx(i); document.getElementById(`g-${sections[i].key}`)?.scrollIntoView({ block: 'start' }) }} />
+                <span style={{ minWidth: 90, fontSize: 13, fontWeight: 600 }}>{sections[Math.min(timelineIdx, sections.length - 1)]?.title}</span>
+              </div>
+            )}
 
             {photos.length === 0 && (
               <div className="empty" style={{ height: '50vh' }}>
@@ -992,27 +1026,29 @@ export default function App() {
               <h2 style={{ margin: '0 0 12px', font: '650 18px/1.2 system-ui', display: 'flex', alignItems: 'center', gap: 12 }}>
                 Moje albumy
                 <button className="chip" onClick={() => { setSel([]); newAlbum(false) }}><Plus size={14} /> Nowy album</button>
+                {hiddenAlbums.length > 0 && <button className="chip" onClick={() => setShowHiddenAlbums((v) => !v)}>{showHiddenAlbums ? <EyeOff size={14} /> : <Eye size={14} />} {showHiddenAlbums ? 'Schowaj ukryte albumy' : `Pokaż ukryte albumy (${hiddenAlbums.length})`}</button>}
               </h2>
-              {albums.length === 0 ? (
+              {albumsNewestFirst.length === 0 ? (
                 <p style={{ margin: 0, color: 'var(--muted)', fontSize: 14 }}>
                   Nie masz jeszcze własnych albumów. Załóż album przyciskiem powyżej albo zaznacz zdjęcia, kliknij prawym przyciskiem i wybierz „Dodaj do albumu…”.
                 </p>
               ) : (
                 <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${size + 40}px, 1fr))` }}>
-                  {albums.map((a) => {
+                  {albumsNewestFirst.map((a) => {
                     const cover = all.find((p) => p.albums.includes(a.id))
                     return (
-                      <div key={a.id}>
+                      <div key={a.id} style={a.hidden ? { opacity: 0.55 } : undefined}>
                         <button className="bare block w-full text-left" aria-label={`Album ${a.name}, ${a.count} zdjęć`} onClick={() => { setAlbumId(a.id); setFolder(null); setMode('library') }}>
                           <div className="relative aspect-[4/3] overflow-hidden" style={{ borderRadius: 'var(--r-card)', boxShadow: 'var(--elev-1)', background: 'var(--tonal)' }}>
                             {cover ? <Thumb photo={cover} /> : <div className="empty" style={{ fontSize: 13 }}>Pusty album</div>}
                           </div>
-                          <div className="mt-2 truncate" style={{ fontWeight: 600 }}>{a.name}</div>
+                          <div className="mt-2 truncate" style={{ fontWeight: 600 }}>{a.hidden && <EyeOff size={13} style={{ marginRight: 5, verticalAlign: '-2px' }} />}{a.name}</div>
                           <div style={{ color: 'var(--muted)', fontSize: 13 }}>{a.count} {pl(a.count, 'zdjęcie', 'zdjęcia', 'zdjęć')}</div>
                         </button>
                         <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
                           <button className="ico" style={{ minWidth: 40, minHeight: 36 }} aria-label={`Właściwości albumu ${a.name}`} title="Właściwości: opis, miejsce, data" onClick={() => setPropsFor({ kind: 'album', id: String(a.id), title: a.name })}><Info size={16} /></button>
                           <button className="ico" style={{ minWidth: 40, minHeight: 36 }} aria-label={`Zmień nazwę albumu ${a.name}`} title="Zmień nazwę" onClick={() => renameAlbumPrompt(a)}><Pencil size={16} /></button>
+                          <button className="ico" style={{ minWidth: 40, minHeight: 36 }} aria-label={a.hidden ? `Pokaż album ${a.name}` : `Ukryj album ${a.name}`} title={a.hidden ? 'Przywróć widoczność albumu' : 'Ukryj album (nic nie jest kasowane)'} onClick={() => toggleAlbumHidden(a)}>{a.hidden ? <Eye size={16} /> : <EyeOff size={16} />}</button>
                           <button className="ico" style={{ minWidth: 40, minHeight: 36 }} aria-label={`Usuń album ${a.name}`} title="Usuń album (zdjęcia zostają)" onClick={() => deleteAlbumAsk(a)}><Trash2 size={16} /></button>
                         </div>
                       </div>
@@ -1045,7 +1081,8 @@ export default function App() {
                 <h2 style={{ margin: '0 0 12px', font: '650 18px/1.2 system-ui' }}>{g.year}</h2>
                 <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${size + 40}px, 1fr))` }}>
                   {g.items.map(([dir, list, newest]) => (
-                    <button key={dir} className="bare text-left" onClick={() => { setFolder(dir); setMode('library') }}>
+                    <div key={dir}>
+                    <button className="bare block w-full text-left" onClick={() => { setFolder(dir); setMode('library') }}>
                       <div className="relative aspect-[4/3] overflow-hidden" style={{ borderRadius: 'var(--r-card)', boxShadow: 'var(--elev-1)' }}>
                         <Thumb photo={list[0]} />
                       </div>
@@ -1054,6 +1091,8 @@ export default function App() {
                         {newest.slice(0, 10).split('-').reverse().join('.')} · {list.length} {pl(list.length, 'zdjęcie', 'zdjęcia', 'zdjęć')}
                       </div>
                     </button>
+                    <button className="ico" style={{ minWidth: 40, minHeight: 36, marginTop: 4 }} aria-label={`Ukryj folder ${folderName(dir)}`} title="Ukryj folder w FIBO (pliki zostają, przywrócisz w menu)" onClick={() => askHide(list.map((p) => p.id), `z folderu „${folderName(dir)}”`)}><EyeOff size={16} /></button>
+                    </div>
                   ))}
                 </div>
               </section>
@@ -1188,6 +1227,20 @@ export default function App() {
             <button className="text menu-item" role="menuitem" onClick={() => moveSelected(false)}><ImageUp size={18} /> Przenieś do folderu…</button>
             <button className="text menu-item" role="menuitem" onClick={() => moveSelected(true)}><Copy size={18} /> Kopiuj do folderu…</button>
             {sel.length === 1 && <button className="text menu-item" role="menuitem" onClick={async () => { setMenu(null); const p = all.find((x) => x.id === sel[0]); if (p) { try { await revealInExplorer(p.path) } catch (e) { say(`Nie udało się otworzyć Eksploratora: ${e}`, 'err') } } }}><FolderOpen size={18} /> Pokaż w Eksploratorze</button>}
+            {sel.length === 1 && sel[0] >= 0 && <button className="text menu-item" role="menuitem" onClick={async () => { setMenu(null); try { await openPhotoExternal(sel[0]) } catch (e) { say(`Nie udało się otworzyć w programie: ${e}`, 'err') } }}><ImageUp size={18} /> Otwórz w domyślnym programie</button>}
+            {sel.length === 1 && sel[0] >= 0 && <button className="text menu-item" role="menuitem" onClick={async () => { setMenu(null); try { await setWallpaper(sel[0]); say('Ustawiono tapetę pulpitu', 'ok') } catch (e) { say(`${e}`, 'err') } }}><ImageUp size={18} /> Ustaw jako tapetę</button>}
+            {sel.length === 1 && sel[0] >= 0 && <button className="text menu-item" role="menuitem" onClick={async () => {
+              setMenu(null)
+              const id = sel[0]
+              say('Szukam podobnych zdjęć… (za pierwszym razem może to chwilę potrwać)')
+              try {
+                const groups = await findDuplicates(8)
+                const ids = new Set(groups.filter((g) => g.ids.includes(id)).flatMap((g) => g.ids))
+                const found = all.filter((p) => ids.has(p.id)).map((p) => p.id)
+                if (found.length < 2) say('Nie znaleziono podobnych zdjęć', 'ok')
+                else { setSel(found); say(`Zaznaczono ${found.length} podobnych zdjęć (z wybranym)`, 'ok') }
+              } catch (e) { say(`Błąd: ${e}`, 'err') }
+            }}><Copy size={18} /> Zaznacz podobne</button>}
             <button className="text menu-item" role="menuitem" onClick={() => { setMenu(null); setDateIds(realIds()) }}><CalendarDays size={18} /> Zmień datę…</button>
             <button className="text menu-item" role="menuitem" onClick={pasteEditSelected}><Wand2 size={18} /> Wklej edycję do zaznaczonych…</button>
             <button className="text menu-item" role="menuitem" onClick={() => { setMenu(null); setLocIds(realIds()) }}><MapPin size={18} /> Ustaw lokalizację…</button>
@@ -1202,7 +1255,7 @@ export default function App() {
       )}
 
       {picker && sel.length > 0 && (
-        <AlbumPicker albums={albums} count={realIds().length} onPick={pickAlbum} onClose={() => setPicker(false)}
+        <AlbumPicker albums={visibleAlbums} count={realIds().length} onPick={pickAlbum} onClose={() => setPicker(false)}
           onCreate={() => { setPicker(false); newAlbum(true) }} />
       )}
       {tray.length > 0 && (

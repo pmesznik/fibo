@@ -41,6 +41,17 @@ export function ExportDialog({ ids, onClose, say }: { ids: number[]; onClose: ()
     } catch (e) { say(`Błąd eksportu: ${e}`, 'err') } finally { setBusy(false) }
   }
 
+  /** Kopie bez metadanych (EXIF, GPS, aparat): oryginalny rozmiar i najwyższa jakość, bez znaku wodnego. */
+  const runStrip = async () => {
+    try {
+      const dir = await pickFolder('Wybierz folder na kopie bez metadanych')
+      if (!dir) return
+      setBusy(true)
+      const r = await exportPhotos(ids, dir, 0, 98, null)
+      say(r.errors.length ? `Kopie bez metadanych: ${r.done}, błędy: ${r.errors.length} (${r.errors[0]})` : `Zapisano ${r.done} kopii bez metadanych i lokalizacji (oryginały nietknięte)`, r.errors.length ? 'err' : 'ok')
+    } catch (e) { say(`Błąd: ${e}`, 'err') } finally { setBusy(false) }
+  }
+
   /** Galeria HTML: strona offline (index.html, zdjęcia i miniatury) do otwarcia w przeglądarce, wysłania znajomym lub wgrania na serwer. */
   const runGallery = async () => {
     try {
@@ -125,6 +136,9 @@ export function ExportDialog({ ids, onClose, say }: { ids: number[]; onClose: ()
           <button className="primary" style={{ marginTop: 16 }} disabled={busy} onClick={run}>
             <span className="inline-flex items-center gap-2"><Download size={17} /> {busy ? 'Eksportuję…' : 'Wybierz folder i eksportuj'}</span>
           </button>
+          <h3 style={{ margin: '18px 0 4px', fontSize: 14 }}>Kopie bez metadanych</h3>
+          <p style={{ margin: '0 0 6px', color: 'var(--muted)', fontSize: 13 }}>Pełny rozmiar i najwyższa jakość, ale bez EXIF, aparatu i lokalizacji GPS. Dobre przed opublikowaniem zdjęć.</p>
+          <button className="wide" disabled={busy} onClick={runStrip}>Zapisz kopie bez metadanych</button>
           <h3 style={{ margin: '18px 0 4px', fontSize: 14 }}>Albo galeria HTML</h3>
           <p style={{ margin: '0 0 6px', color: 'var(--muted)', fontSize: 13 }}>Strona do otwarcia w przeglądarce, z miniaturami, powiększeniem i opisami zdjęć. Działa offline i niczego nie ładuje z internetu.</p>
           <label htmlFor="gal-title" style={{ marginTop: 0 }}>Tytuł galerii (nazwa folderu)</label>

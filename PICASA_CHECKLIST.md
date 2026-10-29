@@ -10,7 +10,7 @@ Lista powstała z pamięci o Picasie 3, z przeglądu FIBO i z oficjalnego podrę
 ## 1. Biblioteka i porządkowanie
 - [x] Foldery z obserwowaniem (nowe zdjęcia dodają się same)
 - [x] Widok według lat i dat, siatka z oryginalnymi proporcjami
-- [x] Albumy (własne, dodawanie i usuwanie zdjęć)
+- [x] Albumy (własne, dodawanie i usuwanie zdjęć), ukrywanie i przywracanie albumów, albumy od najnowszego
 - [x] Oceny gwiazdkami, ulubione
 - [x] Tagi i wyszukiwanie po tagach, wczytywanie tagów i ocen z plików (XMP, EXIF, IPTC)
 - [x] Wyszukiwanie duplikatów (identyczne i podobne)
@@ -25,7 +25,7 @@ Lista powstała z pamięci o Picasie 3, z przeglądu FIBO i z oficjalnego podrę
 - [x] **Albumy inteligentne** (zapisane filtry, np. „5 gwiazdek z 2023”). P3 T M Gotowe (filtry: szukanie, ocena, daty, braki, tagi).
 - [ ] **Wyszukiwanie po kolorze** dominującym. P4 T M
 - [x] **Wyszukiwanie po danych aparatu** (model, obiektyw, ISO, przysłona, czas) i filtr „aparat”. P2 T M Gotowe w polu szukania (bez osobnego filtra „aparat”); starsze zdjęcia po „Odśwież dane zdjęć”.
-- [ ] **Zaznaczanie podobnych** do wybranego zdjęcia. P4 T M
+- [x] **Zaznaczanie podobnych** do wybranego zdjęcia. P4 T M Gotowe: menu zdjęcia → „Zaznacz podobne” (ten sam mechanizm co szukanie duplikatów).
 - [x] **Statystyki biblioteki** (liczba zdjęć, rozmiar, zdjęcia na rok, najczęstsze aparaty). P4 T S Gotowe (menu, szybkie akcje).
 - [x] **Blokowanie folderu** przed zmianami z poziomu FIBO (ochrona przed przypadkowym usunięciem). P3 T S Gotowe (menu → Foldery); ochrona działa w programie, nie w systemie plików.
 - [x] **Skróty klawiszowe w bibliotece** (np. 1 do 5 oceny, F ulubione, Del ukrywanie) i ich lista pod F1. P2 T S Gotowe: 0-5, F, ? lub F1 (Del nie dodany, bo usuwanie ma potwierdzenia).
@@ -80,8 +80,8 @@ Lista powstała z pamięci o Picasie 3, z przeglądu FIBO i z oficjalnego podrę
 - [x] **Drukowanie** (układy: pojedyncze, 2x2, arkusz kontaktowy, rozmiar papieru). P2 T M Częściowo przez PDF: układy i arkusz gotowe, własnego okna drukowania nie ma (drukujesz plik PDF).
 - [x] **Wysyłka e-mailem**: tylko przygotowanie pomniejszonych kopii do załączenia (bez wysyłania przez FIBO). P3 T S Załatwia to eksport pomniejszony do 1024 px (bez EXIF).
 - [ ] **Kopia zapasowa zdjęć na dysk zewnętrzny** (kopiowanie nowych i zmienionych plików, bez usuwania). P2 T L
-- [ ] **Ustaw jako tapetę** pulpitu. P4 T S
-- [ ] **Otwórz w zewnętrznym programie** (np. Photoshop, Paint) i wczytaj zmiany. P3 T S
+- [x] **Ustaw jako tapetę** pulpitu. P4 T S Gotowe: menu zdjęcia (JPG, PNG, BMP).
+- [x] **Otwórz w zewnętrznym programie** (np. Photoshop, Paint) i wczytaj zmiany. P3 T S Gotowe: menu zdjęcia → „Otwórz w domyślnym programie” (wczytanie zmian po odświeżeniu biblioteki).
 - [ ] 🚫 Albumy internetowe i synchronizacja z chmurą (Picasa Web, Google Photos)
 - [ ] 🚫 Zamawianie odbitek online
 
@@ -100,14 +100,14 @@ Lista powstała z pamięci o Picasie 3, z przeglądu FIBO i z oficjalnego podrę
 - [x] Zapis tagów i ocen do plików XMP, odczyt z EXIF XP i IPTC
 - [x] **Pełny podgląd EXIF** (przysłona, czas, ISO, ogniskowa, obiektyw, flesz) i kopiowanie wartości. P2 T S Gotowe w panelu Informacje (kopiowanie wartości nie zrobione).
 - [ ] **Edycja EXIF/IPTC**: autor, prawa autorskie, opis (w XMP, bez ruszania pliku). P3 T M
-- [ ] **Usuwanie metadanych** z wybranych zdjęć (kopie bez GPS) jako osobna akcja. P3 T S
+- [x] **Usuwanie metadanych** z wybranych zdjęć (kopie bez GPS) jako osobna akcja. P3 T S Gotowe: Eksport → „Kopie bez metadanych” (pełny rozmiar, jakość 98).
 - [x] **Wykrywanie uszkodzonych plików** i raport. P4 T S Gotowe (menu → Sprawdź pliki).
 
 ## 8. Wygląd i wygoda
 - [x] Motyw jasny, ciemny i systemowy, nowoczesne ikony, wysoki kontrast
 - [x] Automatyczne aktualizacje z podpisem, instalator z polskimi tekstami
 - [ ] **Wersja angielska interfejsu** (przełącznik języka). P3 T L
-- [ ] **Suwak wielkości miniatur** z zapamiętaniem oraz tryby wyświetlania (siatka, lista z danymi). P3 T S
+- [x] **Suwak wielkości miniatur** z zapamiętaniem oraz tryby wyświetlania (siatka, lista z danymi). P3 T S Częściowo: suwak z zapamiętaniem gotowy, widoku listy nie ma.
 - [x] **Pasek stanu z liczbą zaznaczonych i rozmiarem**. P4 T S Gotowe pod tytułem widoku.
 - [ ] **Przeciąganie zdjęć na albumy** w menu bocznym. P3 T M
 - [ ] **Przeciągnij i upuść plików z Eksploratora** do FIBO (dodanie folderu). P3 T M, uwaga: wymaga ponownego włączenia obsługi upuszczania w oknie

@@ -104,6 +104,8 @@ fn open_db(path: &Path) -> rusqlite::Result<Connection> {
     }
     // Migracja: zdjęcia ukryte w bibliotece (pliki zostają na dysku, skan ich nie dodaje ponownie).
     let _ = conn.execute("ALTER TABLE photos ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0", []);
+    // Migracja: albumy ukryte (znikają z list, nic nie jest kasowane; można je przywrócić).
+    let _ = conn.execute("ALTER TABLE albums ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0", []);
     people::init_schema(&conn)?;
     locks::init_schema(&conn)?;
     // Albumy inteligentne: nazwa i zapisane filtry (JSON); zawartość liczy się na bieżąco z biblioteki.
@@ -1113,6 +1115,7 @@ struct Album {
     id: i64,
     name: String,
     count: i64,
+    hidden: bool,
 }
 
 fn clean_album_name(s: &str) -> Result<String, String> {
@@ -1134,10 +1137,10 @@ fn album_error(e: rusqlite::Error) -> String {
 fn list_albums(state: State<'_, AppState>) -> Result<Vec<Album>, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     let mut stmt = conn
-        .prepare("SELECT a.id, a.name, (SELECT COUNT(*) FROM album_photos WHERE album_id = a.id) FROM albums a ORDER BY a.name COLLATE NOCASE")
+        .prepare("SELECT a.id, a.name, (SELECT COUNT(*) FROM album_photos WHERE album_id = a.id), a.hidden FROM albums a ORDER BY a.name COLLATE NOCASE")
         .map_err(|e| e.to_string())?;
     let rows = stmt
-        .query_map([], |r| Ok(Album { id: r.get(0)?, name: r.get(1)?, count: r.get(2)? }))
+        .query_map([], |r| Ok(Album { id: r.get(0)?, name: r.get(1)?, count: r.get(2)?, hidden: r.get::<_, i64>(3)? != 0 }))
         .map_err(|e| e.to_string())?
         .filter_map(Result::ok)
         .collect();
@@ -1149,7 +1152,7 @@ fn create_album(state: State<'_, AppState>, name: String) -> Result<Album, Strin
     let name = clean_album_name(&name)?;
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     conn.execute("INSERT INTO albums (name) VALUES (?1)", [&name]).map_err(album_error)?;
-    Ok(Album { id: conn.last_insert_rowid(), name, count: 0 })
+    Ok(Album { id: conn.last_insert_rowid(), name, count: 0, hidden: false })
 }
 
 #[tauri::command]
@@ -1157,6 +1160,55 @@ fn rename_album(state: State<'_, AppState>, id: i64, name: String) -> Result<(),
     let name = clean_album_name(&name)?;
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     conn.execute("UPDATE albums SET name = ?2 WHERE id = ?1", params![id, name]).map_err(album_error)?;
+    Ok(())
+}
+
+/// Otwiera zdjęcie znane FIBO w domyślnym programie Windows (np. do edycji w Paincie); ścieżka pochodzi z biblioteki, nie od interfejsu.
+#[tauri::command]
+fn open_photo_external(state: State<'_, AppState>, id: i64) -> Result<(), String> {
+    let (path, _, _) = photo_path(&state, id)?;
+    if !Path::new(&path).is_file() {
+        return Err("Pliku nie ma już na dysku".into());
+    }
+    tauri_plugin_opener::open_path(&path, None::<&str>).map_err(|e| e.to_string())
+}
+
+/// Ustawia zdjęcie z biblioteki jako tapetę pulpitu (JPG, PNG lub BMP; plik zostaje na swoim miejscu).
+#[tauri::command]
+fn set_wallpaper(state: State<'_, AppState>, id: i64) -> Result<(), String> {
+    let (path, _, _) = photo_path(&state, id)?;
+    let p = Path::new(&path);
+    if !p.is_file() {
+        return Err("Pliku nie ma już na dysku".into());
+    }
+    let ext = p.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+    if !["jpg", "jpeg", "png", "bmp"].contains(&ext.as_str()) {
+        return Err("Na tapetę nadają się tylko pliki JPG, PNG i BMP".into());
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        use windows_sys::Win32::UI::WindowsAndMessaging::{SystemParametersInfoW, SPIF_SENDCHANGE, SPIF_UPDATEINIFILE, SPI_SETDESKWALLPAPER};
+        let mut wide: Vec<u16> = p.as_os_str().encode_wide().collect();
+        wide.push(0);
+        // SAFETY: wskaźnik wskazuje na zakończony zerem napis, który żyje przez całe wywołanie.
+        let ok = unsafe { SystemParametersInfoW(SPI_SETDESKWALLPAPER, 0, wide.as_mut_ptr() as *mut _, SPIF_UPDATEINIFILE | SPIF_SENDCHANGE) };
+        if ok == 0 {
+            return Err("Windows odmówił zmiany tapety".into());
+        }
+        Ok(())
+    }
+    #[cfg(not(windows))]
+    {
+        Err("Tapeta jest obsługiwana tylko w Windows".into())
+    }
+}
+
+/// Ukrywa album na listach albo go przywraca; nic nie jest usuwane.
+#[tauri::command]
+fn set_album_hidden(state: State<'_, AppState>, id: i64, hidden: bool) -> Result<(), String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    conn.execute("UPDATE albums SET hidden = ?2 WHERE id = ?1", params![id, hidden as i64]).map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -3052,7 +3104,7 @@ fn main() {
             app.manage(AppState { db: Mutex::new(db), thumbs, sidecar: AtomicBool::new(sidecar) });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![list_roots, remove_root, rescan_roots, list_albums, create_album, rename_album, delete_album, add_to_album, remove_from_album, rename_photo, move_photos, get_sidecar_enabled, set_sidecar_enabled, export_sidecars, import_sidecars, scan_folder, refresh_library, find_duplicates, trash_photos, export_photos, set_location, rename_batch, import_photos, gallery::export_gallery, gallery::export_gpx, gallery::export_gif, pdf::export_pdf, check::check_files, list_smart, save_smart, delete_smart, gallery::rename_folder, locks::list_locked, locks::set_folder_locked, set_date, shift_dates, set_caption, photo_exif, list_props, set_props, people::photo_people, people::reassign_person_faces, backup::backup_library, backup::restore_library, hide_photos, hidden_count, restore_hidden, people::faces_status, people::set_faces_enabled, people::faces_start, people::faces_stop, people::faces_regroup, people::faces_reanalyze, people::faces_delete_all, people::list_people, people::person_photos, people::person_faces, people::set_person_cover, people::rename_person, people::merge_people, people::ignore_person, list_photos, thumbnail, thumbnail_data, people::face_crop, set_rating, set_favorite, add_tag, remove_tag, delete_tag, save_edit, save_collage, read_image, read_audio, has_original, restore_original])
+        .invoke_handler(tauri::generate_handler![list_roots, remove_root, rescan_roots, list_albums, create_album, rename_album, set_album_hidden, open_photo_external, set_wallpaper, delete_album, add_to_album, remove_from_album, rename_photo, move_photos, get_sidecar_enabled, set_sidecar_enabled, export_sidecars, import_sidecars, scan_folder, refresh_library, find_duplicates, trash_photos, export_photos, set_location, rename_batch, import_photos, gallery::export_gallery, gallery::export_gpx, gallery::export_gif, pdf::export_pdf, check::check_files, list_smart, save_smart, delete_smart, gallery::rename_folder, locks::list_locked, locks::set_folder_locked, set_date, shift_dates, set_caption, photo_exif, list_props, set_props, people::photo_people, people::reassign_person_faces, backup::backup_library, backup::restore_library, hide_photos, hidden_count, restore_hidden, people::faces_status, people::set_faces_enabled, people::faces_start, people::faces_stop, people::faces_regroup, people::faces_reanalyze, people::faces_delete_all, people::list_people, people::person_photos, people::person_faces, people::set_person_cover, people::rename_person, people::merge_people, people::ignore_person, list_photos, thumbnail, thumbnail_data, people::face_crop, set_rating, set_favorite, add_tag, remove_tag, delete_tag, save_edit, save_collage, read_image, read_audio, has_original, restore_original])
         .run(tauri::generate_context!())
         .expect("błąd uruchomienia aplikacji");
 }
