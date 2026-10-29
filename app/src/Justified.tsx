@@ -1,6 +1,20 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { Photo } from './api'
 
+/** Wiersz montowany dopiero w pobliżu ekranu; poza nim zostaje pusty o tej samej wysokości, więc tysiące zdjęć nie obciążają przeglądarki. */
+function LazyRow({ height, gap, children }: { height: number; gap: number; children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [near, setNear] = useState(false)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const io = new IntersectionObserver(([e]) => setNear(e.isIntersecting), { rootMargin: '1200px 0px' })
+    io.observe(el)
+    return () => io.disconnect()
+  }, [])
+  return <div ref={ref} style={{ display: 'flex', gap, height }}>{near ? children : null}</div>
+}
+
 /** Siatka wierszy o równej wysokości: każde zdjęcie zachowuje swoje proporcje. */
 export function Justified({ photos, rowHeight, gap = 12, children }: {
   photos: Photo[]
@@ -42,11 +56,11 @@ export function Justified({ photos, rowHeight, gap = 12, children }: {
   return (
     <div ref={ref} style={{ display: 'flex', flexDirection: 'column', gap }}>
       {rows.map((row, i) => (
-        <div key={i} style={{ display: 'flex', gap, height: row.h }}>
+        <LazyRow key={i} height={row.h} gap={gap}>
           {row.items.map(({ p, r }) => (
             <div key={p.id} style={{ width: r * row.h, height: row.h, flex: 'none' }}>{children(p, r * row.h, row.h)}</div>
           ))}
-        </div>
+        </LazyRow>
       ))}
     </div>
   )

@@ -21,7 +21,7 @@ Lista powstała z pamięci o Picasie 3, z przeglądu FIBO i z oficjalnego podrę
 - [x] **Opisy zdjęć (podpisy)**: pole „Opis” przy zdjęciu, szukanie po opisie, zapis do XMP. P1 T S Gotowe: opis w podglądzie i szukanie po opisach. Zapis do XMP jeszcze nie (opis zostaje w bibliotece FIBO).
 - [x] **Taca („Hold”)**: trwały koszyk zaznaczonych zdjęć, do którego dokładasz z różnych folderów, a potem robisz akcję na całości (album, eksport, kolaż). P2 T M Gotowe: Dodaj do tacy, pasek Taca (pokaż, zaznacz, wyczyść); akcje przez Zaznacz i menu.
 - [x] **Zmiana daty zdjęcia / przesunięcie dat** (np. zły zegar aparatu): ustaw datę lub przesuń o N godzin dla wielu zdjęć. P1 T M Gotowe w bibliotece FIBO (plików nie zmieniamy).
-- [ ] **Własne albumy: kolejność zdjęć** przeciąganiem. P3 T M (opis, miejsce i data albumu są już gotowe)
+- [x] **Własne albumy: kolejność zdjęć** przeciąganiem. P3 T M Gotowe: w albumie menu → Sortowanie → „Własna kolejność”, potem przeciągnij zdjęcie na inne. (opis, miejsce i data albumu są już gotowe)
 - [x] **Albumy inteligentne** (zapisane filtry, np. „5 gwiazdek z 2023”). P3 T M Gotowe (filtry: szukanie, ocena, daty, braki, tagi).
 - [ ] **Wyszukiwanie po kolorze** dominującym. P4 T M
 - [x] **Wyszukiwanie po danych aparatu** (model, obiektyw, ISO, przysłona, czas) i filtr „aparat”. P2 T M Gotowe w polu szukania (bez osobnego filtra „aparat”); starsze zdjęcia po „Odśwież dane zdjęć”.
@@ -79,8 +79,8 @@ Lista powstała z pamięci o Picasie 3, z przeglądu FIBO i z oficjalnego podrę
 - [x] **Eksport do PDF** (album, arkusz kontaktowy). P2 T M Gotowe: układy 1, 4, 6 na stronie i arkusz kontaktowy 12 (bez podpisów pod zdjęciami).
 - [x] **Drukowanie** (układy: pojedyncze, 2x2, arkusz kontaktowy, rozmiar papieru). P2 T M Częściowo przez PDF: układy i arkusz gotowe, własnego okna drukowania nie ma (drukujesz plik PDF).
 - [x] **Wysyłka e-mailem**: tylko przygotowanie pomniejszonych kopii do załączenia (bez wysyłania przez FIBO). P3 T S Załatwia to eksport pomniejszony do 1024 px (bez EXIF).
-- [ ] **Kopia zapasowa zdjęć na dysk zewnętrzny** (kopiowanie nowych i zmienionych plików, bez usuwania). P2 T L
-- [x] **Ustaw jako tapetę** pulpitu. P4 T S Gotowe: menu zdjęcia (JPG, PNG, BMP).
+- [x] **Kopia zapasowa zdjęć na dysk zewnętrzny** (kopiowanie nowych i zmienionych plików, bez usuwania). P2 T L Gotowe: menu → Kopia zdjęć na dysk zewnętrzny (układ według obserwowanych folderów, z postępem).
+- [ ] **Ustaw jako tapetę** pulpitu. P4 T S Odłożone: wymaga wywołania API Windows (`unsafe`) albo polecenia zewnętrznego, a zasady bezpieczeństwa FIBO tego zabraniają poza modułem szyfrowania.
 - [x] **Otwórz w zewnętrznym programie** (np. Photoshop, Paint) i wczytaj zmiany. P3 T S Gotowe: menu zdjęcia → „Otwórz w domyślnym programie” (wczytanie zmian po odświeżeniu biblioteki).
 - [ ] 🚫 Albumy internetowe i synchronizacja z chmurą (Picasa Web, Google Photos)
 - [ ] 🚫 Zamawianie odbitek online
@@ -109,7 +109,7 @@ Lista powstała z pamięci o Picasie 3, z przeglądu FIBO i z oficjalnego podrę
 - [ ] **Wersja angielska interfejsu** (przełącznik języka). P3 T L
 - [x] **Suwak wielkości miniatur** z zapamiętaniem oraz tryby wyświetlania (siatka, lista z danymi). P3 T S Częściowo: suwak z zapamiętaniem gotowy, widoku listy nie ma.
 - [x] **Pasek stanu z liczbą zaznaczonych i rozmiarem**. P4 T S Gotowe pod tytułem widoku.
-- [ ] **Przeciąganie zdjęć na albumy** w menu bocznym. P3 T M
+- [x] **Przeciąganie zdjęć na albumy** w menu bocznym. P3 T M Gotowe jako pasek albumów na dole podczas przeciągania (nie w menu bocznym).
 - [ ] **Przeciągnij i upuść plików z Eksploratora** do FIBO (dodanie folderu). P3 T M, uwaga: wymaga ponownego włączenia obsługi upuszczania w oknie
 - [ ] **Praca z wieloma biblioteka** (profile, np. rodzinna i służbowa). P4 T L
 

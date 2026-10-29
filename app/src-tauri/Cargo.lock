@@ -1159,7 +1159,7 @@ dependencies = [
 
 [[package]]
 name = "fibo"
-version = "0.4.8"
+version = "0.4.9"
 dependencies = [
  "image",
  "jpeg-decoder",
@@ -1174,6 +1174,7 @@ dependencies = [
  "tauri-plugin-opener",
  "tauri-plugin-process",
  "tauri-plugin-updater",
+ "tokio",
  "tract-onnx",
  "trash",
  "walkdir",

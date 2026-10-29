@@ -3,6 +3,7 @@ import { listen } from '@tauri-apps/api/event'
 import { MapView } from './MapView'
 import { People, FaceImg } from './People'
 import { ExportDialog } from './ExportDialog'
+import { ProgressDock } from './ProgressDock'
 import { LocationDialog } from './LocationDialog'
 import { RenameDialog } from './RenameDialog'
 import { DateDialog } from './DateDialog'
@@ -14,8 +15,8 @@ import { Duplicates } from './Duplicates'
 import { UpdateDialog, useUpdater } from './Updater'
 import { exportSidecars, getSidecarEnabled, importSidecars, setSidecarEnabled } from './api'
 import {
-  addToAlbum, createAlbum, deleteAlbum, setAlbumHidden, listAlbums, listRoots, movePhotos, removeFromAlbum, removeRoot,
-  renameAlbum, renamePhoto, rescanRoots, trashPhotos, listSmart, saveSmart, deleteSmart, type SmartAlbum, listLocked, setFolderLocked, revealInExplorer, openPhotoExternal, setWallpaper, findDuplicates, listPeople, listProps, renameFolder, type Prop, type Person, personPhotos, importPhotos, backupLibrary, restoreLibrary, pickFile, facesStart, facesStatus, hidePhotos, hiddenCount, restoreHidden, type Album,
+  addToAlbum, createAlbum, deleteAlbum, setAlbumHidden, listAlbumOrder, setAlbumOrder, listAlbums, listRoots, movePhotos, removeFromAlbum, removeRoot,
+  renameAlbum, renamePhoto, rescanRoots, trashPhotos, listSmart, saveSmart, deleteSmart, type SmartAlbum, listLocked, setFolderLocked, revealInExplorer, openPhotoExternal, findDuplicates, listPeople, listProps, renameFolder, type Prop, type Person, personPhotos, importPhotos, backupLibrary, backupPhotos, restoreLibrary, pickFile, facesStart, facesStatus, hidePhotos, hiddenCount, restoreHidden, type Album,
 } from './api'
 import { AlbumPicker, PromptDialog } from './Dialogs'
 import { addTag, deleteTag, inTauri, listPhotos, pickFolder, refreshLibrary, removeTag, scanFolder, setFavorite, setRating, type Photo } from './api'
@@ -31,7 +32,7 @@ import {
 } from './FiboIcons'
 
 type Mode = 'library' | 'albums' | 'favs' | 'people' | 'map'
-type Sort = 'date-desc' | 'date-asc' | 'name' | 'rating' | 'size'
+type Sort = 'date-desc' | 'date-asc' | 'name' | 'rating' | 'size' | 'custom'
 type Group = 'year' | 'month' | 'none'
 type Theme = 'auto' | 'light' | 'dark'
 
@@ -93,6 +94,10 @@ export default function App() {
   const [dateTo, setDateTo] = useState('')
   const [missing, setMissing] = useState<'' | 'tags' | 'geo' | 'rating'>('')
   const [sort, setSort] = useState<Sort>('date-desc')
+  // Przeciąganie zdjęć: na album (pasek na dole) albo, w albumie z własną kolejnością, na inne zdjęcie.
+  const [dragIds, setDragIds] = useState<number[] | null>(null)
+  const [dropOver, setDropOver] = useState<number | 'new' | null>(null)
+  const [albumPos, setAlbumPos] = useState<Map<number, number>>(new Map())
   const [activeTags, setActiveTags] = useState<string[]>([])
   const [tagDlg, setTagDlg] = useState(false)
   const [confirm, setConfirm] = useState<{ text: string; yes: string; run: () => void } | null>(null)
@@ -200,8 +205,13 @@ export default function App() {
 
   useEffect(() => {
     if (!inTauri) return
-    const un = listen<number>('scan-progress', (e) => { setProgress(e.payload); reload() })
-    return () => { un.then((f) => f()) }
+    // Podczas skanu wielu zdjęć nie przeładowujemy całej biblioteki po każdej partii (to zawieszało program): najwyżej raz na 4 s.
+    let timer = 0
+    const un = listen<number>('scan-progress', (e) => {
+      setProgress(e.payload)
+      if (!timer) timer = window.setTimeout(() => { timer = 0; reload() }, 4000)
+    })
+    return () => { un.then((f) => f()); window.clearTimeout(timer) }
   }, [reload])
 
   const addFolder = async (watch = true) => {
@@ -246,6 +256,21 @@ export default function App() {
       const f = await backupLibrary(dir)
       say(`Kopia biblioteki zapisana: ${f}`, 'ok')
     } catch (e) { say(`Błąd kopii: ${e}`, 'err') }
+  }
+  /** Kopiuje na wskazany dysk nowe i zmienione zdjęcia z biblioteki; niczego nie usuwa ani w kopii, ani w źródle. */
+  const doPhotoBackup = async () => {
+    let un: (() => void) | undefined
+    try {
+      const dir = await pickFolder('Wskaż dysk lub folder na kopię zapasową zdjęć')
+      if (!dir) return
+      setBusy(true)
+      say('Kopiuję zdjęcia na wskazany dysk…')
+      un = await listen<[number, number]>('photo-backup-progress', (e) => say(`Kopia zdjęć: ${e.payload[0]} z ${e.payload[1]}…`))
+      const r = await backupPhotos(dir)
+      say(r.errors.length
+        ? `Kopia zdjęć: skopiowano ${r.copied}, pominięto ${r.skipped} (już były), błędy: ${r.errors.length} (${r.errors[0]})`
+        : `Kopia zdjęć gotowa: skopiowano ${r.copied}, pominięto ${r.skipped} już zapisanych. Nic nie zostało usunięte`, r.errors.length ? 'err' : 'ok')
+    } catch (e) { say(`Błąd kopii zdjęć: ${e}`, 'err') } finally { un?.(); setBusy(false) }
   }
   const doRestore = async () => {
     try {
@@ -311,19 +336,22 @@ export default function App() {
       activeTags.every((t) => p.tags.includes(t)) &&
       (!q || `${p.name} ${p.camera ?? ''} ${p.exif ?? ''} ${p.caption ?? ''} ${p.tags.join(' ')} ${p.albums.map((a) => `${albumNames.get(a) ?? ''} ${propText('album', String(a))}`).join(' ')} ${folderName(dirOf(p.path))} ${propText('folder', dirOf(p.path))}`.toLowerCase().includes(q)),
     )
-    if (sort === 'name') list.sort((a, b) => a.name.localeCompare(b.name, 'pl', { numeric: true }))
+    if (sort === 'custom' && albumId !== null) list.sort((a, b) => (albumPos.get(a.id) ?? 1e9) - (albumPos.get(b.id) ?? 1e9) || whenOf(b).localeCompare(whenOf(a)))
+    else if (sort === 'custom') list.sort((a, b) => whenOf(b).localeCompare(whenOf(a)))
+    else if (sort === 'name') list.sort((a, b) => a.name.localeCompare(b.name, 'pl', { numeric: true }))
     else if (sort === 'rating') list.sort((a, b) => b.rating - a.rating || whenOf(b).localeCompare(whenOf(a)))
     else if (sort === 'size') list.sort((a, b) => b.size - a.size)
     else list.sort((a, b) => (sort === 'date-desc' ? whenOf(b).localeCompare(whenOf(a)) : whenOf(a).localeCompare(whenOf(b))))
     return list
-  }, [all, albumNames, propOf, query, folder, albumId, person, trayView, tray, onlyFav, minStars, dateFrom, dateTo, missing, sort, activeTags])
+  }, [all, albumNames, propOf, query, folder, albumId, person, trayView, tray, onlyFav, minStars, dateFrom, dateTo, missing, sort, activeTags, albumPos])
 
   // Foldery od najnowszego; rok albumu to rok jego najnowszego zdjęcia (jak w Picasie).
   const folders = useMemo(() => {
     const map = new Map<string, Photo[]>()
     for (const p of all) {
       const d = dirOf(p.path)
-      map.set(d, [...(map.get(d) ?? []), p])
+      const l = map.get(d)
+      if (l) l.push(p); else map.set(d, [p])
     }
     const newest = (l: Photo[]) => l.reduce((m, p) => (whenOf(p) > m ? whenOf(p) : m), '')
     return [...map.entries()]
@@ -342,7 +370,7 @@ export default function App() {
 
   // Sekcje biblioteki według lat lub miesięcy, tylko przy sortowaniu po dacie.
   const sections = useMemo(() => {
-    if (sort === 'name' || sort === 'rating' || sort === 'size' || group === 'none') return [{ key: 'all', title: '', year: '', items: photos }]
+    if (sort === 'name' || sort === 'rating' || sort === 'size' || (sort === 'custom' && albumId !== null) || group === 'none') return [{ key: 'all', title: '', year: '', items: photos }]
     const out: { key: string; title: string; year: string; items: Photo[] }[] = []
     for (const p of photos) {
       const w = whenOf(p)
@@ -353,7 +381,7 @@ export default function App() {
       else out.push({ key, year, title: group === 'month' ? `${MONTHS[+w.slice(5, 7) - 1] ?? ''} ${year}` : year, items: [p] })
     }
     return out
-  }, [photos, sort, group])
+  }, [photos, sort, group, albumId])
   const years = useMemo(() => [...new Set(sections.map((s) => s.year))].filter(Boolean), [sections])
   const [timelineIdx, setTimelineIdx] = useState(0)
   // Oś czasu podąża za przewijaniem: aktywna jest ostatnia sekcja, której górna krawędź minęła nagłówek.
@@ -681,8 +709,54 @@ export default function App() {
   }
 
   const multi = sel.length > 1 || selectMode
+  useEffect(() => {
+    if (albumId === null || !inTauri) { setAlbumPos(new Map()); return }
+    let live = true
+    listAlbumOrder(albumId).then((ids) => { if (live) setAlbumPos(new Map(ids.map((id, i) => [id, i] as [number, number]))) }).catch(() => {})
+    return () => { live = false }
+  }, [albumId])
+  const reorderMode = albumId !== null && sort === 'custom'
+  useEffect(() => { if (albumId === null && sort === 'custom') setSort('date-desc') }, [albumId, sort])
+  /** Przenosi przeciągane zdjęcia na miejsce wskazanego zdjęcia (w dół za nie, w górę przed nie) i zapisuje kolejność całego albumu. */
+  const dropOnPhoto = async (targetId: number) => {
+    const moving = dragIds
+    setDragIds(null)
+    if (!reorderMode || albumId === null || !moving || moving.includes(targetId)) return
+    const order = all.filter((p) => p.albums.includes(albumId)).sort((a, b) => (albumPos.get(a.id) ?? 1e9) - (albumPos.get(b.id) ?? 1e9) || whenOf(b).localeCompare(whenOf(a))).map((p) => p.id)
+    const forward = order.indexOf(moving[0]) < order.indexOf(targetId)
+    const rest = order.filter((id) => !moving.includes(id))
+    const at = rest.indexOf(targetId) + (forward ? 1 : 0)
+    const next = [...rest.slice(0, at), ...order.filter((id) => moving.includes(id)), ...rest.slice(at)]
+    setAlbumPos(new Map(next.map((id, i) => [id, i] as [number, number])))
+    try { await setAlbumOrder(albumId, next) } catch (e) { say(`Nie udało się zapisać kolejności: ${e}`, 'err') }
+  }
+  /** Upuszczenie przeciąganych zdjęć na album z paska na dole. */
+  const dropOnAlbum = async (a: Album) => {
+    const ids = (dragIds ?? []).filter((i) => i >= 0)
+    setDragIds(null); setDropOver(null)
+    if (!ids.length) return
+    try { await addToAlbum(a.id, ids); await afterAlbumChange(); say(`Dodano do albumu „${a.name}”: ${ids.length}`, 'ok') }
+    catch (e) { say(`Błąd albumu: ${e}`, 'err') }
+  }
+  const dropOnNewAlbum = () => {
+    const ids = (dragIds ?? []).filter((i) => i >= 0)
+    setDragIds(null); setDropOver(null)
+    if (!ids.length) return
+    setPrompt({
+      title: 'Nowy album', label: 'Nazwa albumu', confirm: 'Utwórz i dodaj zdjęcia',
+      onSubmit: async (name) => {
+        try {
+          const a = await createAlbum(name)
+          await addToAlbum(a.id, ids)
+          await afterAlbumChange()
+          say(`Utworzono album „${a.name}” i dodano zdjęcia`, 'ok')
+        } catch (e) { return String(e) }
+      },
+    })
+  }
+  const selSet = useMemo(() => new Set(sel), [sel])
   const tile = (p: Photo, ratio43: boolean) => {
-    const on = sel.includes(p.id)
+    const on = selSet.has(p.id)
     return (
       <button
         key={p.id}
@@ -694,10 +768,21 @@ export default function App() {
           setMenu({ x: e.clientX, y: e.clientY })
         }}
         onKeyDown={(e) => { if (e.key === 'Enter') openViewer(p.id) }}
+        draggable={p.id >= 0}
+        onDragStart={(e) => {
+          const ids = sel.includes(p.id) ? sel.filter((i) => i >= 0) : [p.id]
+          if (!sel.includes(p.id)) { setSel([p.id]); setAnchor(p.id) }
+          e.dataTransfer.setData('text/plain', String(ids.length))
+          e.dataTransfer.effectAllowed = 'copyMove'
+          setDragIds(ids)
+        }}
+        onDragEnd={() => { setDragIds(null); setDropOver(null) }}
+        onDragOver={reorderMode && dragIds ? (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move' } : undefined}
+        onDrop={reorderMode && dragIds ? (e) => { e.preventDefault(); dropOnPhoto(p.id) } : undefined}
         aria-label={`${p.name}, ocena ${p.rating}${p.favorite ? ', ulubione' : ''}`}
         aria-pressed={on}
         className={`bare group relative overflow-hidden text-left ${ratio43 ? 'aspect-[4/3]' : 'h-full w-full'}`}
-        style={{ borderRadius: 'var(--r-card)', boxShadow: on ? '0 0 0 3px var(--accent)' : 'var(--elev-1)' }}
+        style={{ borderRadius: 'var(--r-card)', boxShadow: on ? '0 0 0 3px var(--accent)' : 'var(--elev-1)', contentVisibility: 'auto', containIntrinsicSize: `${size}px ${Math.round(size * 0.75)}px` }}
       >
         <Thumb photo={p} />
         <div className="absolute inset-x-0 bottom-0 flex items-center justify-between p-2 opacity-0 transition group-hover:opacity-100" style={{ background: 'linear-gradient(transparent, rgba(0,0,0,.65))' }}>
@@ -809,7 +894,7 @@ export default function App() {
               </div>
               <label>Sortowanie</label>
               <div className="chips">
-                {([['date-desc', 'Najnowsze'], ['date-asc', 'Najstarsze'], ['name', 'Nazwa'], ['rating', 'Ocena'], ['size', 'Rozmiar pliku']] as [Sort, string][]).map(([v, l]) => (
+                {([['date-desc', 'Najnowsze'], ['date-asc', 'Najstarsze'], ['name', 'Nazwa'], ['rating', 'Ocena'], ['size', 'Rozmiar pliku'], ...(albumId !== null ? [['custom', 'Własna kolejność (przeciągaj)']] : [])] as [Sort, string][]).map(([v, l]) => (
                   <Chip key={v} on={sort === v} onClick={() => setSort(v)}>{l}</Chip>
                 ))}
               </div>
@@ -851,6 +936,7 @@ export default function App() {
                 Kopia zawiera dane biblioteki (nie same zdjęcia): tagi, oceny, albumy, ulubione i listę folderów. Przydaje się przed większymi porządkami albo przy zmianie komputera.
               </p>
               <button className="wide" onClick={doBackup}><Save size={17} /> Zapisz kopię biblioteki…</button>
+              <button className="wide" disabled={busy} onClick={doPhotoBackup}><Save size={17} /> Kopia zdjęć na dysk zewnętrzny…</button>
               <button className="wide" onClick={doRestore}><Download size={17} /> Przywróć z kopii…</button>
             </Sec>
             <Sec id="roots" icon={<RefreshCw size={17} />} title="Obserwowane foldery" hint={roots.length ? `${roots.length} ${pl(roots.length, 'folder', 'foldery', 'folderów')}, nowe zdjęcia dodają się same` : 'Brak obserwowanych folderów'}>
@@ -929,7 +1015,7 @@ export default function App() {
                   <Chip key={v} on={group === v} onClick={() => setGroup(v)}>{l}</Chip>
                 ))}
               </div>
-              {(sort === 'name' || sort === 'rating' || sort === 'size') && <p style={{ margin: '8px 0 0', fontSize: 12.5, color: 'var(--muted)' }}>Przy tym sortowaniu grupy są wyłączone.</p>}
+              {(sort === 'name' || sort === 'rating' || sort === 'size' || (sort === 'custom' && albumId !== null)) && <p style={{ margin: '8px 0 0', fontSize: 12.5, color: 'var(--muted)' }}>Przy tym sortowaniu grupy są wyłączone.</p>}
               <label htmlFor="sz">Rozmiar miniatur</label>
               <input id="sz" type="range" min={120} max={360} value={size} onChange={(e) => setSize(+e.target.value)} />
             </Sec>
@@ -1228,7 +1314,6 @@ export default function App() {
             <button className="text menu-item" role="menuitem" onClick={() => moveSelected(true)}><Copy size={18} /> Kopiuj do folderu…</button>
             {sel.length === 1 && <button className="text menu-item" role="menuitem" onClick={async () => { setMenu(null); const p = all.find((x) => x.id === sel[0]); if (p) { try { await revealInExplorer(p.path) } catch (e) { say(`Nie udało się otworzyć Eksploratora: ${e}`, 'err') } } }}><FolderOpen size={18} /> Pokaż w Eksploratorze</button>}
             {sel.length === 1 && sel[0] >= 0 && <button className="text menu-item" role="menuitem" onClick={async () => { setMenu(null); try { await openPhotoExternal(sel[0]) } catch (e) { say(`Nie udało się otworzyć w programie: ${e}`, 'err') } }}><ImageUp size={18} /> Otwórz w domyślnym programie</button>}
-            {sel.length === 1 && sel[0] >= 0 && <button className="text menu-item" role="menuitem" onClick={async () => { setMenu(null); try { await setWallpaper(sel[0]); say('Ustawiono tapetę pulpitu', 'ok') } catch (e) { say(`${e}`, 'err') } }}><ImageUp size={18} /> Ustaw jako tapetę</button>}
             {sel.length === 1 && sel[0] >= 0 && <button className="text menu-item" role="menuitem" onClick={async () => {
               setMenu(null)
               const id = sel[0]
@@ -1318,6 +1403,26 @@ export default function App() {
 
       <UpdateDialog u={updater} />
 
+      {dragIds && !reorderMode && (mode === 'library' || mode === 'favs') && (
+        <div className="glass fixed inset-x-3 z-[1500] flex items-center gap-2 overflow-x-auto p-3" style={{ bottom: 'calc(12px + var(--sab))', borderRadius: 'var(--r-lg)' }} role="region" aria-label="Upuść zdjęcia na album">
+          <span style={{ fontSize: 13, color: 'var(--muted)', whiteSpace: 'nowrap' }}>Upuść na album ({dragIds.length}):</span>
+          {visibleAlbums.map((a) => (
+            <span key={a.id} className={`chip${dropOver === a.id ? ' on' : ''}`} style={{ flex: 'none' }}
+              onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; setDropOver(a.id) }}
+              onDragLeave={() => setDropOver((c) => (c === a.id ? null : c))}
+              onDrop={(e) => { e.preventDefault(); dropOnAlbum(a) }}>
+              <FolderOpen size={14} /> {a.name}
+            </span>
+          ))}
+          <span className={`chip${dropOver === 'new' ? ' on' : ''}`} style={{ flex: 'none' }}
+            onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; setDropOver('new') }}
+            onDragLeave={() => setDropOver((c) => (c === 'new' ? null : c))}
+            onDrop={(e) => { e.preventDefault(); dropOnNewAlbum() }}>
+            <Plus size={14} /> Nowy album…
+          </span>
+        </div>
+      )}
+      {inTauri && <ProgressDock />}
       <Toast text={toast?.text ?? null} kind={toast?.kind} />
 
       {dupOpen && (

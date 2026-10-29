@@ -12,6 +12,7 @@ use std::{
 };
 
 mod backup;
+mod photos_backup;
 mod check;
 mod cluster;
 mod faces;
@@ -106,6 +107,8 @@ fn open_db(path: &Path) -> rusqlite::Result<Connection> {
     let _ = conn.execute("ALTER TABLE photos ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0", []);
     // Migracja: albumy ukryte (znikają z list, nic nie jest kasowane; można je przywrócić).
     let _ = conn.execute("ALTER TABLE albums ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0", []);
+    // Migracja: własna kolejność zdjęć w albumie (puste = jeszcze nieustawiona, wtedy decyduje data).
+    let _ = conn.execute("ALTER TABLE album_photos ADD COLUMN pos INTEGER", []);
     people::init_schema(&conn)?;
     locks::init_schema(&conn)?;
     // Albumy inteligentne: nazwa i zapisane filtry (JSON); zawartość liczy się na bieżąco z biblioteki.
@@ -294,13 +297,19 @@ fn known_files(state: &AppState) -> Result<std::collections::HashSet<(String, i6
     Ok(rows)
 }
 
-/// Skanuje partiami po 50 zdjęć; blokada bazy jest trzymana tylko podczas zapisu partii.
+/// Skanuje partiami po 64 zdjęcia; blokada bazy jest trzymana tylko podczas zapisu partii.
 /// Pliki niezmienione od ostatniego skanu są pomijane, więc ponowne skanowanie dużego folderu jest szybkie.
 /// Zwraca liczbę nowych lub zmienionych zdjęć.
 fn scan_blocking(state: &AppState, root: &str, progress: &dyn Fn(usize)) -> Result<usize, String> {
-    let mut batch = Vec::new();
-    let mut count = 0;
+    scan_blocking_stats(state, root, progress, &|_, _| {})
+}
+
+/// To samo co `scan_blocking`, a `stats(zrobione, razem)` dostaje też łączną liczbę plików do wczytania (znaną po szybkim przejściu po folderze),
+/// z czego okno postępu liczy procenty i przybliżony czas do końca.
+fn scan_blocking_stats(state: &AppState, root: &str, progress: &dyn Fn(usize), stats: &dyn Fn(usize, usize)) -> Result<usize, String> {
     let known = known_files(state)?;
+    // Najpierw lista plików do wczytania (tanie: tylko nazwy i daty), żeby znać ich liczbę.
+    let mut todo: Vec<PathBuf> = Vec::new();
     let walker = WalkDir::new(root).into_iter().filter_entry(|e| e.file_name() != ORIGINALS_DIR);
     for entry in walker.filter_map(Result::ok) {
         let path = entry.path();
@@ -312,16 +321,27 @@ fn scan_blocking(state: &AppState, root: &str, progress: &dyn Fn(usize)) -> Resu
                 continue;
             }
         }
-        let Some(row) = build_row(path) else { continue };
-        batch.push(row);
-        count += 1;
-        if batch.len() >= 50 {
-            flush(state, &mut batch)?;
-            progress(count);
-        }
+        todo.push(path.to_path_buf());
     }
-    flush(state, &mut batch)?;
-    progress(count);
+    let total = todo.len();
+    stats(0, total);
+    let threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(2).clamp(1, 8);
+    let mut count = 0;
+    let mut done = 0;
+    for chunk in todo.chunks(64) {
+        // Odczyt EXIF i wymiarów to głównie praca procesora i dysku, więc partię wczytujemy na kilku wątkach.
+        let mut rows: Vec<Row> = std::thread::scope(|s| {
+            let handles: Vec<_> = (0..threads.min(chunk.len()))
+                .map(|t| s.spawn(move || chunk.iter().skip(t).step_by(threads).filter_map(|p| build_row(p)).collect::<Vec<Row>>()))
+                .collect();
+            handles.into_iter().flat_map(|h| h.join().unwrap_or_default()).collect()
+        });
+        count += rows.len();
+        flush(state, &mut rows)?;
+        done += chunk.len();
+        progress(count);
+        stats(done, total);
+    }
     Ok(count)
 }
 
@@ -339,8 +359,11 @@ async fn scan_folder(app: tauri::AppHandle, path: String, watch: Option<bool>) -
         state.db.lock().map_err(|e| e.to_string())?
             .execute("UPDATE photos SET hidden = 0 WHERE hidden = 1 AND substr(path, 1, length(?1)) = ?1", [&path])
             .map_err(|e| e.to_string())?;
-        scan_blocking(&state, &path, &move |n| {
+        let stats_emitter = emitter.clone();
+        scan_blocking_stats(&state, &path, &move |n| {
             let _ = emitter.emit("scan-progress", n);
+        }, &move |done, total| {
+            let _ = stats_emitter.emit("scan-stats", (done, total));
         })
     })
         .await
@@ -424,9 +447,38 @@ fn list_photos(state: State<'_, AppState>) -> Result<Vec<Photo>, String> {
     Ok(rows)
 }
 
+/// JPEG dekodowany od razu w zmniejszeniu (skala 1/2, 1/4, 1/8 pomija część pracy): kilka razy szybciej niż pełne dekodowanie.
+/// Wynik ma dłuższy bok co najmniej `want` pikseli. None, gdy to nie JPEG albo dekoder go nie obsługuje.
+fn decode_jpeg_for_thumb(path: &Path, want: u16) -> Option<image::DynamicImage> {
+    let ext = path.extension()?.to_str()?.to_ascii_lowercase();
+    if ext != "jpg" && ext != "jpeg" {
+        return None;
+    }
+    let mut dec = jpeg_decoder::Decoder::new(std::io::BufReader::new(File::open(path).ok()?));
+    dec.read_info().ok()?;
+    let info = dec.info()?;
+    let (rw, rh) = if info.width >= info.height {
+        (want, ((info.height as u32 * want as u32) / info.width.max(1) as u32).max(1) as u16)
+    } else {
+        (((info.width as u32 * want as u32) / info.height.max(1) as u32).max(1) as u16, want)
+    };
+    dec.scale(rw, rh).ok()?;
+    let pixels = dec.decode().ok()?;
+    let info = dec.info()?;
+    let (w, h) = (info.width as u32, info.height as u32);
+    match info.pixel_format {
+        jpeg_decoder::PixelFormat::RGB24 => image::RgbImage::from_raw(w, h, pixels).map(image::DynamicImage::ImageRgb8),
+        jpeg_decoder::PixelFormat::L8 => image::GrayImage::from_raw(w, h, pixels).map(image::DynamicImage::ImageLuma8),
+        _ => None,
+    }
+}
+
 fn make_thumb(src: &Path, dst: &Path) -> Result<(), String> {
     let orientation = read_exif(src).orientation;
-    let img = image::open(src).map_err(|e| e.to_string())?;
+    let img = match decode_jpeg_for_thumb(src, THUMB_SIZE as u16) {
+        Some(i) => i,
+        None => image::open(src).map_err(|e| e.to_string())?,
+    };
     let mut thumb = img.resize(THUMB_SIZE, THUMB_SIZE, FilterType::Triangle);
     thumb = match orientation {
         2 => thumb.fliph(),
@@ -449,10 +501,23 @@ async fn thumbnail(state: State<'_, AppState>, id: i64) -> Result<String, String
     };
     let dst = state.thumbs.join(format!("{id}_{modified}.jpg"));
     if !dst.exists() {
-        let dst2 = dst.clone();
-        tauri::async_runtime::spawn_blocking(move || make_thumb(Path::new(&src), &dst2))
+        // Miniatury powstają po kilka naraz, a nie wszystkie od razu: przy tysiącach zdjęć cały procesor i pamięć
+        // zajęłyby setki równoległych dekodowań i program przestawał odpowiadać.
+        static SLOTS: std::sync::OnceLock<tokio::sync::Semaphore> = std::sync::OnceLock::new();
+        let slots = SLOTS.get_or_init(|| tokio::sync::Semaphore::new(std::thread::available_parallelism().map(|n| n.get()).unwrap_or(2).clamp(2, 6)));
+        let _permit = slots.acquire().await.map_err(|e| e.to_string())?;
+        // W kolejce ktoś inny mógł już zrobić tę miniaturę.
+        if !dst.exists() {
+            let dst2 = dst.clone();
+            tauri::async_runtime::spawn_blocking(move || {
+                // Najpierw plik tymczasowy: przerwane zapisywanie nie zostawi uciętej miniatury.
+                let tmp = dst2.with_extension("tmp");
+                make_thumb(Path::new(&src), &tmp)?;
+                fs::rename(&tmp, &dst2).map_err(|e| e.to_string())
+            })
             .await
             .map_err(|e| e.to_string())??;
+        }
     }
     Ok(dst.to_string_lossy().to_string())
 }
@@ -1071,6 +1136,10 @@ struct RescanReport {
 /// Przeszukuje obserwowane foldery (pomijając niezmienione pliki) i usuwa z biblioteki zdjęcia, których plików już nie ma.
 /// Zdjęcie znika z biblioteki tylko wtedy, gdy jego folder istnieje, a pliku w nim nie ma (odłączony dysk niczego nie kasuje).
 fn rescan_blocking(state: &AppState) -> Result<RescanReport, String> {
+    rescan_with_stats(state, &|_, _| {})
+}
+
+fn rescan_with_stats(state: &AppState, stats: &dyn Fn(usize, usize)) -> Result<RescanReport, String> {
     let roots: Vec<String> = {
         let conn = state.db.lock().map_err(|e| e.to_string())?;
         let mut stmt = conn.prepare("SELECT path FROM roots").map_err(|e| e.to_string())?;
@@ -1083,7 +1152,7 @@ fn rescan_blocking(state: &AppState) -> Result<RescanReport, String> {
             continue;
         }
         rep.roots += 1;
-        rep.added += scan_blocking(state, root, &|_| {})?;
+        rep.added += scan_blocking_stats(state, root, &|_| {}, stats)?;
     }
     let rows = all_photo_ids(state)?;
     let conn = state.db.lock().map_err(|e| e.to_string())?;
@@ -1103,7 +1172,12 @@ fn rescan_blocking(state: &AppState) -> Result<RescanReport, String> {
 
 #[tauri::command]
 async fn rescan_roots(app: tauri::AppHandle) -> Result<RescanReport, String> {
-    tauri::async_runtime::spawn_blocking(move || rescan_blocking(&app.state::<AppState>()))
+    tauri::async_runtime::spawn_blocking(move || {
+        let emitter = app.clone();
+        rescan_with_stats(&app.state::<AppState>(), &move |done, total| {
+            let _ = emitter.emit("scan-stats", (done, total));
+        })
+    })
         .await
         .map_err(|e| e.to_string())?
 }
@@ -1173,35 +1247,24 @@ fn open_photo_external(state: State<'_, AppState>, id: i64) -> Result<(), String
     tauri_plugin_opener::open_path(&path, None::<&str>).map_err(|e| e.to_string())
 }
 
-/// Ustawia zdjęcie z biblioteki jako tapetę pulpitu (JPG, PNG lub BMP; plik zostaje na swoim miejscu).
+/// Własna kolejność zdjęć w albumie: numery zdjęć od pierwszego do ostatniego (tylko te, którym ją ustawiono).
 #[tauri::command]
-fn set_wallpaper(state: State<'_, AppState>, id: i64) -> Result<(), String> {
-    let (path, _, _) = photo_path(&state, id)?;
-    let p = Path::new(&path);
-    if !p.is_file() {
-        return Err("Pliku nie ma już na dysku".into());
+fn list_album_order(state: State<'_, AppState>, album_id: i64) -> Result<Vec<i64>, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare("SELECT photo_id FROM album_photos WHERE album_id = ?1 AND pos IS NOT NULL ORDER BY pos").map_err(|e| e.to_string())?;
+    let v = stmt.query_map([album_id], |r| r.get(0)).map_err(|e| e.to_string())?.filter_map(Result::ok).collect();
+    Ok(v)
+}
+
+/// Zapisuje kolejność zdjęć w albumie (zdjęcia spoza albumu są pomijane).
+#[tauri::command]
+fn set_album_order(state: State<'_, AppState>, album_id: i64, ids: Vec<i64>) -> Result<(), String> {
+    let mut conn = state.db.lock().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    for (i, id) in ids.iter().enumerate() {
+        tx.execute("UPDATE album_photos SET pos = ?3 WHERE album_id = ?1 AND photo_id = ?2", params![album_id, id, i as i64]).map_err(|e| e.to_string())?;
     }
-    let ext = p.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
-    if !["jpg", "jpeg", "png", "bmp"].contains(&ext.as_str()) {
-        return Err("Na tapetę nadają się tylko pliki JPG, PNG i BMP".into());
-    }
-    #[cfg(windows)]
-    {
-        use std::os::windows::ffi::OsStrExt;
-        use windows_sys::Win32::UI::WindowsAndMessaging::{SystemParametersInfoW, SPIF_SENDCHANGE, SPIF_UPDATEINIFILE, SPI_SETDESKWALLPAPER};
-        let mut wide: Vec<u16> = p.as_os_str().encode_wide().collect();
-        wide.push(0);
-        // SAFETY: wskaźnik wskazuje na zakończony zerem napis, który żyje przez całe wywołanie.
-        let ok = unsafe { SystemParametersInfoW(SPI_SETDESKWALLPAPER, 0, wide.as_mut_ptr() as *mut _, SPIF_UPDATEINIFILE | SPIF_SENDCHANGE) };
-        if ok == 0 {
-            return Err("Windows odmówił zmiany tapety".into());
-        }
-        Ok(())
-    }
-    #[cfg(not(windows))]
-    {
-        Err("Tapeta jest obsługiwana tylko w Windows".into())
-    }
+    tx.commit().map_err(|e| e.to_string())
 }
 
 /// Ukrywa album na listach albo go przywraca; nic nie jest usuwane.
@@ -3104,7 +3167,7 @@ fn main() {
             app.manage(AppState { db: Mutex::new(db), thumbs, sidecar: AtomicBool::new(sidecar) });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![list_roots, remove_root, rescan_roots, list_albums, create_album, rename_album, set_album_hidden, open_photo_external, set_wallpaper, delete_album, add_to_album, remove_from_album, rename_photo, move_photos, get_sidecar_enabled, set_sidecar_enabled, export_sidecars, import_sidecars, scan_folder, refresh_library, find_duplicates, trash_photos, export_photos, set_location, rename_batch, import_photos, gallery::export_gallery, gallery::export_gpx, gallery::export_gif, pdf::export_pdf, check::check_files, list_smart, save_smart, delete_smart, gallery::rename_folder, locks::list_locked, locks::set_folder_locked, set_date, shift_dates, set_caption, photo_exif, list_props, set_props, people::photo_people, people::reassign_person_faces, backup::backup_library, backup::restore_library, hide_photos, hidden_count, restore_hidden, people::faces_status, people::set_faces_enabled, people::faces_start, people::faces_stop, people::faces_regroup, people::faces_reanalyze, people::faces_delete_all, people::list_people, people::person_photos, people::person_faces, people::set_person_cover, people::rename_person, people::merge_people, people::ignore_person, list_photos, thumbnail, thumbnail_data, people::face_crop, set_rating, set_favorite, add_tag, remove_tag, delete_tag, save_edit, save_collage, read_image, read_audio, has_original, restore_original])
+        .invoke_handler(tauri::generate_handler![list_roots, remove_root, rescan_roots, list_albums, create_album, rename_album, set_album_hidden, list_album_order, set_album_order, open_photo_external, delete_album, add_to_album, remove_from_album, rename_photo, move_photos, get_sidecar_enabled, set_sidecar_enabled, export_sidecars, import_sidecars, scan_folder, refresh_library, find_duplicates, trash_photos, export_photos, set_location, rename_batch, import_photos, gallery::export_gallery, gallery::export_gpx, gallery::export_gif, pdf::export_pdf, check::check_files, list_smart, save_smart, delete_smart, gallery::rename_folder, locks::list_locked, locks::set_folder_locked, set_date, shift_dates, set_caption, photo_exif, list_props, set_props, people::photo_people, people::reassign_person_faces, backup::backup_library, photos_backup::backup_photos, backup::restore_library, hide_photos, hidden_count, restore_hidden, people::faces_status, people::set_faces_enabled, people::faces_start, people::faces_stop, people::faces_regroup, people::faces_reanalyze, people::faces_delete_all, people::list_people, people::person_photos, people::person_faces, people::set_person_cover, people::rename_person, people::merge_people, people::ignore_person, list_photos, thumbnail, thumbnail_data, people::face_crop, set_rating, set_favorite, add_tag, remove_tag, delete_tag, save_edit, save_collage, read_image, read_audio, has_original, restore_original])
         .run(tauri::generate_context!())
         .expect("błąd uruchomienia aplikacji");
 }

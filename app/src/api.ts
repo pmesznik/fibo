@@ -34,6 +34,8 @@ export const listAlbums = () => invoke<Album[]>('list_albums')
 export const createAlbum = (name: string) => invoke<Album>('create_album', { name })
 export const renameAlbum = (id: number, name: string) => invoke('rename_album', { id, name })
 export const setAlbumHidden = (id: number, hidden: boolean) => invoke('set_album_hidden', { id, hidden })
+export const listAlbumOrder = (albumId: number) => invoke<number[]>('list_album_order', { albumId })
+export const setAlbumOrder = (albumId: number, ids: number[]) => invoke('set_album_order', { albumId, ids })
 export const deleteAlbum = (id: number) => invoke('delete_album', { id })
 export const addToAlbum = (albumId: number, ids: number[]) => invoke('add_to_album', { albumId, ids })
 export const removeFromAlbum = (albumId: number, ids: number[]) => invoke('remove_from_album', { albumId, ids })
@@ -56,6 +58,8 @@ export const setLocation = (ids: number[], lat: number | null, lon: number | nul
 export const renameBatch = (ids: number[], prefix: string, withDate: boolean, start: number) => invoke<MoveReport>('rename_batch', { ids, prefix, withDate, start })
 export type PhotoImportReport = { copied: number; skipped: number; errors: string[] }
 export const importPhotos = (src: string, dest: string) => invoke<PhotoImportReport>('import_photos', { src, dest })
+export type PhotoBackupReport = { copied: number; skipped: number; errors: string[] }
+export const backupPhotos = (dest: string) => invoke<PhotoBackupReport>('backup_photos', { dest })
 export const backupLibrary = (dest: string) => invoke<string>('backup_library', { dest })
 export const restoreLibrary = (file: string) => invoke<number>('restore_library', { file })
 export const photoExif = (id: number) => invoke<[string, string][]>('photo_exif', { id })
@@ -76,7 +80,6 @@ export const readAudio = (path: string) => invoke<ArrayBuffer>('read_audio', { p
 export type Watermark = { path: string; position: string; sizePct: number; opacity: number }
 /** Pokazuje plik lub folder w Eksploratorze Windows (zaznacza go w oknie folderu). */
 export const openPhotoExternal = (id: number) => invoke('open_photo_external', { id })
-export const setWallpaper = (id: number) => invoke('set_wallpaper', { id })
 export const revealInExplorer = (path: string) => revealItemInDir(path)
 export const listLocked = () => invoke<string[]>('list_locked')
 export const setFolderLocked = (path: string, locked: boolean) => invoke('set_folder_locked', { path, locked })

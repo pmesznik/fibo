@@ -1,6 +1,6 @@
 [package]
 name = "fibo"
-version = "0.4.8"
+version = "0.4.9"
 edition = "2021"
 license = "GPL-2.0-or-later"
 
@@ -14,6 +14,8 @@ tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 # „Pokaż w Eksploratorze” oraz otwieranie zdjęcia z biblioteki w domyślnym programie (po numerze zdjęcia, nigdy po adresie z interfejsu).
 tauri-plugin-opener = "2"
+# Tylko semafor ograniczający liczbę równoległych miniatur (tokio i tak jest w Tauri).
+tokio = { version = "1", features = ["sync"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 rusqlite = { version = "0.32", features = ["bundled"] }
@@ -35,4 +37,4 @@ opt-level = 3
 
 # Szyfrowanie danych twarzy kluczem konta Windows (DPAPI).
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.59", features = ["Win32_Security_Cryptography", "Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
+windows-sys = { version = "0.59", features = ["Win32_Security_Cryptography", "Win32_Foundation"] }

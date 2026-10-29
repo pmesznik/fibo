@@ -42,9 +42,19 @@ pub fn backup_core(conn: &Connection, dest_dir: &Path) -> Result<PathBuf, String
 }
 
 fn columns(conn: &Connection, schema: &str, table: &str) -> Result<Vec<String>, String> {
-    let mut stmt = conn.prepare(&format!("SELECT name FROM {schema}.pragma_table_info('{table}')")).map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare(&format!("SELECT name FROM pragma_table_info('{table}', '{schema}')")).map_err(|e| e.to_string())?;
     let v = stmt.query_map([], |r| r.get(0)).map_err(|e| e.to_string())?.filter_map(Result::ok).collect();
     Ok(v)
+}
+
+/// Kolumny do przeniesienia z kopii. Kopia starsza od programu może nie mieć kolumn dodanych później (np. ukrycie albumu): dostają wartości
+/// domyślne. Kopia z kolumną, której program nie zna, pochodzi z nowszej wersji i jest odrzucana.
+fn restore_columns(conn: &Connection, t: &str) -> Result<Vec<String>, String> {
+    let (a, b) = (columns(conn, "main", t)?, columns(conn, "kopia", t)?);
+    if b.iter().any(|c| !a.contains(c)) {
+        return Err(format!("Kopia pochodzi z innej wersji programu (tabela {t} ma inne kolumny)"));
+    }
+    Ok(a.into_iter().filter(|c| b.contains(c)).collect())
 }
 
 /// Zastępuje dane biblioteki danymi z pliku kopii. Plik musi być bazą FIBO z tymi samymi tabelami i kolumnami (ta sama wersja programu).
@@ -59,24 +69,20 @@ pub fn restore_core(conn: &mut Connection, file: &Path, safety_dir: &Path) -> Re
     let result = (|| -> Result<usize, String> {
         // Sprawdzenie, czy to na pewno kopia FIBO tej samej wersji.
         for t in TABLES {
-            let (a, b) = (columns(conn, "main", t)?, columns(conn, "kopia", t)?);
-            if b.is_empty() {
+            if columns(conn, "kopia", t)?.is_empty() {
                 return Err(format!("To nie jest kopia biblioteki FIBO (brak tabeli {t})"));
             }
-            if a != b {
-                return Err(format!("Kopia pochodzi z innej wersji programu (tabela {t} ma inne kolumny)"));
-            }
+            restore_columns(conn, t)?;
         }
         let optional: Vec<&str> = OPTIONAL.iter().copied().filter(|t| columns(conn, "kopia", t).map(|c| !c.is_empty()).unwrap_or(false)).collect();
         for t in &optional {
-            if columns(conn, "main", t)? != columns(conn, "kopia", t)? {
-                return Err(format!("Kopia pochodzi z innej wersji programu (tabela {t} ma inne kolumny)"));
-            }
+            restore_columns(conn, t)?;
         }
         let tx = conn.transaction().map_err(|e| e.to_string())?;
         for t in TABLES.iter().chain(optional.iter()) {
             tx.execute(&format!("DELETE FROM main.{t}"), []).map_err(|e| e.to_string())?;
-            tx.execute(&format!("INSERT INTO main.{t} SELECT * FROM kopia.{t}"), []).map_err(|e| e.to_string())?;
+            let cols = restore_columns(&tx, t)?.join(", ");
+            tx.execute(&format!("INSERT INTO main.{t} ({cols}) SELECT {cols} FROM kopia.{t}"), []).map_err(|e| e.to_string())?;
         }
         tx.execute_batch("DELETE FROM main.faces; DELETE FROM main.people; DELETE FROM main.face_scan;").map_err(|e| e.to_string())?;
         let n: i64 = tx.query_row("SELECT COUNT(*) FROM main.photos", [], |r| r.get(0)).map_err(|e| e.to_string())?;
@@ -117,7 +123,9 @@ mod tests {
     use rusqlite::params;
 
     fn lib() -> Connection {
-        let dir = std::env::temp_dir().join("mz-backup-test-lib");
+        // Każdy test ma własny folder, bo testy działają równolegle.
+        static N: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let dir = std::env::temp_dir().join(format!("mz-backup-test-lib-{}", N.fetch_add(1, std::sync::atomic::Ordering::SeqCst)));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         crate::open_db(&dir.join("t.db")).unwrap()
@@ -158,5 +166,24 @@ mod tests {
         assert_eq!(n, 3);
         assert!(restore_core(&mut c, &out.join("brak.db"), &safety).is_err());
         assert!(backup_core(&c, &out.join("brak")).is_err());
+    }
+
+    #[test]
+    fn restores_backup_made_before_a_column_was_added() {
+        let mut c = lib();
+        let out = std::env::temp_dir().join("mz-backup-test-old-out");
+        let safety = std::env::temp_dir().join("mz-backup-test-old-safety");
+        for d in [&out, &safety] {
+            let _ = std::fs::remove_dir_all(d);
+            std::fs::create_dir_all(d).unwrap();
+        }
+        c.execute("INSERT INTO albums (id, name) VALUES (1, 'Wakacje')", []).unwrap();
+        let file = backup_core(&c, &out).unwrap();
+        // Kopia sprzed wersji z ukrywaniem albumów nie ma kolumny `hidden`.
+        Connection::open(&file).unwrap().execute("ALTER TABLE albums DROP COLUMN hidden", []).unwrap();
+        c.execute("DELETE FROM albums", []).unwrap();
+        restore_core(&mut c, &file, &safety).unwrap();
+        let (name, hidden): (String, i64) = c.query_row("SELECT name, hidden FROM albums", [], |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
+        assert_eq!((name.as_str(), hidden), ("Wakacje", 0));
     }
 }
