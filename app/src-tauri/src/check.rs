@@ -27,6 +27,18 @@ fn check_file(path: &Path, deep: bool) -> Option<String> {
     if meta.len() == 0 {
         return Some("Pusty plik".into());
     }
+    // Formaty, których nie czyta biblioteka `image`: HEIC, JPEG XL, PSD i RAW sprawdzamy ich własnymi dekoderami, a AVIF i SVG dekoduje tylko okno aplikacji.
+    let ext = crate::formats::ext_of(path);
+    if crate::formats::is_raw(path) || matches!(ext.as_str(), "heic" | "heif" | "hif" | "jxl" | "psd") {
+        if deep {
+            return crate::formats::open_preview(path).err().map(|e| format!("Nie da się odczytać obrazu: {e}"));
+        }
+        let header_ok = !matches!(ext.as_str(), "heic" | "heif" | "hif" | "psd") || crate::formats::dimensions(path).is_some();
+        return if header_ok { None } else { Some("Uszkodzony nagłówek obrazu".into()) };
+    }
+    if crate::formats::ui_only(path) {
+        return None;
+    }
     if deep {
         // Dekoder JPEG często „wybacza” ucięty plik i oddaje szary obraz, więc sprawdzamy znacznik końca (FFD9) w ostatnich bajtach.
         let is_jpeg = path.extension().and_then(|e| e.to_str()).map(|e| e.eq_ignore_ascii_case("jpg") || e.eq_ignore_ascii_case("jpeg")).unwrap_or(false);

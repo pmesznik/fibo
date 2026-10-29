@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use image::imageops::FilterType;
 use tauri::State;
 
-use crate::{photo_path, read_exif, unique_target, AppState};
+use crate::{photo_path, unique_target, AppState};
 
 const PAGE_W: f32 = 595.0;
 const PAGE_H: f32 = 842.0;
@@ -105,8 +105,7 @@ pub fn pdf_core(state: &AppState, ids: &[i64], dest: &Path, cols: u32, rows: u32
     for &id in ids {
         let (path, _, _) = photo_path(state, id)?;
         let src = PathBuf::from(&path);
-        let orientation = read_exif(&src).orientation;
-        let mut img = image::open(&src).map_err(|e| format!("{path}: {e}"))?;
+        let (mut img, orientation) = crate::formats::open(&src).map_err(|e| format!("{path}: {e}"))?;
         if img.width().max(img.height()) > max_side {
             img = img.resize(max_side, max_side, FilterType::Lanczos3);
         }

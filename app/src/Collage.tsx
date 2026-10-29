@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { pl } from './pl'
 import { X, Shuffle, Save } from './FiboIcons'
+import { decodeBitmap } from './imageDecode'
 import { readImage, saveCollage, type Photo } from './api'
 import { Chip } from './ui'
 
@@ -176,7 +177,7 @@ export function Collage({ photos, onClose, onSaved, say }: {
       const out: Loaded[] = []
       for (const p of used) {
         try {
-          const full = await createImageBitmap(new Blob([await readImage(p.id)]), { imageOrientation: 'from-image' })
+          const full = await decodeBitmap(await readImage(p.id), p.name)
           const s = Math.min(1, 2200 / Math.max(full.width, full.height))
           const bmp = s < 1 ? await createImageBitmap(full, { resizeWidth: Math.round(full.width * s), resizeHeight: Math.round(full.height * s), resizeQuality: 'high' }) : full
           if (bmp !== full) full.close()

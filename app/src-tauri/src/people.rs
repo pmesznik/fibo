@@ -179,11 +179,12 @@ fn decode_jpeg_scaled(path: &Path) -> Option<RgbImage> {
 
 /// Obraz do analizy: zmniejszony i obrócony zgodnie ze znacznikiem EXIF (twarze muszą stać prosto).
 pub(crate) fn load_oriented(path: &Path) -> Result<RgbImage, String> {
-    let orientation = crate::read_exif(path).orientation;
-    let img: DynamicImage = match decode_jpeg_scaled(path) {
-        Some(rgb) => DynamicImage::ImageRgb8(rgb),
-        None => image::open(path).map_err(|e| e.to_string())?,
+    let (img, orientation): (DynamicImage, u16) = match decode_jpeg_scaled(path) {
+        Some(rgb) => (DynamicImage::ImageRgb8(rgb), crate::read_exif(path).orientation as u16),
+        // Inne formaty (HEIC, RAW, TIFF, PSD...): RAW z osadzonego podglądu, który wystarcza do znalezienia twarzy.
+        None => crate::formats::open_preview(path)?,
     };
+    let orientation = orientation as u32;
     let mut img = img;
     if img.width().max(img.height()) > MAX_SIDE {
         img = img.resize(MAX_SIDE, MAX_SIDE, FilterType::Triangle);

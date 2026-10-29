@@ -1,4 +1,5 @@
 // Schowek edycji i zastosowanie tej samej edycji do wielu zdjęć (jak „Kopiuj i wklej zmiany”).
+import { decodeBitmap } from '../imageDecode'
 import { readImage, saveEdit, type Photo } from '../api'
 import { EMPTY_EDIT, isEdited, renderEdit, type EditState } from './effects'
 
@@ -33,7 +34,7 @@ export async function pasteEditToPhotos(
   let done = 0
   for (const p of photos) {
     try {
-      const bitmap = await createImageBitmap(new Blob([await readImage(p.id)]))
+      const bitmap = await decodeBitmap(await readImage(p.id), p.name, false)
       const ext = extOf(p.name)
       const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg'
       const out = renderEdit(bitmap, { ...EMPTY_EDIT, ...JSON.parse(JSON.stringify(c)) }, 100000)

@@ -120,6 +120,10 @@ export const saveEdit = (id: number, bytes: ArrayBuffer, mode: 'overwrite' | 'co
 export const saveCollage = (id: number, bytes: ArrayBuffer, name: string) =>
   invoke<number>('save_collage', bytes, { headers: { id: String(id), name } })
 
+/** Zapisuje miniaturę zrobioną w oknie aplikacji (formaty bez dekodera w programie: AVIF, SVG) razem z rozmiarem zdjęcia. */
+export const putThumbnail = (id: number, bytes: ArrayBuffer, width: number, height: number) =>
+  invoke('put_thumbnail', bytes, { headers: { id: String(id), width: String(width), height: String(height) } })
+
 export const readImage = (id: number) => invoke<ArrayBuffer>('read_image', { id })
 
 /** Miniatura jako Blob (bajty przez IPC); wywołujący tworzy i zwalnia adres blob:. */

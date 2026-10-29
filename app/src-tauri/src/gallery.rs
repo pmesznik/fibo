@@ -9,7 +9,7 @@ use image::imageops::FilterType;
 use rusqlite::{params, Connection};
 use tauri::State;
 
-use crate::{photo_path, read_exif, unique_target, valid_stem, xml_escape, AppState, MoveReport};
+use crate::{photo_path, unique_target, valid_stem, xml_escape, AppState, MoveReport};
 
 const THUMB: u32 = 360;
 
@@ -45,8 +45,7 @@ pub fn gallery_core(state: &AppState, ids: &[i64], dest: &Path, title: &str, max
             .unwrap_or(None);
         let file = format!("{:04}.jpg", n + 1);
         let result = (|| -> Result<(), String> {
-            let orientation = read_exif(&src).orientation;
-            let mut img = image::open(&src).map_err(|e| e.to_string())?;
+            let (mut img, orientation) = crate::formats::open(&src)?;
             img = match orientation {
                 2 => img.fliph(),
                 3 => img.rotate180(),
@@ -170,8 +169,7 @@ pub fn gif_core(state: &AppState, ids: &[i64], dest: &Path, max_side: u32, delay
         for &id in ids {
             let (path, _, _) = photo_path(state, id)?;
             let src = PathBuf::from(&path);
-            let orientation = read_exif(&src).orientation;
-            let mut img = image::open(&src).map_err(|e| format!("{path}: {e}"))?;
+            let (mut img, orientation) = crate::formats::open(&src).map_err(|e| format!("{path}: {e}"))?;
             img = match orientation {
                 2 => img.fliph(),
                 3 => img.rotate180(),

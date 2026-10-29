@@ -4,6 +4,7 @@ import {
   RotateCcw, RotateCw, FlipHorizontal, FlipVertical, Eye, Wand2, Save, CopyPlus, History,
   ZoomIn, ZoomOut, Compare, Sliders, Sparkles, Info, Tag, Crop as CropIcon, Trash2, Sun, Palette, Aperture, Pencil, Zap, Plus,
 } from './FiboIcons'
+import { decodeBitmap } from './imageDecode'
 import { pickFile, readAudio, hasOriginal, photoPeople, readImage, restoreOriginal, saveEdit, setCaption, setPersonCover, photoExif, listPeople, reassignPersonFaces, type Person, setFavorite, setRating, type Photo, type PhotoPerson } from './api'
 import { FaceImg } from './People'
 import { copyEdit, deletePreset, getClip, loadPresets, savePreset, type Preset } from './editor/batch'
@@ -137,7 +138,7 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
     setBitmap(null); setLoadError(null); setEdit(EMPTY_EDIT); setUndo([]); setRedo([]); setRedEyeMode(false); setSelText(null)
     setZoom(1); setPan({ x: 0, y: 0 }); setCompare(false)
     readImage(photo.id)
-      .then((buf) => createImageBitmap(new Blob([buf]), { imageOrientation: 'from-image' }))
+      .then((buf) => decodeBitmap(buf, photo.name))
       .then((b) => { if (!dead) setBitmap(b) })
       .catch((e) => !dead && setLoadError(String(e)))
     hasOriginal(photo.id).then((v) => !dead && setOriginal(v)).catch(() => {})

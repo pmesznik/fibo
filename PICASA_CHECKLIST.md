@@ -30,7 +30,7 @@ Lista powstała z pamięci o Picasie 3, z przeglądu FIBO i z oficjalnego podrę
 - [x] **Blokowanie folderu** przed zmianami z poziomu FIBO (ochrona przed przypadkowym usunięciem). P3 T S Gotowe (menu → Foldery); ochrona działa w programie, nie w systemie plików.
 - [x] **Skróty klawiszowe w bibliotece** (np. 1 do 5 oceny, F ulubione, Del ukrywanie) i ich lista pod F1. P2 T S Gotowe: 0-5, F, ? lub F1 (Del nie dodany, bo usuwanie ma potwierdzenia).
 - [ ] Obsługa **plików wideo** w bibliotece (miniatura, odtwarzanie, filtr). P3 T L
-- [ ] Obsługa **plików RAW** (CR2, NEF, ARW, DNG): miniatura z osadzonego podglądu. P3 T L
+- [x] Obsługa **plików RAW** (CR2, CR3, NEF, ARW, DNG, RAF, ORF, RW2 i inne): miniatura z osadzonego podglądu, pełny podgląd z wywołanej matrycy. Gotowe w wersji 0.4.12 (pliki RAW edytujesz jako kopie).
 
 ## 2. Osoby i miejsca
 - [x] Rozpoznawanie twarzy lokalnie, grupowanie w osoby, imiona, łączenie, okładka, pomijanie
@@ -125,7 +125,7 @@ Biblioteka i foldery:
 - [ ] **Przeciąganie zdjęcia na folder** przenosi plik (z potwierdzeniem), a na album dodaje do albumu. P3 T M
 - [ ] **Wykrywanie karty pamięci i aparatu** przy podłączeniu oraz wybór nazwy folderu przy imporcie. P3 T M
 - [ ] **Opcja skanowania GIF i PNG** w ustawieniach (domyślnie wyłączona jak w Picasie). P4 T S
-- [ ] **Formaty**: PSD, RAW (NEF, CRW, CR2, ARW, DNG), filmy MPG, AVI, WMV, MOV (zob. sekcja 1). P3 T L
+- [x] **Formaty**: PSD i RAW gotowe (oraz HEIC, AVIF, JPEG XL, TGA, PNM, DDS, HDR, QOI, OpenEXR, ICO, SVG). Filmy MPG, AVI, WMV, MOV jeszcze nie (zob. wideo w sekcji 1).
 
 Widoki i wyszukiwanie:
 - [x] **Oś czasu („Timeline”)**: przesuwanie suwakiem po całej bibliotece (miesiące i lata z miniaturami), dziś są tylko skoki do roku. P2 T M Gotowe jako suwak nad zdjęciami (skok do miesiąca lub roku).
@@ -164,4 +164,47 @@ Taca i wyjście:
 - [x] **Łączenie osób v2**: okno z podglądem obu osób (okładka, przykładowe twarze, liczby zdjęć, imię), wybór, która osoba i które imię zostaje, procent podobieństwa, ostrzeżenie, gdy osoby są razem na zdjęciu, oraz podpowiedzi znanych osób („Czy to Anna? 82%”) na kartach osób bez imienia.
 - [x] **Twarze zmieniające się z wiekiem**: osoba pamięta wygląd z różnych lat (wzorce rozłożone w czasie), twarz jest porównywana z ujęciami z okolicznych miesięcy, a dołączanie do osób z imieniem odbywa się w kilku przebiegach (osoba „idzie za dzieckiem” rok po roku). Im więcej twarzy ma osoba, tym łagodniejszy próg dołączenia (do 0,39).
 - [x] **Poprawianie błędnych przypisań**: okno „Twarze” osoby (zaznacz twarze, przenieś do innej lub nowej osoby, odrzuć), usuwanie całej osoby i przywracanie odrzuconych twarzy.
+
+## 10. Pomysły z nowoczesnych programów (Lightroom, Zdjęcia Google i Apple, digiKam, XnView MP, ACDSee, Immich, PhotoPrism)
+Zasady FIBO zostają: wszystko lokalnie, nic do internetu, oryginały nietknięte. Oznaczenia jak wyżej (P = priorytet, T = trudność).
+
+Szukanie i porządkowanie:
+- [ ] **Szukanie po treści zdjęcia** słowami („plaża”, „pies”, „tort”) lokalnym modelem rozpoznającym obrazy. P2 T L
+- [ ] **Automatyczne tagi** scen i obiektów z tego samego modelu (do zatwierdzenia przez użytkownika). P3 T L
+- [ ] **Szukanie tekstu na zdjęciach** (paragony, tablice, dokumenty) lokalnym OCR. P3 T L
+- [ ] **Wspomnienia i „tego dnia”**: zdjęcia z tego samego dnia w poprzednich latach, na starcie programu. P2 T S
+- [ ] **Automatyczne wydarzenia i podróże** z dat i lokalizacji GPS, jako gotowe albumy do zatwierdzenia. P2 T M
+- [ ] **Stosy zdjęć seryjnych** i **RAW + JPEG jako jedno zdjęcie**. P2 T M
+- [ ] **Wybór najlepszego ze zdjęć seryjnych** i wykrywanie zdjęć nieostrych, poruszonych, ciemnych albo z zamkniętymi oczami (do przejrzenia i ukrycia). P3 T L
+- [ ] **Flagi „wybierz / odrzuć” i kolorowe etykiety** zapisywane do XMP, szybkie selekcjonowanie klawiaturą. P2 T S
+- [ ] **Porównanie 2 do 4 zdjęć obok siebie** z jednoczesnym powiększaniem. P2 T M
+- [ ] **Widok kalendarza** (miesiące z miniaturami). P3 T M
+- [ ] **Zwierzęta domowe** jako osobna kategoria osób. P4 T L
+- [ ] **Prywatny, zablokowany album** (ukryty po haśle). P3 T M
+- [ ] **Organizator plików**: przenoszenie zdjęć do folderów według daty, ze sprawdzeniem i cofaniem. P3 T M
+
+Edycja:
+- [ ] **Edycja nieniszcząca**: zapis historii zmian obok zdjęcia (XMP) z możliwością cofnięcia po latach. P2 T L
+- [ ] **Krzywe, HSL, histogram na żywo**, dehaze, klarowność. P3 T M
+- [ ] **Maski lokalne** (pędzel, gradient liniowy i radialny) z osobnymi korektami. P3 T L
+- [ ] **Usuwanie obiektów** (wypełnianie tła), automatyczne prostowanie horyzontu. P4 T L
+- [ ] **Wywoływanie RAW**: ekspozycja, balans bieli, odzyskiwanie świateł (dziś RAW ma tylko podgląd). P2 T L
+- [ ] **Korekta obiektywu** (dystorsja, winietowanie, aberracja chromatyczna). P4 T L
+- [ ] **Łączenie zdjęć**: panorama, HDR, stos ostrości. P4 T L
+- [ ] **Znak wodny tekstowy** (dziś tylko logo). P3 T S
+- [ ] **Konwersja wsadowa formatów** (np. HEIC lub RAW do JPEG, PNG, WebP) z wyborem jakości. P2 T S
+
+Pliki i formaty:
+- [x] **Rozpoznawanie wielu rodzajów plików**: HEIC/HEIF, AVIF, JPEG XL, RAW (CR2, CR3, NEF, ARW, DNG, RAF, ORF, RW2 i inne), PSD, TIFF, TGA, PNM, DDS, HDR, QOI, OpenEXR, ICO, SVG. Pliki w tych formatach edytujemy tylko jako kopie.
+- [ ] **Wideo**: miniatury, odtwarzanie, filtr „Filmy”, wycinanie fragmentu. P2 T L
+- [ ] **Zdjęcia ruchome** (Live Photos, krótkie klipy przy zdjęciu). P4 T L
+- [ ] **Natychmiastowe wykrywanie nowych plików** (obserwator folderów zamiast sprawdzania co kilka minut). P3 T M
+- [ ] **Zarządzanie pamięcią podręczną miniatur** (rozmiar, czyszczenie). P3 T S
+- [ ] **Edycja EXIF i IPTC** (autor, prawa autorskie, strefa czasowa). P3 T M
+
+Udostępnianie i wygoda:
+- [ ] **Udostępnianie w sieci domowej** z kodem QR, tylko na żądanie i bez internetu. P4 T L
+- [ ] **Fotoksiążka** (układ stron do PDF). P4 T L
+- [ ] **Wersja angielska i inne języki interfejsu**. P3 T L
+- [ ] **Pokaz slajdów na kilku monitorach** i sterowanie z pilota. P4 T S
 

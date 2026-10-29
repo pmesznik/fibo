@@ -53,7 +53,7 @@ export const PL = {
         <li>Zdjęcia pojawiają się w trakcie skanowania. Duże biblioteki skanują się partiami, więc widać postęp.</li>
         <li>Dwuklik na zdjęciu otwiera podgląd na cały ekran z edytorem.</li>
       </ol>
-      <p>Obsługiwane formaty: JPG, PNG, WebP, GIF, BMP i TIFF. Pliki RAW, HEIC i wideo nie są jeszcze obsługiwane.</p>
+      <p>Obsługiwane formaty: JPG, PNG, WebP, GIF, BMP, TIFF, ICO, AVIF, SVG, HEIC i HEIF (zdjęcia z iPhone'a), JPEG XL, PSD (Photoshop), TGA, PNM, DDS, HDR, QOI i OpenEXR, a także pliki RAW aparatów (CR2, CR3, NEF, ARW, DNG, RAF, ORF, RW2 i wiele innych). Wszystko jest odczytywane na tym komputerze. Pliki w formatach innych niż JPG, PNG i WebP edytujesz zawsze jako kopię, a oryginał zostaje nietknięty. Wideo nie jest jeszcze obsługiwane.</p>
       <p><strong>Układ ekranu.</strong> Główny ekran jest czysty: przycisk menu (☰) w lewym górnym rogu, przycisk <strong>+</strong> w prawym i pływający pasek widoków u góry (Biblioteka, Albumy, Ulubione, Osoby, Mapa). Narzędzia są w menu po lewej: szukanie, szybkie akcje, filtry, tagi, foldery i wygląd.</p>` },
     { id: 'library', t: 'Biblioteka i albumy', h: `
       <ul>
@@ -300,7 +300,7 @@ export const EN = {
         <li>Photos appear while scanning. Large libraries are scanned in batches, so you can see progress.</li>
         <li>Double-click a photo to open it full screen with the editor.</li>
       </ol>
-      <p>Supported formats: JPG, PNG, WebP, GIF, BMP and TIFF. RAW, HEIC and video files are not supported yet.</p>
+      <p>Supported formats: JPG, PNG, WebP, GIF, BMP, TIFF, ICO, AVIF, SVG, HEIC and HEIF (iPhone photos), JPEG XL, PSD (Photoshop), TGA, PNM, DDS, HDR, QOI and OpenEXR, plus camera RAW files (CR2, CR3, NEF, ARW, DNG, RAF, ORF, RW2 and many more). Everything is read on this computer. Files in formats other than JPG, PNG and WebP are always edited as a copy, and the original stays untouched. Video is not supported yet.</p>
       <p><strong>Screen layout.</strong> The main screen is kept clean: the menu button (☰) top left, the <strong>+</strong> button top right and a floating view bar at the top (Library, Albums, Favorites, People, Map). Tools live in the menu on the left: search, quick actions, filters, tags, folders and appearance.</p>` },
     { id: 'library', t: 'Library and albums', h: `
       <ul>

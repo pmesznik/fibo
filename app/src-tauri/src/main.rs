@@ -12,6 +12,7 @@ use std::{
 };
 
 mod backup;
+mod formats;
 mod photos_backup;
 mod check;
 mod cluster;
@@ -29,7 +30,6 @@ use serde::Serialize;
 use tauri::{Emitter, Manager, State};
 use walkdir::WalkDir;
 
-const EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "webp", "gif", "bmp", "tif", "tiff"];
 const THUMB_SIZE: u32 = 360;
 
 struct AppState {
@@ -204,10 +204,7 @@ fn read_exif(path: &Path) -> ExifInfo {
 }
 
 fn is_photo(path: &Path) -> bool {
-    path.extension()
-        .and_then(|e| e.to_str())
-        .map(|e| EXTENSIONS.contains(&e.to_ascii_lowercase().as_str()))
-        .unwrap_or(false)
+    formats::is_supported(path)
 }
 
 struct Row {
@@ -233,10 +230,18 @@ fn build_row(path: &Path) -> Option<Row> {
         .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0);
-    let exif = read_exif(path);
-    let (mut w, mut h) = image::image_dimensions(path).map(|(w, h)| (Some(w as i64), Some(h as i64))).unwrap_or((None, None));
-    // Orientacje 5-8 obracają zdjęcie o 90°, więc proporcje z nagłówka trzeba zamienić.
-    if (5..=8).contains(&exif.orientation) {
+    let mut exif = read_exif(path);
+    // Zdjęcia RAW często nie mają danych w formacie, który czyta biblioteka EXIF: data i aparat pochodzą wtedy z dekodera RAW.
+    if formats::is_raw(path) && (exif.taken.is_none() || exif.camera.is_none()) {
+        if let Some(rm) = formats::raw_meta(path) {
+            exif.taken = exif.taken.or(rm.taken);
+            exif.camera = exif.camera.or(rm.camera);
+        }
+    }
+    let heic = matches!(formats::ext_of(path).as_str(), "heic" | "heif" | "hif");
+    let (mut w, mut h) = formats::dimensions(path).map(|(w, h)| (Some(w as i64), Some(h as i64))).unwrap_or((None, None));
+    // Orientacje 5-8 obracają zdjęcie o 90°, więc proporcje z nagłówka trzeba zamienić (HEIC ma obrót już uwzględniony w rozmiarze).
+    if (5..=8).contains(&exif.orientation) && !heic {
         std::mem::swap(&mut w, &mut h);
     }
     // Metadane już zapisane w zdjęciu lub w pliku XMP (np. z innego programu).
@@ -474,21 +479,22 @@ fn decode_jpeg_for_thumb(path: &Path, want: u16) -> Option<image::DynamicImage> 
 }
 
 fn make_thumb(src: &Path, dst: &Path) -> Result<(), String> {
-    let orientation = read_exif(src).orientation;
-    let img = match decode_jpeg_for_thumb(src, THUMB_SIZE as u16) {
-        Some(i) => i,
-        None => image::open(src).map_err(|e| e.to_string())?,
+    make_thumb_dims(src, dst).map(|_| ())
+}
+
+/// Robi miniaturę i zwraca rozmiar zdjęcia po ustawieniu prosto (None, gdy użyto szybkiego dekodowania JPEG, które go nie zna).
+fn make_thumb_dims(src: &Path, dst: &Path) -> Result<Option<(u32, u32)>, String> {
+    let (thumb, dims) = if let Some(img) = decode_jpeg_for_thumb(src, THUMB_SIZE as u16) {
+        let orientation = read_exif(src).orientation;
+        (formats::orient(img.resize(THUMB_SIZE, THUMB_SIZE, FilterType::Triangle), orientation as u16), None)
+    } else {
+        let (img, orientation) = formats::open_preview(src)?;
+        let img = formats::orient(img, orientation);
+        let dims = Some((img.width(), img.height()));
+        (img.resize(THUMB_SIZE, THUMB_SIZE, FilterType::Triangle), dims)
     };
-    let mut thumb = img.resize(THUMB_SIZE, THUMB_SIZE, FilterType::Triangle);
-    thumb = match orientation {
-        2 => thumb.fliph(),
-        3 => thumb.rotate180(),
-        4 => thumb.flipv(),
-        6 => thumb.rotate90(),
-        8 => thumb.rotate270(),
-        _ => thumb,
-    };
-    thumb.to_rgb8().save_with_format(dst, image::ImageFormat::Jpeg).map_err(|e| e.to_string())
+    thumb.to_rgb8().save_with_format(dst, image::ImageFormat::Jpeg).map_err(|e| e.to_string())?;
+    Ok(dims)
 }
 
 /// Zwraca ścieżkę miniatury z pamięci podręcznej, tworząc ją przy pierwszym użyciu.
@@ -512,14 +518,53 @@ async fn thumbnail(state: State<'_, AppState>, id: i64) -> Result<String, String
             tauri::async_runtime::spawn_blocking(move || {
                 // Najpierw plik tymczasowy: przerwane zapisywanie nie zostawi uciętej miniatury.
                 let tmp = dst2.with_extension("tmp");
-                make_thumb(Path::new(&src), &tmp)?;
-                fs::rename(&tmp, &dst2).map_err(|e| e.to_string())
+                let dims = make_thumb_dims(Path::new(&src), &tmp)?;
+                fs::rename(&tmp, &dst2).map_err(|e| e.to_string())?;
+                Ok::<_, String>(dims)
             })
             .await
-            .map_err(|e| e.to_string())??;
+            .map_err(|e| e.to_string())?
+            .map(|dims| {
+                // Formaty bez taniego odczytu rozmiaru (RAW, JPEG XL) dostają go przy pierwszej miniaturze: siatka układa je wtedy w dobrych proporcjach.
+                if let Some((w, h)) = dims {
+                    if let Ok(conn) = state.db.lock() {
+                        let _ = conn.execute("UPDATE photos SET width = ?2, height = ?3 WHERE id = ?1 AND (width IS NOT ?2 OR height IS NOT ?3)", params![id, w as i64, h as i64]);
+                    }
+                }
+            })?;
         }
     }
     Ok(dst.to_string_lossy().to_string())
+}
+
+/// Miniatura zrobiona w oknie aplikacji dla formatów bez dekodera w programie (AVIF, SVG): zapisujemy ją w pamięci podręcznej, żeby nie robić jej za każdym razem.
+/// Przyjmujemy tylko JPEG o rozsądnym rozmiarze i tylko dla formatów, których program sam nie dekoduje.
+#[tauri::command]
+fn put_thumbnail(state: State<'_, AppState>, request: tauri::ipc::Request<'_>) -> Result<(), String> {
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else { return Err("brak danych obrazu".into()) };
+    let header = |k: &str| request.headers().get(k).and_then(|v| v.to_str().ok()).unwrap_or("").to_string();
+    let id: i64 = header("id").parse().map_err(|_| "zły id")?;
+    let (w, h): (i64, i64) = (header("width").parse().map_err(|_| "zła szerokość")?, header("height").parse().map_err(|_| "zła wysokość")?);
+    if !(1..=100_000).contains(&w) || !(1..=100_000).contains(&h) {
+        return Err("zły rozmiar zdjęcia".into());
+    }
+    if bytes.len() > 2 * 1024 * 1024 || bytes.len() < 4 || bytes[..3] != [0xFF, 0xD8, 0xFF] {
+        return Err("miniatura musi być plikiem JPEG do 2 MB".into());
+    }
+    let (src, modified): (String, i64) = {
+        let conn = state.db.lock().map_err(|e| e.to_string())?;
+        conn.query_row("SELECT path, modified FROM photos WHERE id = ?1", [id], |r| Ok((r.get(0)?, r.get(1)?))).map_err(|e| e.to_string())?
+    };
+    if !formats::ui_only(Path::new(&src)) {
+        return Err("ten format ma miniaturę z programu".into());
+    }
+    let dst = state.thumbs.join(format!("{id}_{modified}.jpg"));
+    let tmp = dst.with_extension("tmp");
+    fs::write(&tmp, bytes).map_err(|e| e.to_string())?;
+    fs::rename(&tmp, &dst).map_err(|e| e.to_string())?;
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    conn.execute("UPDATE photos SET width = ?2, height = ?3 WHERE id = ?1", params![id, w, h]).map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 /// Bajty miniatury przez IPC (bez protokołu asset i bez dostępu okna do plików na dysku).
@@ -557,11 +602,14 @@ fn save_edit(state: State<'_, AppState>, request: tauri::ipc::Request<'_>) -> Re
     let path = PathBuf::from(path);
     let dir = path.parent().ok_or("brak folderu")?.to_path_buf();
     let ext = match header("ext").as_str() { "png" => "png", "webp" => "webp", _ => "jpg" };
-    if header("mode") == "overwrite" {
+    // Nadpisać można tylko plik w tym samym formacie (JPEG, PNG, WebP). Zdjęcie w innym formacie (HEIC, RAW, TIFF, PSD...) zawsze zostaje
+    // nietknięte, a edycja trafia do nowej kopii: inaczej bajty JPEG wylądowałyby w pliku o innym rozszerzeniu i zniszczyły oryginał.
+    let copy_only = formats::rewritable_ext(&path) != Some(ext);
+    if header("mode") == "overwrite" && !copy_only {
         locks::ensure_unlocked_state(&state, &path)?;
     }
 
-    let target = if header("mode") == "copy" {
+    let target = if header("mode") == "copy" || copy_only {
         let stem = path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
         let mut n = 0;
         loop {
@@ -624,9 +672,26 @@ fn read_audio(path: String) -> Result<tauri::ipc::Response, String> {
 }
 
 #[tauri::command]
-fn read_image(state: State<'_, AppState>, id: i64) -> Result<tauri::ipc::Response, String> {
+async fn read_image(state: State<'_, AppState>, id: i64) -> Result<tauri::ipc::Response, String> {
     let (path, _, _) = photo_path(&state, id)?;
-    Ok(tauri::ipc::Response::new(fs::read(path).map_err(|e| e.to_string())?))
+    let bytes = tauri::async_runtime::spawn_blocking(move || display_bytes(Path::new(&path))).await.map_err(|e| e.to_string())??;
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
+/// Bajty obrazu, które okno aplikacji potrafi wyświetlić: oryginalny plik (JPEG, PNG, WebP, AVIF, SVG...) albo, dla pozostałych formatów
+/// (TIFF, HEIC, RAW, PSD, JPEG XL...), obraz przekonwertowany po stronie programu do JPEG (z przezroczystością do PNG). Plik na dysku się nie zmienia.
+fn display_bytes(path: &Path) -> Result<Vec<u8>, String> {
+    if formats::passes_through(path) {
+        return fs::read(path).map_err(|e| e.to_string());
+    }
+    let img = formats::open_upright(path)?;
+    let mut out = std::io::Cursor::new(Vec::new());
+    if img.color().has_alpha() {
+        img.write_to(&mut out, image::ImageFormat::Png).map_err(|e| e.to_string())?;
+    } else {
+        image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, 92).encode_image(&img.to_rgb8()).map_err(|e| e.to_string())?;
+    }
+    Ok(out.into_inner())
 }
 
 #[tauri::command]
@@ -1873,8 +1938,8 @@ fn export_photos_blocking(state: &AppState, ids: &[i64], dest: &Path, max_side: 
         let (path, _, _) = photo_path(state, id)?;
         let src = PathBuf::from(&path);
         let result = (|| -> Result<(), String> {
-            let orientation = read_exif(&src).orientation;
-            let mut img = image::open(&src).map_err(|e| e.to_string())?;
+            let (mut img, orientation) = formats::open(&src)?;
+            let orientation = orientation as u32;
             if max_side > 0 && img.width().max(img.height()) > max_side {
                 img = img.resize(max_side, max_side, FilterType::Lanczos3);
             }
@@ -3167,7 +3232,7 @@ fn main() {
             app.manage(AppState { db: Mutex::new(db), thumbs, sidecar: AtomicBool::new(sidecar) });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![list_roots, remove_root, rescan_roots, list_albums, create_album, rename_album, set_album_hidden, list_album_order, set_album_order, open_photo_external, delete_album, add_to_album, remove_from_album, rename_photo, move_photos, get_sidecar_enabled, set_sidecar_enabled, export_sidecars, import_sidecars, scan_folder, refresh_library, find_duplicates, trash_photos, export_photos, set_location, rename_batch, import_photos, gallery::export_gallery, gallery::export_gpx, gallery::export_gif, pdf::export_pdf, check::check_files, list_smart, save_smart, delete_smart, gallery::rename_folder, locks::list_locked, locks::set_folder_locked, set_date, shift_dates, set_caption, photo_exif, list_props, set_props, people::photo_people, people::reassign_person_faces, backup::backup_library, photos_backup::backup_photos, backup::restore_library, hide_photos, hidden_count, restore_hidden, people::faces_status, people::set_faces_enabled, people::faces_start, people::faces_stop, people::faces_regroup, people::faces_reanalyze, people::faces_delete_all, people::list_people, people::person_photos, people::person_faces, people::set_person_cover, people::rename_person, people::merge_people, people::merge_suggestions, people::move_faces, people::reject_faces, people::delete_person, people::restore_rejected_faces, people::ignore_person, list_photos, thumbnail, thumbnail_data, people::face_crop, set_rating, set_favorite, add_tag, remove_tag, delete_tag, save_edit, save_collage, read_image, read_audio, has_original, restore_original])
+        .invoke_handler(tauri::generate_handler![list_roots, remove_root, rescan_roots, list_albums, create_album, rename_album, set_album_hidden, put_thumbnail, list_album_order, set_album_order, open_photo_external, delete_album, add_to_album, remove_from_album, rename_photo, move_photos, get_sidecar_enabled, set_sidecar_enabled, export_sidecars, import_sidecars, scan_folder, refresh_library, find_duplicates, trash_photos, export_photos, set_location, rename_batch, import_photos, gallery::export_gallery, gallery::export_gpx, gallery::export_gif, pdf::export_pdf, check::check_files, list_smart, save_smart, delete_smart, gallery::rename_folder, locks::list_locked, locks::set_folder_locked, set_date, shift_dates, set_caption, photo_exif, list_props, set_props, people::photo_people, people::reassign_person_faces, backup::backup_library, photos_backup::backup_photos, backup::restore_library, hide_photos, hidden_count, restore_hidden, people::faces_status, people::set_faces_enabled, people::faces_start, people::faces_stop, people::faces_regroup, people::faces_reanalyze, people::faces_delete_all, people::list_people, people::person_photos, people::person_faces, people::set_person_cover, people::rename_person, people::merge_people, people::merge_suggestions, people::move_faces, people::reject_faces, people::delete_person, people::restore_rejected_faces, people::ignore_person, list_photos, thumbnail, thumbnail_data, people::face_crop, set_rating, set_favorite, add_tag, remove_tag, delete_tag, save_edit, save_collage, read_image, read_audio, has_original, restore_original])
         .run(tauri::generate_context!())
         .expect("błąd uruchomienia aplikacji");
 }
