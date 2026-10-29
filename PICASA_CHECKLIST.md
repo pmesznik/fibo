@@ -161,3 +161,7 @@ Taca i wyjście:
 - [x] **Duplikaty: wybór ważniejszego katalogu**: kolejność katalogów, główne zdjęcie i „Duplikat”, pełne ścieżki, otwarcie w Eksploratorze.
 - [x] **Znak wodny z własnym logo** przy eksporcie (jedno lub wiele zdjęć).
 - [x] **Rozpoznawanie twarzy v2**: detekcja w większej rozdzielczości (+30-40% twarzy), wektory z odbiciem lustrzanym, ocena jakości twarzy, grupowanie hierarchiczne z zasadą „jedno zdjęcie = jedna osoba”, zakotwiczone osoby (imiona i ręczne poprawki), analiza na wielu wątkach (ok. 3,5 razy szybciej), przyciski „Pogrupuj od nowa” i „Przeanalizuj ponownie”.
+- [x] **Łączenie osób v2**: okno z podglądem obu osób (okładka, przykładowe twarze, liczby zdjęć, imię), wybór, która osoba i które imię zostaje, procent podobieństwa, ostrzeżenie, gdy osoby są razem na zdjęciu, oraz podpowiedzi znanych osób („Czy to Anna? 82%”) na kartach osób bez imienia.
+- [x] **Twarze zmieniające się z wiekiem**: osoba pamięta wygląd z różnych lat (wzorce rozłożone w czasie), twarz jest porównywana z ujęciami z okolicznych miesięcy, a dołączanie do osób z imieniem odbywa się w kilku przebiegach (osoba „idzie za dzieckiem” rok po roku). Im więcej twarzy ma osoba, tym łagodniejszy próg dołączenia (do 0,39).
+- [x] **Poprawianie błędnych przypisań**: okno „Twarze” osoby (zaznacz twarze, przenieś do innej lub nowej osoby, odrzuć), usuwanie całej osoby i przywracanie odrzuconych twarzy.
+

@@ -1,21 +1,15 @@
 import { useCallback, useEffect, useState } from 'react'
 import { listen } from '@tauri-apps/api/event'
-import { EyeOff, Eye, Pencil, Star, Pause, Play, Trash2, Users, X } from './FiboIcons'
+import { EyeOff, Eye, Pencil, Shuffle, Star, Pause, Play, Trash2, Users, X } from './FiboIcons'
 import {
-  facesDeleteAll, facesReanalyze, facesRegroup, facesStart, personFaces, setPersonCover, facesStatus, facesStop, faceBlob, ignorePerson, listPeople, mergePeople, personPhotos,
-  renamePerson, setFacesEnabled, type FacesProgress, type FacesStatus, type Person,
+  facesDeleteAll, facesReanalyze, facesRegroup, facesStart, personFaces, setPersonCover, facesStatus, facesStop, ignorePerson, listPeople, personPhotos, deletePerson, mergeSuggestions, restoreRejectedFaces,
+  renamePerson, setFacesEnabled, type FacesProgress, type FacesStatus, type MergeSuggestion, type Person,
 } from './api'
 import { PromptDialog } from './Dialogs'
+import { FaceImg } from './FaceImg'
+import { FacesManager, MergeDialog } from './MergePeople'
 
-export function FaceImg({ id, size = 120 }: { id: number; size?: number }) {
-  const [src, setSrc] = useState<string | null>(null)
-  useEffect(() => {
-    let url: string | null = null, dead = false
-    faceBlob(id).then((b) => { if (dead) return; url = URL.createObjectURL(b); setSrc(url) }).catch(() => {})
-    return () => { dead = true; if (url) URL.revokeObjectURL(url) }
-  }, [id])
-  return src ? <img src={src} alt="" width={size} height={size} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : null
-}
+export { FaceImg }
 
 const pl = (n: number, one: string, few: string, many: string) =>
   n === 1 ? one : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? few : many
@@ -31,20 +25,25 @@ export function People({ say, ask, onOpenPerson, onChanged }: {
   const [people, setPeople] = useState<Person[]>([])
   const [prog, setProg] = useState<FacesProgress | null>(null)
   const [renaming, setRenaming] = useState<Person | null>(null)
-  const [mergeFrom, setMergeFrom] = useState<Person | null>(null)
+  // Okno łączenia (a = osoba wyjściowa, b = druga, jeśli już wybrana) i okno zarządzania twarzami jednej osoby.
+  const [merge, setMerge] = useState<{ a: Person; b: Person | null } | null>(null)
+  const [manage, setManage] = useState<Person | null>(null)
+  // Podpowiedzi: dla osoby bez imienia najlepiej pasująca znana osoba.
+  const [sugg, setSugg] = useState<Map<number, MergeSuggestion>>(new Map())
   const [showIgnored, setShowIgnored] = useState(false)
   // Łączenie przez przeciągnięcie: upuszczenie jednej osoby na drugą tylko proponuje połączenie, dopiero „Zatwierdź” je wykonuje.
   const [dragId, setDragId] = useState<number | null>(null)
   const [overId, setOverId] = useState<number | null>(null)
   const [coverFor, setCoverFor] = useState<Person | null>(null)
   const [coverFaces, setCoverFaces] = useState<number[]>([])
-  const [pending, setPending] = useState<{ from: Person; into: Person } | null>(null)
 
   const refresh = useCallback(async () => {
     try {
       const s = await facesStatus()
       setSt(s)
       setPeople(s.enabled ? await listPeople() : [])
+      // Podpowiedzi liczą się na zaszyfrowanych wektorach twarzy, więc nie w trakcie analizy (wtedy dane ciągle się zmieniają).
+      if (s.enabled && !s.running) mergeSuggestions(null).then((l) => setSugg(new Map(l.map((x) => [x.id, x])))).catch(() => {})
     } catch (e) { say(`Błąd: ${e}`, 'err') }
   }, [say])
 
@@ -89,20 +88,15 @@ export function People({ say, ask, onOpenPerson, onChanged }: {
     if (!coverFor) return
     try { await setPersonCover(coverFor.id, face); setCoverFor(null); await refresh(); say('Okładka osoby zmieniona', 'ok') } catch (e) { say(`Błąd: ${e}`, 'err') }
   }
-  const confirmMerge = async () => {
-    if (!pending) return
-    try { await mergePeople(pending.from.id, pending.into.id); setPending(null); await refresh(); say('Osoby połączone', 'ok') } catch (e) { say(`Błąd: ${e}`, 'err') }
+  const removePerson = (p: Person) => ask({
+    text: `Usunąć osobę „${p.name ?? 'Nieznana osoba'}” (${p.photos} ${pl(p.photos, 'zdjęcie', 'zdjęcia', 'zdjęć')})? Znika cała grupa, a jej twarze nie zostaną już nikomu przypisane. Same zdjęcia zostają nietknięte. Twarze możesz przywrócić przyciskiem „Przywróć odrzucone twarze”.`,
+    yes: 'Usuń osobę',
+    run: async () => { try { await deletePerson(p.id); await refresh(); onChanged(); say('Osoba usunięta', 'ok') } catch (e) { say(`Błąd: ${e}`, 'err') } },
+  })
+  const restoreRejected = async () => {
+    try { const n = await restoreRejectedFaces(); await facesRegroup(); setTimeout(refresh, 800); say(`Przywrócono ${n} ${pl(n, 'twarz', 'twarze', 'twarzy')} do grupowania`, 'ok') } catch (e) { say(`Błąd: ${e}`, 'err') }
   }
   const open = async (p: Person) => {
-    if (mergeFrom) {
-      if (mergeFrom.id === p.id) { setMergeFrom(null); return }
-      const from = mergeFrom
-      ask({
-        text: `Połączyć „${from.name ?? 'Nieznana osoba'}” z „${p.name ?? 'Nieznana osoba'}”? To ta sama osoba, a jej twarze trafią do jednej grupy.`, yes: 'Połącz',
-        run: async () => { try { await mergePeople(from.id, p.id); setMergeFrom(null); await refresh(); say('Osoby połączone', 'ok') } catch (e) { say(`Błąd: ${e}`, 'err') } },
-      })
-      return
-    }
     try { onOpenPerson(p.name ?? 'Nieznana osoba', await personPhotos(p.id)) } catch (e) { say(`Błąd: ${e}`, 'err') }
   }
 
@@ -134,7 +128,7 @@ export function People({ say, ask, onOpenPerson, onChanged }: {
     <div>
       <div style={{ marginBottom: 14 }}>
         <h1 style={{ margin: 0, font: '700 22px/1.2 system-ui' }}>Ludzie</h1>
-        <div style={{ color: 'var(--muted)', fontSize: 13 }}>{st.people} {pl(st.people, 'osoba', 'osoby', 'osób')} · {st.faces} {pl(st.faces, 'twarz', 'twarze', 'twarzy')}{st.unassigned > 0 ? ` (${st.unassigned} bez grupy: za mało pewne)` : ''} · przeciągnij osobę na inną, żeby je połączyć</div>
+        <div style={{ color: 'var(--muted)', fontSize: 13 }}>{st.people} {pl(st.people, 'osoba', 'osoby', 'osób')} · {st.faces} {pl(st.faces, 'twarz', 'twarze', 'twarzy')}{st.unassigned > 0 ? ` (${st.unassigned} bez grupy: za mało pewne)` : ''} · przeciągnij osobę na inną albo użyj przycisku „Połącz”</div>
         <div className="glass" style={{ borderRadius: 'var(--r-lg)', padding: '10px 14px', marginTop: 10, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <div style={{ flex: '1 1 220px', minWidth: 0 }}>
             <div style={{ fontSize: 13.5 }}>
@@ -153,17 +147,9 @@ export function People({ say, ask, onOpenPerson, onChanged }: {
           {!st.running && <button className="chip" onClick={reanalyze} title="Analizuje wszystkie zdjęcia od nowa, dokładniej">Przeanalizuj ponownie</button>}
           <button className="chip" onClick={wipe}><Trash2 size={15} /> Usuń dane twarzy</button>
         </div>
-        {pending && (
-          <div role="group" aria-label="Potwierdzenie połączenia osób" className="glass" style={{ borderRadius: 'var(--r-lg)', padding: '10px 14px', marginTop: 10, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-            <span style={{ flex: '1 1 240px', fontSize: 14 }}>Połączyć „{pending.from.name ?? 'Nieznana osoba'}” z „{pending.into.name ?? 'Nieznana osoba'}”? To ta sama osoba.</span>
-            <button className="primary" style={{ width: 'auto', padding: '0 18px' }} onClick={confirmMerge}>Zatwierdź</button>
-            <button className="chip" onClick={() => setPending(null)}><X size={14} /> Anuluj</button>
-          </div>
-        )}
-        {mergeFrom && (
-          <div role="status" className="chips" style={{ marginTop: 10 }}>
-            <span style={{ fontSize: 13.5 }}>Wybierz osobę, z którą połączyć „{mergeFrom.name ?? 'Nieznana osoba'}”.</span>
-            <button className="chip" onClick={() => setMergeFrom(null)}><X size={14} /> Anuluj</button>
+        {st.rejected > 0 && !st.running && (
+          <div className="chips" style={{ marginTop: 10 }}>
+            <button className="chip" onClick={restoreRejected} title="Odrzucone twarze wracają do automatycznego grupowania">Przywróć odrzucone twarze ({st.rejected})</button>
           </div>
         )}
         {people.some((p) => p.ignored) && (
@@ -192,7 +178,7 @@ export function People({ say, ask, onOpenPerson, onChanged }: {
               e.preventDefault()
               const from = people.find((x) => x.id === dragId)
               setDragId(null); setOverId(null)
-              if (from && from.id !== p.id) setPending({ from, into: p })
+              if (from && from.id !== p.id) setMerge({ a: from, b: p })
             }}
             style={{ opacity: p.ignored ? 0.55 : dragId === p.id ? 0.4 : 1, borderRadius: 'var(--r-lg)', outline: overId === p.id ? '3px solid var(--accent)' : 'none', outlineOffset: 4, cursor: 'grab' }}>
             <button className="bare block w-full text-center" aria-label={`${p.name ?? 'Nieznana osoba'}, ${p.photos} zdjęć`} onClick={() => open(p)}>
@@ -202,15 +188,31 @@ export function People({ say, ask, onOpenPerson, onChanged }: {
               <div className="mt-2 truncate" style={{ fontWeight: 600 }}>{p.name ?? 'Nieznana osoba'}</div>
               <div style={{ color: 'var(--muted)', fontSize: 13 }}>{p.photos} {pl(p.photos, 'zdjęcie', 'zdjęcia', 'zdjęć')}</div>
             </button>
+            {(() => {
+              const sg = !p.name && !p.ignored ? sugg.get(p.id) : undefined
+              const known = sg ? people.find((x) => x.id === sg.other) : undefined
+              if (!sg || !known) return null
+              return (
+                <div style={{ display: 'flex', justifyContent: 'center', marginTop: 4 }}>
+                  <button className="chip on" onClick={() => setMerge({ a: p, b: known })} title={`Podobieństwo twarzy ${Math.round(sg.score * 100)}%. Kliknij, aby porównać i połączyć`}
+                    aria-label={`Czy to ${known.name}? Podobieństwo ${Math.round(sg.score * 100)} procent. Porównaj i połącz`}>
+                    <span style={{ width: 22, height: 22, borderRadius: '50%', overflow: 'hidden', display: 'inline-block', background: 'var(--tonal)' }}>{known.cover !== null && <FaceImg id={known.cover} size={22} />}</span>
+                    Czy to {known.name}? {Math.round(sg.score * 100)}%
+                  </button>
+                </div>
+              )
+            })()}
             <div style={{ display: 'flex', gap: 2, justifyContent: 'center', marginTop: 4 }}>
               <button className="ico" style={{ minWidth: 40, minHeight: 36 }} aria-label={`Nazwij osobę ${p.name ?? ''}`} title="Nadaj imię" onClick={() => setRenaming(p)}><Pencil size={16} /></button>
               <button className="ico" style={{ minWidth: 40, minHeight: 36 }} aria-label={`Wybierz okładkę osoby ${p.name ?? ''}`} title="Wybierz twarz na okładkę" onClick={() => pickCover(p)}><Star size={16} /></button>
-              <button className="ico" style={{ minWidth: 40, minHeight: 36 }} aria-label="Połącz z inną osobą" title="To ta sama osoba co inna: połącz" onClick={() => setMergeFrom(p)}><Users size={16} /></button>
+              <button className="ico" style={{ minWidth: 40, minHeight: 36 }} aria-label={`Połącz ${p.name ?? 'osobę'} z inną osobą`} title="To ta sama osoba co inna: połącz (z podglądem)" onClick={() => setMerge({ a: p, b: null })}><Users size={16} /></button>
+              <button className="ico" style={{ minWidth: 40, minHeight: 36 }} aria-label={`Twarze osoby ${p.name ?? ''}: przenieś lub odrzuć`} title="Twarze: przenieś błędnie przypisane do innej osoby albo odrzuć" onClick={() => setManage(p)}><Shuffle size={16} /></button>
               <button className="ico" style={{ minWidth: 40, minHeight: 36 }} aria-label={p.ignored ? 'Przywróć osobę na listę' : 'Pomiń tę osobę'} title={p.ignored ? 'Przywróć' : 'Pomiń (np. przypadkowy przechodzień)'}
                 onClick={async () => { await ignorePerson(p.id, !p.ignored); refresh() }}>{p.ignored ? <Eye size={16} /> : <EyeOff size={16} />}</button>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'center', marginTop: 2 }}>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: 6, marginTop: 2 }}>
               <button className="chip" onClick={() => pickCover(p)} aria-label={`Zmień okładkę osoby ${p.name ?? 'Nieznana osoba'}`}><Star size={13} /> Zmień okładkę</button>
+              <button className="chip" onClick={() => removePerson(p)} aria-label={`Usuń osobę ${p.name ?? 'Nieznana osoba'}`} title="Usuń całą grupę (zdjęcia zostają)"><Trash2 size={13} /></button>
             </div>
           </div>
         ))}
@@ -237,6 +239,13 @@ export function People({ say, ask, onOpenPerson, onChanged }: {
             </div>
           </div>
         </>
+      )}
+
+      {merge && (
+        <MergeDialog people={people} a={merge.a} b={merge.b} say={say} onClose={() => setMerge(null)} onDone={() => { refresh(); onChanged() }} />
+      )}
+      {manage && (
+        <FacesManager person={manage} people={people} say={say} onClose={() => setManage(null)} onChanged={() => { refresh(); onChanged() }} />
       )}
 
       {renaming && (

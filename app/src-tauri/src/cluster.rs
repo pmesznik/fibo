@@ -24,7 +24,17 @@ pub const LEARN_QUALITY: f32 = 0.45;
 pub const LINKAGE: f32 = 0.35;
 /// Podobieństwo środków dwóch grup, od którego są łączone automatycznie po zakończeniu analizy.
 pub const AUTO_MERGE: f32 = 0.62;
-const EXEMPLARS: usize = 16;
+/// O ile próg dołączenia spada na każde podwojenie liczby twarzy osoby (2 twarze: -0.02, 4: -0.04, 8 i więcej: -0.06).
+/// Osoba z wieloma twarzami ma dokładny środek i wzorce z różnych ujęć (światło, kąt, wiek), więc nowa twarz, która do niej pasuje,
+/// jest dużo pewniejsza niż przy osobie znanej z jednego zdjęcia. Dolna granica 0.39 leży tuż nad progiem tożsamości SFace (0.36).
+const JOIN_STEP: f32 = 0.02;
+const JOIN_MAX_BONUS: f32 = 0.06;
+/// Okno czasu (w dniach), w którym wzorce osoby uznajemy za „z tego samego okresu”: dziecko po półtora roku wygląda już inaczej,
+/// ale twarz sprzed kilku miesięcy jest nadal dobrym punktem odniesienia.
+pub const TIME_WINDOW: i32 = 548;
+/// Wzorce rozkładamy na półrocza, żeby pamiętać wygląd osoby z różnych lat, a nie tylko z najlepszych zdjęć jednego okresu.
+const BUCKET_DAYS: i32 = 183;
+const EXEMPLARS: usize = 24;
 const TOP: usize = 3;
 
 #[derive(Clone)]
@@ -32,7 +42,7 @@ pub struct Person {
     sum: Vec<f32>,
     n: usize,
     /// Najlepsze jakościowo wzorce (wektor, jakość).
-    exemplars: Vec<(Vec<f32>, f32)>,
+    exemplars: Vec<(Vec<f32>, f32, Option<i32>)>,
     /// Zdjęcia, na których osoba już jest (jedna osoba nie może być dwa razy na tym samym zdjęciu).
     photos: HashSet<i64>,
 }
@@ -52,27 +62,64 @@ impl Person {
         self.n
     }
 
-    fn learn(&mut self, emb: &[f32], q: f32) {
+    /// Próg podobieństwa, od którego nowa twarz może dołączyć do tej osoby: im więcej twarzy już zna, tym niższy (zob. `JOIN_STEP`).
+    pub fn join_threshold(&self) -> f32 {
+        JOIN - (JOIN_STEP * (self.n.max(1) as f32).log2()).min(JOIN_MAX_BONUS)
+    }
+
+    fn learn(&mut self, emb: &[f32], q: f32, when: Option<i32>) {
         self.sum.iter_mut().zip(emb).for_each(|(a, b)| *a += b * q);
         self.n += 1;
-        self.exemplars.push((emb.to_vec(), q));
+        self.exemplars.push((emb.to_vec(), q, when));
         if self.exemplars.len() > EXEMPLARS {
-            let worst = self.exemplars.iter().enumerate().min_by(|a, b| a.1 .1.total_cmp(&b.1 .1)).map(|(i, _)| i).unwrap_or(0);
-            self.exemplars.swap_remove(worst);
+            let victim = self.eviction_candidate();
+            self.exemplars.swap_remove(victim);
         }
+    }
+
+    /// Który wzorzec wyrzucić, gdy jest ich za dużo: najsłabszy z najbardziej zatłoczonego półrocza, żeby zostały wzorce z różnych lat.
+    /// Wzorce bez daty traktujemy jak jedno wspólne półrocze.
+    fn eviction_candidate(&self) -> usize {
+        let bucket = |e: &(Vec<f32>, f32, Option<i32>)| e.2.map(|d| d.div_euclid(BUCKET_DAYS));
+        let mut count: HashMap<Option<i32>, usize> = HashMap::new();
+        for e in &self.exemplars {
+            *count.entry(bucket(e)).or_default() += 1;
+        }
+        self.exemplars
+            .iter()
+            .enumerate()
+            .max_by(|(_, a), (_, b)| count[&bucket(a)].cmp(&count[&bucket(b)]).then(b.1.total_cmp(&a.1)))
+            .map(|(i, _)| i)
+            .unwrap_or(0)
     }
 
     /// Podobieństwo twarzy do osoby: średnia z podobieństwa do środka i średniej z najlepszych wzorców.
     pub fn score(&self, emb: &[f32]) -> f32 {
+        self.score_at(emb, None)
+    }
+
+    /// To samo, a gdy znamy dzień zdjęcia (`when`), twarz porównujemy też z wzorcami z okolicznych miesięcy: człowiek zmienia się z latami
+    /// (dziecko szczególnie), więc dla zdjęcia z danego okresu najlepszym punktem odniesienia są ujęcia z tego samego okresu, a nie średnia z całego życia.
+    /// Wynik to większa z dwóch ocen. Wzorzec z jednego tylko ujęcia w oknie jest uwzględniany z niewielką karą, bo to słabsza podstawa.
+    pub fn score_at(&self, emb: &[f32], when: Option<i32>) -> f32 {
         if self.n == 0 {
             return -1.0;
         }
+        let top_avg = |sims: &mut Vec<f32>| {
+            sims.sort_by(|a, b| b.total_cmp(a));
+            let k = sims.len().min(TOP).max(1);
+            sims.iter().take(k).sum::<f32>() / k as f32
+        };
         let c = cosine(&self.centroid(), emb);
-        let mut sims: Vec<f32> = self.exemplars.iter().map(|(e, _)| cosine(e, emb)).collect();
-        sims.sort_by(|a, b| b.total_cmp(a));
-        let k = sims.len().min(TOP).max(1);
-        let ex = sims.iter().take(k).sum::<f32>() / k as f32;
-        0.4 * c + 0.6 * ex
+        let mut sims: Vec<f32> = self.exemplars.iter().map(|(e, _, _)| cosine(e, emb)).collect();
+        let global = 0.4 * c + 0.6 * top_avg(&mut sims);
+        let Some(w) = when else { return global };
+        let mut near: Vec<f32> = self.exemplars.iter().filter(|(_, _, d)| d.map(|d| (d - w).abs() <= TIME_WINDOW).unwrap_or(false)).map(|(e, _, _)| cosine(e, emb)).collect();
+        if near.is_empty() {
+            return global;
+        }
+        let penalty = if near.len() == 1 { 0.03 } else { 0.0 };
+        global.max(top_avg(&mut near) - penalty)
     }
 }
 
@@ -98,22 +145,27 @@ impl Clusters {
 
     /// Dodaje twarz do osoby bez podejmowania decyzji (wczytywanie istniejących grup). `photo` to zdjęcie, z którego pochodzi twarz.
     pub fn add(&mut self, id: i64, emb: &[f32], q: f32, photo: i64) {
+        self.add_at(id, emb, q, photo, None)
+    }
+
+    /// To samo z dniem zrobienia zdjęcia (liczba dni od 1970), dzięki któremu osoba pamięta swój wygląd w czasie.
+    pub fn add_at(&mut self, id: i64, emb: &[f32], q: f32, photo: i64, when: Option<i32>) {
         let p = self.people.entry(id).or_insert_with(Person::new);
         p.photos.insert(photo);
         if q >= LEARN_QUALITY || p.n == 0 {
-            p.learn(emb, q.max(0.05));
+            p.learn(emb, q.max(0.05), when);
         }
     }
 
     /// Dwie najbliższe osoby (pomijamy te, które już są na tym zdjęciu): najlepsza (id, wynik) oraz wynik drugiej (albo -1).
-    fn top_two(&self, emb: &[f32], photo: i64) -> (Option<(i64, f32)>, f32) {
+    fn top_two(&self, emb: &[f32], photo: i64, when: Option<i32>) -> (Option<(i64, f32)>, f32) {
         let mut best: Option<(i64, f32)> = None;
         let mut second = -1.0f32;
         for (id, p) in &self.people {
             if p.photos.contains(&photo) {
                 continue;
             }
-            let s = p.score(emb);
+            let s = p.score_at(emb, when);
             match best {
                 Some((_, bs)) if s <= bs => second = second.max(s),
                 Some((_, bs)) => { second = second.max(bs); best = Some((*id, s)); }
@@ -124,9 +176,13 @@ impl Clusters {
     }
 
     pub fn decide(&self, emb: &[f32], quality: f32, photo: i64) -> Decision {
-        let (best, second) = self.top_two(emb, photo);
+        self.decide_at(emb, quality, photo, None)
+    }
+
+    pub fn decide_at(&self, emb: &[f32], quality: f32, photo: i64, when: Option<i32>) -> Decision {
+        let (best, second) = self.top_two(emb, photo, when);
         match best {
-            Some((id, s)) if s >= JOIN => {
+            Some((id, s)) if s >= self.people.get(&id).map_or(JOIN, |p| p.join_threshold()) => {
                 let clear = s - second >= MARGIN;
                 // Pewne przypisanie zasila osobę (jeśli twarz jest dość dobra); niepewne nie zmienia osoby, a niepewna słaba twarz nie dostaje grupy.
                 if clear { Decision::Join { id, learn: quality >= LEARN_QUALITY } }
@@ -140,10 +196,14 @@ impl Clusters {
 
     /// Zapisuje wynik decyzji (po założeniu osoby o numerze `id` albo dołączeniu do istniejącej).
     pub fn apply(&mut self, id: i64, emb: &[f32], quality: f32, learn: bool, photo: i64) {
+        self.apply_at(id, emb, quality, learn, photo, None)
+    }
+
+    pub fn apply_at(&mut self, id: i64, emb: &[f32], quality: f32, learn: bool, photo: i64, when: Option<i32>) {
         let p = self.people.entry(id).or_insert_with(Person::new);
         p.photos.insert(photo);
         if learn || p.n == 0 {
-            p.learn(emb, quality.max(0.05));
+            p.learn(emb, quality.max(0.05), when);
         }
     }
 
@@ -187,8 +247,10 @@ impl Clusters {
             t.n += f.n;
             t.photos.extend(f.photos);
             t.exemplars.extend(f.exemplars);
-            t.exemplars.sort_by(|a, b| b.1.total_cmp(&a.1));
-            t.exemplars.truncate(EXEMPLARS);
+            while t.exemplars.len() > EXEMPLARS {
+                let victim = t.eviction_candidate();
+                t.exemplars.swap_remove(victim);
+            }
         }
     }
 }
@@ -542,5 +604,81 @@ mod tests {
         // Identyczne wektory z różnych zdjęć łączą się, z tego samego zdjęcia nie.
         assert_eq!(agglomerate(&[&v, &v], &[1, 2], 0.3), vec![0, 0]);
         assert_eq!(agglomerate(&[&v, &v], &[1, 1], 0.3), vec![0, 1]);
+    }
+
+    #[test]
+    fn a_person_with_many_faces_accepts_new_faces_more_readily() {
+        let mut rng = Rng(7);
+        let base = rng.unit();
+        // Twarz o zadanym podobieństwie do `base` (reszta to losowy szum prostopadły).
+        let at = |rng: &mut Rng, sim: f32| -> Vec<f32> {
+            let noise = rng.unit();
+            let dot = cosine(&noise, &base);
+            let ortho: Vec<f32> = noise.iter().zip(&base).map(|(n, b)| n - dot * b).collect();
+            let mut o = ortho;
+            normalize(&mut o);
+            let mut v: Vec<f32> = base.iter().zip(&o).map(|(b, o)| sim * b + (1.0 - sim * sim).sqrt() * o).collect();
+            normalize(&mut v);
+            v
+        };
+        let probe = at(&mut rng, 0.41);
+
+        // Osoba znana z jednej twarzy: próg 0.45, więc 0.41 to za mało.
+        let mut one = Clusters::new();
+        one.add(1, &base, 0.9, 100);
+        assert!((one.person(1).unwrap().join_threshold() - JOIN).abs() < 1e-6);
+        assert_eq!(one.decide(&probe, 0.9, 200), Decision::New);
+
+        // Ta sama osoba znana z wielu ujęć: próg spada i ta sama twarz do niej dołącza.
+        let mut many = Clusters::new();
+        for k in 0..10 {
+            let f = at(&mut rng, 0.93);
+            many.add(1, &f, 0.9, 100 + k);
+        }
+        let t = many.person(1).unwrap().join_threshold();
+        assert!(t < JOIN && t >= JOIN - JOIN_MAX_BONUS - 1e-6, "próg {t}");
+        assert!(matches!(many.decide(&at(&mut rng, 0.9), 0.9, 300), Decision::Join { id: 1, .. }));
+        assert!(many.person(1).unwrap().join_threshold() > 0.36, "nigdy poniżej progu tożsamości");
+    }
+
+    /// Dziecko zmienia się co roku: każdy rok jest podobny do sąsiednich (cos ~0.6), ale rok 1 i rok 6 niewiele mają wspólnego.
+    /// Zdjęcie z roku 4 nie pasuje do średniej z lat 1-3, ale pasuje do wzorców z lat 3, więc osoba „idzie za dzieckiem” przez lata.
+    #[test]
+    fn a_child_is_followed_through_the_years_by_nearby_photos() {
+        let mut rng = Rng(11);
+        // Wektor „wieku”: kolejne lata to losowy spacer o stałej długości kroku, więc sąsiednie lata są podobne, a odległe nie.
+        let mut face = rng.unit();
+        let mut years: Vec<Vec<f32>> = Vec::new();
+        for _ in 0..8 {
+            years.push(face.clone());
+            let step = rng.unit();
+            face = face.iter().zip(&step).map(|(a, b)| 0.82 * a + 0.57 * b).collect();
+            normalize(&mut face);
+        }
+        let day = |y: usize| 365 * y as i32;
+        let mut cl = Clusters::new();
+        for y in 0..3 {
+            cl.add_at(1, &years[y], 0.9, 100 + y as i64, Some(day(y)));
+        }
+        // Rok 4 (indeks 3): bez dat człowiek jest „za daleko” od średniej z lat 0-2, z datami pasuje do roku 2.
+        let probe = &years[3];
+        let global = cl.person(1).unwrap().score(probe);
+        let timed = cl.person(1).unwrap().score_at(probe, Some(day(3)));
+        assert!(timed > global, "ocena z uwzględnieniem czasu ({timed}) jest wyższa niż globalna ({global})");
+        // Rok 8 (indeks 7), gdy znamy tylko lata 0-2, nadal nie pasuje (za duża przerwa w czasie).
+        assert!(cl.person(1).unwrap().score_at(&years[7], Some(day(7))) < JOIN);
+    }
+
+    #[test]
+    fn exemplars_keep_a_spread_of_years() {
+        let mut rng = Rng(5);
+        let mut p = Person::new();
+        // 40 zdjęć z jednego roku o wysokiej jakości i jedno z odległego roku o niskiej: stare ujęcie nie może zniknąć.
+        p.learn(&rng.unit(), 0.3, Some(0));
+        for k in 0..40 {
+            p.learn(&rng.unit(), 0.9, Some(5000 + k));
+        }
+        assert!(p.exemplars.len() <= EXEMPLARS);
+        assert!(p.exemplars.iter().any(|e| e.2 == Some(0)), "wzorzec z innego okresu zostaje mimo niskiej jakości");
     }
 }

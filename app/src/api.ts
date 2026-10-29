@@ -131,7 +131,7 @@ export async function faceBlob(id: number) {
 }
 
 // ---- Rozpoznawanie twarzy (wszystko lokalnie) ----
-export type FacesStatus = { enabled: boolean; models_ok: boolean; running: boolean; photos: number; scanned: number; faces: number; people: number; unassigned: number }
+export type FacesStatus = { enabled: boolean; models_ok: boolean; running: boolean; photos: number; scanned: number; faces: number; people: number; unassigned: number; rejected: number }
 export type FacesProgress = { done: number; total: number; faces: number; finished: boolean; grouping?: boolean; error: string | null }
 export type Person = { id: number; name: string | null; count: number; photos: number; cover: number | null; ignored: boolean }
 export const facesStatus = () => invoke<FacesStatus>('faces_status')
@@ -146,7 +146,14 @@ export const personPhotos = (id: number) => invoke<number[]>('person_photos', { 
 export const personFaces = (id: number) => invoke<number[]>('person_faces', { id })
 export const setPersonCover = (id: number, face: number) => invoke('set_person_cover', { id, face })
 export const renamePerson = (id: number, name: string) => invoke('rename_person', { id, name })
-export const mergePeople = (from: number, into: number) => invoke('merge_people', { from, into })
+export const mergePeople = (from: number, into: number, name: string | null = null) => invoke('merge_people', { from, into, name })
+/** Podpowiedź łączenia: `id` i `other` to osoby, `score` podobieństwo (0-1), `conflict` = występują razem na jednym zdjęciu. */
+export type MergeSuggestion = { id: number; other: number; score: number; conflict: boolean }
+export const mergeSuggestions = (id: number | null) => invoke<MergeSuggestion[]>('merge_suggestions', { id })
+export const moveFaces = (ids: number[], to: number | null) => invoke<number>('move_faces', { ids, to })
+export const rejectFaces = (ids: number[]) => invoke<number>('reject_faces', { ids })
+export const deletePerson = (id: number) => invoke<number>('delete_person', { id })
+export const restoreRejectedFaces = () => invoke<number>('restore_rejected_faces')
 export const ignorePerson = (id: number, ignored: boolean) => invoke('ignore_person', { id, ignored })
 
 export async function pickFile(title: string, extensions: string[], filterName = 'Kopia biblioteki FIBO') {

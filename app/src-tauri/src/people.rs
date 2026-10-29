@@ -21,7 +21,7 @@ use sha2::{Digest, Sha256};
 use tauri::{Emitter, Manager, State};
 
 use crate::cluster::{self, Clusters, Decision};
-use crate::faces::{align, quality as face_quality, Detection, Engine};
+use crate::faces::{align, cosine, normalize, quality as face_quality, Detection, Engine, EMB_LEN};
 use crate::secure::{open_embedding, seal_embedding};
 use crate::AppState;
 
@@ -60,6 +60,8 @@ pub fn init_schema(conn: &Connection) -> rusqlite::Result<()> {
     let _ = conn.execute("ALTER TABLE faces ADD COLUMN manual INTEGER NOT NULL DEFAULT 0", []);
     // Migracja: twarz wybrana przez użytkownika jako okładka osoby (błąd „duplicate column” oznacza, że kolumna już jest).
     let _ = conn.execute("ALTER TABLE people ADD COLUMN cover_face INTEGER", []);
+    // Migracja: twarz odrzucona przez użytkownika („to nie ta osoba” albo usunięta osoba): grupowanie nie przypisuje jej już do nikogo.
+    let _ = conn.execute("ALTER TABLE faces ADD COLUMN rejected INTEGER NOT NULL DEFAULT 0", []);
     Ok(())
 }
 
@@ -254,6 +256,29 @@ fn store_faces(conn: &Connection, thumbs: &Path, photo_id: i64, modified: i64, f
     Ok(n)
 }
 
+/// Dzień (liczba dni od 1970) z tekstu daty „RRRR-MM-DD…” albo „RRRR:MM:DD…”.
+fn day_of(s: &str) -> Option<i32> {
+    let b = s.as_bytes();
+    if b.len() < 10 || !(b[4] == b'-' || b[4] == b':') {
+        return None;
+    }
+    let (y, m, d): (i64, i64, i64) = (s.get(0..4)?.parse().ok()?, s.get(5..7)?.parse().ok()?, s.get(8..10)?.parse().ok()?);
+    if !(1900..=2200).contains(&y) || !(1..=12).contains(&m) || !(1..=31).contains(&d) {
+        return None;
+    }
+    Some(crate::days_from_civil(y, m, d) as i32)
+}
+
+/// Dzień zrobienia każdego zdjęcia (data z EXIF albo data pliku). Przy braku danych pusta mapa: grupowanie działa wtedy bez czasu.
+fn photo_days(conn: &Connection) -> HashMap<i64, i32> {
+    let Ok(mut stmt) = conn.prepare("SELECT id, COALESCE(taken, datetime(modified, 'unixepoch')) FROM photos") else { return HashMap::new() };
+    let rows = stmt.query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, Option<String>>(1)?)));
+    match rows {
+        Ok(rows) => rows.filter_map(Result::ok).filter_map(|(id, t)| t.and_then(|t| day_of(&t)).map(|d| (id, d))).collect(),
+        Err(_) => HashMap::new(),
+    }
+}
+
 /// Twarz osoby „zakotwiczonej”: takiej, której grupowanie nie może rozbić ani zmienić (osoba z imieniem, pominięta albo z ręcznie poprawioną twarzą).
 struct AnchorFace {
     person: i64,
@@ -290,17 +315,18 @@ fn regroup(conn: &Connection, snapshot: Option<Vec<AnchorFace>>, reanalyzed: &Ha
         None => load_anchor_faces(conn)?,
     };
     let anchor_people: HashSet<i64> = anchor_faces.iter().map(|a| a.person).collect();
+    let days = photo_days(conn);
     let mut anchors = Clusters::new();
     for a in &anchor_faces {
         // Stara twarz ze zdjęcia, które właśnie przeanalizowano, nie może blokować nowej twarzy tej samej osoby z tego zdjęcia.
         let photo = if reanalyzed.contains(&a.photo) { -a.face - 1 } else { a.photo };
-        anchors.add(a.person, &a.emb, a.quality, photo);
+        anchors.add_at(a.person, &a.emb, a.quality, photo, days.get(&a.photo).copied());
     }
 
-    struct Loose { id: i64, photo: i64, old: Option<i64>, emb: Vec<f32>, quality: f32 }
+    struct Loose { id: i64, photo: i64, old: Option<i64>, emb: Vec<f32>, quality: f32, when: Option<i32> }
     let mut loose: Vec<Loose> = Vec::new();
     {
-        let mut stmt = conn.prepare("SELECT id, photo_id, person_id, emb, COALESCE(quality, 0.6) FROM faces").map_err(|e| e.to_string())?;
+        let mut stmt = conn.prepare("SELECT id, photo_id, person_id, emb, COALESCE(quality, 0.6) FROM faces WHERE rejected = 0").map_err(|e| e.to_string())?;
         let rows: Vec<(i64, i64, Option<i64>, Vec<u8>, f64)> =
             stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))).map_err(|e| e.to_string())?.filter_map(Result::ok).collect();
         for (id, photo, old, blob, q) in rows {
@@ -308,7 +334,7 @@ fn regroup(conn: &Connection, snapshot: Option<Vec<AnchorFace>>, reanalyzed: &Ha
                 continue; // twarze osób zakotwiczonych zostają, gdzie są
             }
             if let Ok(emb) = open_embedding(&blob) {
-                loose.push(Loose { id, photo, old, emb, quality: q as f32 });
+                loose.push(Loose { id, photo, old, emb, quality: q as f32, when: days.get(&photo).copied() });
             }
         }
     }
@@ -316,16 +342,28 @@ fn regroup(conn: &Connection, snapshot: Option<Vec<AnchorFace>>, reanalyzed: &Ha
     loose.sort_by(|a, b| b.quality.total_cmp(&a.quality));
 
     let mut assign: HashMap<i64, Option<i64>> = HashMap::new(); // twarz -> osoba (istniejąca zakotwiczona) albo None
-    let mut pool: Vec<usize> = Vec::new();
-    for (i, f) in loose.iter().enumerate() {
-        if anchors.people_count() > 0 {
-            if let Decision::Join { id, learn } = anchors.decide(&f.emb, f.quality, f.photo) {
-                anchors.apply(id, &f.emb, f.quality, learn, f.photo);
-                assign.insert(f.id, Some(id));
-                continue;
+    // Dołączanie do osób zakotwiczonych w kilku przebiegach: twarz, która nie pasowała do wzorców osoby, może pasować do ujęć, które osoba
+    // „nauczyła się” chwilę później (np. dziecko rok starsze). Dzięki temu osoba idzie za zmieniającą się twarzą rok po roku.
+    let mut pool: Vec<usize> = (0..loose.len()).collect();
+    if anchors.people_count() > 0 {
+        for _ in 0..6 {
+            let mut rest: Vec<usize> = Vec::new();
+            let mut joined = 0;
+            for &i in &pool {
+                let f = &loose[i];
+                if let Decision::Join { id, learn } = anchors.decide_at(&f.emb, f.quality, f.photo, f.when) {
+                    anchors.apply_at(id, &f.emb, f.quality, learn, f.photo, f.when);
+                    assign.insert(f.id, Some(id));
+                    joined += 1;
+                } else {
+                    rest.push(i);
+                }
+            }
+            pool = rest;
+            if joined == 0 {
+                break;
             }
         }
-        pool.push(i);
     }
 
     // Pozostałe twarze: grupowanie hierarchiczne (albo przyrostowe przy bardzo dużej liczbie twarzy).
@@ -339,9 +377,10 @@ fn regroup(conn: &Connection, snapshot: Option<Vec<AnchorFace>>, reanalyzed: &Ha
         let mut next = 0i64;
         let mut out = Vec::with_capacity(pool.len());
         for k in 0..pool.len() {
-            out.push(match cl.decide(embs[k], qual[k], photos[k]) {
-                Decision::Join { id, learn } => { cl.apply(id, embs[k], qual[k], learn, photos[k]); Some(id as usize) }
-                Decision::New => { next += 1; cl.apply(next, embs[k], qual[k], true, photos[k]); Some(next as usize) }
+            let when = loose[pool[k]].when;
+            out.push(match cl.decide_at(embs[k], qual[k], photos[k], when) {
+                Decision::Join { id, learn } => { cl.apply_at(id, embs[k], qual[k], learn, photos[k], when); Some(id as usize) }
+                Decision::New => { next += 1; cl.apply_at(next, embs[k], qual[k], true, photos[k], when); Some(next as usize) }
                 Decision::Unassigned => None,
             });
         }
@@ -503,6 +542,8 @@ pub struct FacesStatus {
     people: i64,
     /// Twarze bez przypisanej osoby (zbyt niepewne, żeby je pogrupować).
     unassigned: i64,
+    /// Twarze odrzucone przez użytkownika (nie trafiają do żadnej osoby).
+    rejected: i64,
 }
 
 #[tauri::command]
@@ -521,7 +562,8 @@ pub fn faces_status(app: tauri::AppHandle, state: State<'_, AppState>) -> Result
         scanned: n("SELECT COUNT(*) FROM face_scan f JOIN photos p ON p.id = f.photo_id WHERE p.hidden = 0 AND f.scanned_mod = p.modified"),
         faces: n("SELECT COUNT(*) FROM faces"),
         people: n("SELECT COUNT(DISTINCT person_id) FROM faces f JOIN people p ON p.id = f.person_id WHERE p.ignored = 0"),
-        unassigned: n("SELECT COUNT(*) FROM faces WHERE person_id IS NULL"),
+        unassigned: n("SELECT COUNT(*) FROM faces WHERE person_id IS NULL AND rejected = 0"),
+        rejected: n("SELECT COUNT(*) FROM faces WHERE rejected = 1"),
     })
 }
 
@@ -684,7 +726,7 @@ pub fn face_crop(state: State<'_, AppState>, id: i64) -> Result<tauri::ipc::Resp
 pub fn person_faces(state: State<'_, AppState>, id: i64) -> Result<Vec<i64>, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     let mut stmt = conn
-        .prepare("SELECT f.id FROM faces f JOIN photos p ON p.id = f.photo_id AND p.hidden = 0 WHERE f.person_id = ?1 ORDER BY f.score * f.w DESC LIMIT 80")
+        .prepare("SELECT f.id FROM faces f JOIN photos p ON p.id = f.photo_id AND p.hidden = 0 WHERE f.person_id = ?1 ORDER BY f.score * f.w DESC LIMIT 400")
         .map_err(|e| e.to_string())?;
     let v = stmt.query_map([id], |r| r.get(0)).map_err(|e| e.to_string())?.filter_map(Result::ok).collect();
     Ok(v)
@@ -783,16 +825,235 @@ pub fn rename_person(state: State<'_, AppState>, id: i64, name: String) -> Resul
 }
 
 /// Łączy dwie osoby (ta sama osoba rozpoznana jako dwie): twarze przechodzą do `into`.
+/// Imię po połączeniu: `name`, jeśli je podano (np. wybór użytkownika, gdy obie osoby miały różne imiona); w przeciwnym razie imię `into`,
+/// a gdy go nie ma, imię `from`.
 #[tauri::command]
-pub fn merge_people(state: State<'_, AppState>, from: i64, into: i64) -> Result<(), String> {
+pub fn merge_people(state: State<'_, AppState>, from: i64, into: i64, name: Option<String>) -> Result<(), String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    merge_core(&conn, from, into, name.as_deref())
+}
+
+pub fn merge_core(conn: &Connection, from: i64, into: i64, name: Option<&str>) -> Result<(), String> {
     if from == into {
         return Ok(());
     }
-    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    for id in [from, into] {
+        if conn.query_row("SELECT 1 FROM people WHERE id = ?1", [id], |_| Ok(())).is_err() {
+            return Err("Nie ma takiej osoby".into());
+        }
+    }
     conn.execute("UPDATE faces SET person_id = ?1, manual = 1 WHERE person_id = ?2", params![into, from]).map_err(|e| e.to_string())?;
     conn.execute("UPDATE people SET name = COALESCE(name, (SELECT name FROM people WHERE id = ?2)) WHERE id = ?1", params![into, from]).map_err(|e| e.to_string())?;
+    // Osoba pominięta, połączona z widoczną, ma być widoczna.
+    conn.execute("UPDATE people SET ignored = MIN(ignored, COALESCE((SELECT ignored FROM people WHERE id = ?2), 0)) WHERE id = ?1", params![into, from]).map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM people WHERE id = ?1", [from]).map_err(|e| e.to_string())?;
+    if let Some(n) = name {
+        let n: String = n.chars().filter(|c| !c.is_control()).collect::<String>().trim().chars().take(80).collect();
+        if !n.is_empty() {
+            conn.execute("UPDATE people SET name = ?1 WHERE id = ?2", params![n, into]).map_err(|e| e.to_string())?;
+        }
+    }
     Ok(())
+}
+
+// ---- Podpowiedzi łączenia osób
+
+/// Podobieństwo środków grup, od którego znana osoba jest podpowiadana nieznanej (próg tożsamości SFace dla pojedynczych par to ok. 0.36).
+const SUGGEST_MIN: f32 = 0.42;
+
+/// Osoba do porównań: środek jej twarzy (wektor jednostkowy) i zdjęcia, na których występuje.
+pub(crate) struct Cent {
+    pub id: i64,
+    pub named: bool,
+    pub ignored: bool,
+    pub c: Vec<f32>,
+    pub photos: HashSet<i64>,
+}
+
+#[derive(Serialize, Debug)]
+pub struct MergeSuggestion {
+    id: i64,
+    other: i64,
+    /// Podobieństwo środków twarzy obu osób (0-1).
+    score: f32,
+    /// Obie osoby występują razem na jednym zdjęciu, więc to raczej dwie różne osoby.
+    conflict: bool,
+}
+
+/// `target` = Some(id): wszystkie inne osoby od najbardziej podobnej (do ręcznego wyboru w oknie łączenia).
+/// `target` = None: dla każdej osoby bez imienia najlepiej pasująca znana osoba, o ile podobieństwo jest wyraźne i osoby nie występują razem na zdjęciu.
+pub(crate) fn suggest_core(cents: &[Cent], target: Option<i64>) -> Vec<MergeSuggestion> {
+    let pair = |a: &Cent, b: &Cent| MergeSuggestion { id: a.id, other: b.id, score: cosine(&a.c, &b.c), conflict: !a.photos.is_disjoint(&b.photos) };
+    let mut out: Vec<MergeSuggestion> = Vec::new();
+    match target {
+        Some(t) => {
+            if let Some(a) = cents.iter().find(|c| c.id == t) {
+                out.extend(cents.iter().filter(|b| b.id != t).map(|b| pair(a, b)));
+            }
+            out.sort_by(|x, y| y.score.total_cmp(&x.score));
+            out.truncate(60);
+        }
+        None => {
+            for a in cents.iter().filter(|c| !c.named && !c.ignored) {
+                let best = cents
+                    .iter()
+                    .filter(|b| b.named && !b.ignored && b.id != a.id)
+                    .map(|b| pair(a, b))
+                    .filter(|s| !s.conflict && s.score >= SUGGEST_MIN)
+                    .max_by(|x, y| x.score.total_cmp(&y.score));
+                out.extend(best);
+            }
+            out.sort_by(|x, y| y.score.total_cmp(&x.score));
+        }
+    }
+    out
+}
+
+/// Środki osób liczone z najlepszych (najostrzejszych) twarzy każdej osoby, najwyżej 24 na osobę.
+fn load_cents(conn: &Connection) -> Result<Vec<Cent>, String> {
+    let mut by: HashMap<i64, Cent> = HashMap::new();
+    {
+        let mut stmt = conn
+            .prepare("SELECT p.id, p.name IS NOT NULL, p.ignored FROM people p WHERE EXISTS (SELECT 1 FROM faces f JOIN photos ph ON ph.id = f.photo_id AND ph.hidden = 0 WHERE f.person_id = p.id)")
+            .map_err(|e| e.to_string())?;
+        for r in stmt.query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)? != 0, r.get::<_, i64>(2)? != 0))).map_err(|e| e.to_string())?.filter_map(Result::ok) {
+            by.insert(r.0, Cent { id: r.0, named: r.1, ignored: r.2, c: vec![0.0; EMB_LEN], photos: HashSet::new() });
+        }
+    }
+    {
+        let mut stmt = conn
+            .prepare("SELECT f.person_id, f.photo_id FROM faces f JOIN photos ph ON ph.id = f.photo_id AND ph.hidden = 0 WHERE f.person_id IS NOT NULL")
+            .map_err(|e| e.to_string())?;
+        for (pid, photo) in stmt.query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?))).map_err(|e| e.to_string())?.filter_map(Result::ok) {
+            if let Some(c) = by.get_mut(&pid) {
+                c.photos.insert(photo);
+            }
+        }
+    }
+    {
+        let mut stmt = conn
+            .prepare(
+                "SELECT person_id, emb, q FROM (
+                    SELECT f.person_id AS person_id, f.emb AS emb, COALESCE(f.quality, 0.6) AS q,
+                           ROW_NUMBER() OVER (PARTITION BY f.person_id ORDER BY COALESCE(f.quality, 0.6) DESC) AS rn
+                    FROM faces f JOIN photos ph ON ph.id = f.photo_id AND ph.hidden = 0 WHERE f.person_id IS NOT NULL
+                 ) WHERE rn <= 24",
+            )
+            .map_err(|e| e.to_string())?;
+        for (pid, blob, q) in stmt.query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, Vec<u8>>(1)?, r.get::<_, f64>(2)? as f32))).map_err(|e| e.to_string())?.filter_map(Result::ok) {
+            if let (Some(c), Ok(emb)) = (by.get_mut(&pid), open_embedding(&blob)) {
+                if emb.len() == EMB_LEN {
+                    for (a, b) in c.c.iter_mut().zip(&emb) {
+                        *a += b * q;
+                    }
+                }
+            }
+        }
+    }
+    let mut v: Vec<Cent> = by.into_values().collect();
+    for c in &mut v {
+        normalize(&mut c.c);
+    }
+    Ok(v)
+}
+
+/// Podpowiedzi łączenia osób (zob. `suggest_core`). Liczone lokalnie z zaszyfrowanych wektorów twarzy.
+#[tauri::command]
+pub async fn merge_suggestions(app: tauri::AppHandle, id: Option<i64>) -> Result<Vec<MergeSuggestion>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let cents = {
+            let conn = state.db.lock().map_err(|e| e.to_string())?;
+            load_cents(&conn)?
+        };
+        Ok(suggest_core(&cents, id))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Przenosi wskazane twarze do innej osoby (`to`) albo do nowej osoby (`to` = None). To poprawka ręczna: grupowanie jej nie cofa.
+/// Dwie twarze z jednego zdjęcia nigdy nie mogą należeć do jednej osoby.
+pub fn move_faces_core(conn: &Connection, ids: &[i64], to: Option<i64>) -> Result<i64, String> {
+    if ids.is_empty() {
+        return Err("Nie wskazano twarzy".into());
+    }
+    let mut photos: HashSet<i64> = HashSet::new();
+    for id in ids {
+        let photo: i64 = conn.query_row("SELECT photo_id FROM faces WHERE id = ?1", [id], |r| r.get(0)).map_err(|_| "Nie ma takiej twarzy".to_string())?;
+        if !photos.insert(photo) {
+            return Err("Dwie z wybranych twarzy są z tego samego zdjęcia, więc nie mogą być jedną osobą".into());
+        }
+    }
+    let target = match to {
+        Some(t) => {
+            if conn.query_row("SELECT 1 FROM people WHERE id = ?1", [t], |_| Ok(())).is_err() {
+                return Err("Nie ma takiej osoby".into());
+            }
+            let mut clash = 0;
+            for photo in &photos {
+                let n: i64 = conn
+                    .query_row("SELECT COUNT(*) FROM faces WHERE photo_id = ?1 AND person_id = ?2 AND id NOT IN (SELECT value FROM json_each(?3))", params![photo, t, serde_json::to_string(ids).unwrap_or_default()], |r| r.get(0))
+                    .map_err(|e| e.to_string())?;
+                clash += n;
+            }
+            if clash > 0 {
+                return Err(format!("Ta osoba ma już inną twarz na {} z tych zdjęć, więc to raczej nie ona", clash));
+            }
+            t
+        }
+        None => {
+            conn.execute("INSERT INTO people (name) VALUES (NULL)", []).map_err(|e| e.to_string())?;
+            conn.last_insert_rowid()
+        }
+    };
+    for id in ids {
+        conn.execute("UPDATE faces SET person_id = ?2, manual = 1, rejected = 0 WHERE id = ?1", params![id, target]).map_err(|e| e.to_string())?;
+    }
+    conn.execute("DELETE FROM people WHERE id NOT IN (SELECT person_id FROM faces WHERE person_id IS NOT NULL)", []).map_err(|e| e.to_string())?;
+    Ok(target)
+}
+
+/// Odrzuca twarze: nie należą do nikogo i grupowanie nie przypisze ich ponownie (np. zły wykrywacz, przechodzień, pomyłka).
+pub fn reject_faces_core(conn: &Connection, ids: &[i64]) -> Result<usize, String> {
+    let mut n = 0;
+    for id in ids {
+        n += conn.execute("UPDATE faces SET person_id = NULL, rejected = 1, manual = 0 WHERE id = ?1", [id]).map_err(|e| e.to_string())?;
+    }
+    conn.execute("DELETE FROM people WHERE id NOT IN (SELECT person_id FROM faces WHERE person_id IS NOT NULL)", []).map_err(|e| e.to_string())?;
+    Ok(n)
+}
+
+/// Usuwa osobę (całą grupę): jej twarze są odrzucane, więc nie wrócą do żadnej osoby. Zdjęcia zostają nietknięte.
+pub fn delete_person_core(conn: &Connection, id: i64) -> Result<usize, String> {
+    let n = conn.execute("UPDATE faces SET person_id = NULL, rejected = 1, manual = 0 WHERE person_id = ?1", [id]).map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM people WHERE id = ?1", [id]).map_err(|e| e.to_string())?;
+    Ok(n)
+}
+
+#[tauri::command]
+pub fn move_faces(state: State<'_, AppState>, ids: Vec<i64>, to: Option<i64>) -> Result<i64, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    move_faces_core(&conn, &ids, to)
+}
+
+#[tauri::command]
+pub fn reject_faces(state: State<'_, AppState>, ids: Vec<i64>) -> Result<usize, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    reject_faces_core(&conn, &ids)
+}
+
+#[tauri::command]
+pub fn delete_person(state: State<'_, AppState>, id: i64) -> Result<usize, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    delete_person_core(&conn, id)
+}
+
+/// Cofa odrzucenie wszystkich twarzy (wrócą do grupowania przy najbliższym „Pogrupuj od nowa”).
+#[tauri::command]
+pub fn restore_rejected_faces(state: State<'_, AppState>) -> Result<usize, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    conn.execute("UPDATE faces SET rejected = 0 WHERE rejected = 1", []).map_err(|e| e.to_string())
 }
 
 /// Ukrywa osobę na liście Ludzie (np. przypadkowy przechodzień). Jej twarze zostają, żeby kolejne zdjęcia nie tworzyły jej od nowa.
@@ -806,7 +1067,6 @@ pub fn ignore_person(state: State<'_, AppState>, id: i64, ignored: bool) -> Resu
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::faces::{cosine, normalize, EMB_LEN};
 
     fn db() -> Connection {
         let c = Connection::open_in_memory().unwrap();
@@ -1010,7 +1270,9 @@ mod tests {
 
     fn lib_with_photos(n: i64) -> (Connection, PathBuf) {
         let c = db();
-        let tmp = std::env::temp_dir().join("mz-people-pipeline-test");
+        // Każdy test ma własny katalog, bo testy działają równolegle (wspólny katalog dawał przypadkowe porażki).
+        static N: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let tmp = std::env::temp_dir().join(format!("mz-people-pipeline-test-{}", N.fetch_add(1, Ordering::SeqCst)));
         let _ = fs::remove_dir_all(&tmp);
         fs::create_dir_all(crops_dir(&tmp)).unwrap();
         for id in 1..=n {
@@ -1122,5 +1384,91 @@ mod tests {
         assert!(reassign_core(&c, 1, 99, None).is_err());
         assert_eq!(n("SELECT COUNT(*) FROM people"), 2, "nieudana próba nie zostawia pustej osoby");
         assert!(reassign_core(&c, 1, new, Some(777)).is_err());
+    }
+
+    fn cent(id: i64, named: bool, ignored: bool, dir: usize, photos: &[i64]) -> Cent {
+        let mut c = vec![0.05_f32; EMB_LEN];
+        c[dir] = 1.0;
+        normalize(&mut c);
+        Cent { id, named, ignored, c, photos: photos.iter().copied().collect() }
+    }
+
+    #[test]
+    fn suggestions_prefer_known_people_and_skip_those_seen_together() {
+        let cents = vec![
+            cent(1, true, false, 0, &[10, 11]),   // Anna (znana)
+            cent(2, false, false, 0, &[20, 21]),  // nieznana, wygląda jak Anna
+            cent(3, true, false, 5, &[30]),       // Ola (znana), inna twarz
+            cent(4, false, false, 0, &[10, 40]),  // nieznana podobna do Anny, ale razem z nią na zdjęciu 10
+            cent(5, true, true, 0, &[50]),        // pominięta: nie podpowiadamy
+        ];
+        let s = suggest_core(&cents, None);
+        let for2: Vec<_> = s.iter().filter(|x| x.id == 2).collect();
+        assert_eq!(for2.len(), 1);
+        assert_eq!(for2[0].other, 1, "nieznanej podpowiadamy znaną osobę, nie pominiętą");
+        assert!(for2[0].score > 0.9);
+        assert!(s.iter().all(|x| x.id != 4), "osoba widziana razem z Anną to raczej ktoś inny");
+        assert!(s.iter().all(|x| x.id != 1 && x.id != 3), "znanym osobom niczego nie podpowiadamy");
+
+        // Lista do ręcznego wyboru: wszyscy inni od najbardziej podobnych, z ostrzeżeniem o wspólnym zdjęciu.
+        let l = suggest_core(&cents, Some(4));
+        assert_eq!(l.len(), 4);
+        assert!(l[0].score >= l[1].score);
+        let with_anna = l.iter().find(|x| x.other == 1).unwrap();
+        assert!(with_anna.conflict);
+        assert!(!l.iter().find(|x| x.other == 2).unwrap().conflict);
+    }
+
+    #[test]
+    fn merge_keeps_chosen_name_and_validates() {
+        let c = db();
+        c.execute_batch("INSERT INTO people (id, name, ignored) VALUES (1, 'Anna', 0), (2, 'Ania K.', 0), (3, NULL, 1), (4, 'Ola', 0), (5, NULL, 0);").unwrap();
+        merge_core(&c, 2, 1, Some("Ania K.")).unwrap();
+        merge_core(&c, 3, 1, None).unwrap();
+        let (name, ignored): (String, i64) = c.query_row("SELECT name, ignored FROM people WHERE id = 1", [], |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
+        assert_eq!((name.as_str(), ignored), ("Ania K.", 0), "wybrane imię wygrywa, pominięta osoba nie ukrywa widocznej");
+        // Bez wskazanego imienia zostaje imię osoby docelowej, a gdy go nie ma, imię łączonej.
+        merge_core(&c, 4, 5, None).unwrap();
+        let n: String = c.query_row("SELECT name FROM people WHERE id = 5", [], |r| r.get(0)).unwrap();
+        assert_eq!(n, "Ola");
+        assert!(merge_core(&c, 1, 99, None).is_err(), "nieistniejąca osoba");
+        assert_eq!(c.query_row::<i64, _, _>("SELECT COUNT(*) FROM people", [], |r| r.get(0)).unwrap(), 2);
+    }
+
+    #[test]
+    fn faces_can_be_moved_rejected_and_persons_deleted() {
+        let c = db();
+        c.execute_batch("INSERT INTO photos (id) VALUES (1), (2), (3);
+            INSERT INTO people (id, name) VALUES (1, 'Anna'), (2, NULL);
+            INSERT INTO faces (id, photo_id, person_id, x, y, w, h, score, emb) VALUES
+              (10, 1, 1, 0,0,1,1, 1, x''), (11, 2, 1, 0,0,1,1, 1, x''), (12, 3, 2, 0,0,1,1, 1, x''), (13, 1, 2, 0,0,1,1, 1, x'');").unwrap();
+        // Dwie twarze z jednego zdjęcia nie mogą trafić do jednej osoby.
+        assert!(move_faces_core(&c, &[10, 13], Some(2)).unwrap_err().contains("tego samego zdjęcia"));
+        // Osoba 1 ma już twarz na zdjęciu 1 (10), więc twarz 13 (zdjęcie 1) nie może do niej trafić.
+        assert!(move_faces_core(&c, &[13], Some(1)).is_err());
+        // Twarz 12 (zdjęcie 3) może: osoba 2 traci ostatnią twarz i znika.
+        assert_eq!(move_faces_core(&c, &[12], Some(1)).unwrap(), 1);
+        let who: i64 = c.query_row("SELECT person_id FROM faces WHERE id = 12", [], |r| r.get(0)).unwrap();
+        assert_eq!(who, 1);
+        // Przeniesienie do nowej osoby.
+        let new = move_faces_core(&c, &[11], None).unwrap();
+        assert_ne!(new, 1);
+        // Odrzucenie: twarz nie ma osoby i grupowanie jej nie rusza.
+        assert_eq!(reject_faces_core(&c, &[10]).unwrap(), 1);
+        regroup(&c, None, &HashSet::new()).unwrap();
+        let (p, r): (Option<i64>, i64) = c.query_row("SELECT person_id, rejected FROM faces WHERE id = 10", [], |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
+        assert_eq!((p, r), (None, 1));
+        // Usunięcie osoby odrzuca wszystkie jej twarze.
+        assert_eq!(delete_person_core(&c, new).unwrap(), 1);
+        assert_eq!(c.query_row::<i64, _, _>("SELECT COUNT(*) FROM people WHERE id = ?1", [new], |r| r.get(0)).unwrap(), 0);
+        assert!(move_faces_core(&c, &[], None).is_err());
+    }
+
+    #[test]
+    fn day_parsing_accepts_exif_and_iso_dates() {
+        assert_eq!(day_of("2024-07-01 12:00:00"), day_of("2024:07:01 08:15:00"));
+        assert!(day_of("2024-07-02").unwrap() == day_of("2024-07-01").unwrap() + 1);
+        assert_eq!(day_of("nie data"), None);
+        assert_eq!(day_of("2024-13-40"), None);
     }
 }
