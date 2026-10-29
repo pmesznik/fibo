@@ -23,7 +23,7 @@ Lista powstała z pamięci o Picasie 3, z przeglądu FIBO i z oficjalnego podrę
 - [x] **Zmiana daty zdjęcia / przesunięcie dat** (np. zły zegar aparatu): ustaw datę lub przesuń o N godzin dla wielu zdjęć. P1 T M Gotowe w bibliotece FIBO (plików nie zmieniamy).
 - [x] **Własne albumy: kolejność zdjęć** przeciąganiem. P3 T M Gotowe: w albumie menu → Sortowanie → „Własna kolejność”, potem przeciągnij zdjęcie na inne. (opis, miejsce i data albumu są już gotowe)
 - [x] **Albumy inteligentne** (zapisane filtry, np. „5 gwiazdek z 2023”). P3 T M Gotowe (filtry: szukanie, ocena, daty, braki, tagi).
-- [ ] **Wyszukiwanie po kolorze** dominującym. P4 T M
+- [x] **Wyszukiwanie po kolorze** dominującym. P4 T M Gotowe: menu → Filtry → Kolor dominujący (12 kolorów liczonych z miniatur).
 - [x] **Wyszukiwanie po danych aparatu** (model, obiektyw, ISO, przysłona, czas) i filtr „aparat”. P2 T M Gotowe w polu szukania (bez osobnego filtra „aparat”); starsze zdjęcia po „Odśwież dane zdjęć”.
 - [x] **Zaznaczanie podobnych** do wybranego zdjęcia. P4 T M Gotowe: menu zdjęcia → „Zaznacz podobne” (ten sam mechanizm co szukanie duplikatów).
 - [x] **Statystyki biblioteki** (liczba zdjęć, rozmiar, zdjęcia na rok, najczęstsze aparaty). P4 T S Gotowe (menu, szybkie akcje).
@@ -41,7 +41,7 @@ Lista powstała z pamięci o Picasie 3, z przeglądu FIBO i z oficjalnego podrę
 - [x] **„Zdjęcia osoby A i osoby B razem”** (przecięcie osób). P3 T S Gotowe: przycisk „Razem z…” w widoku osoby.
 - [ ] **Nazwy miejsc** (miasto, kraj) z lokalnego słownika współrzędnych, szukanie po miejscu. P3 T L
 - [x] **Eksport tras / lokalizacji** do pliku GPX lub KML. P4 T S Gotowe w oknie eksportu (GPX).
-- [ ] **Film z twarzy** (pokaz zdjęć jednej osoby). P4 T M
+- [x] **Film z twarzy** (pokaz zdjęć jednej osoby). P4 T M Gotowe jako „Pokaz zdjęć” w widoku osoby.
 
 ## 3. Edytor: poprawki podstawowe
 - [x] Kadrowanie (proporcje), prostowanie, obrót, odbicie
@@ -52,12 +52,12 @@ Lista powstała z pamięci o Picasie 3, z przeglądu FIBO i z oficjalnego podrę
 - [x] Cofnij i ponów, przywrócenie oryginału, porównanie z oryginałem
 - [x] **Neutralny kolor (zakraplacz)**: klik w szary punkt koryguje balans bieli. P2 T S Gotowe w edytorze.
 - [x] **Retusz** (usuwanie plam i skaz pędzlem). P2 T M Gotowe: kliknięcie plamy zamalowuje ją kolorem z otoczenia.
-- [ ] **Kadrowanie ręczne z ramką** i gotowe formaty wydruku 10x15, 13x18, A4 oraz obrót ramki. P3 T M
+- [x] **Kadrowanie ręczne z ramką** i gotowe formaty wydruku 10x15, 13x18, A4 oraz obrót ramki. P3 T M Częściowo: gotowe formaty odbitek (9x13, 10x15, 13x18, A4 i inne) oraz „Obróć ramkę”; przeciąganie ramki myszą jeszcze nie.
 - [x] **Zastosuj te same zmiany do wielu zdjęć** (kopiuj i wklej edycję, edycja wsadowa). P1 T M Gotowe: kopiuj i wklej edycję, wsadowo jako kopie.
 - [x] **Obrót wielu zdjęć bez utraty jakości** (znacznik orientacji). P2 T S Gotowe: menu zdjęcia → „Obróć w prawo/w lewo (bez utraty jakości)” dla JPEG (oryginał trafia do .originals); inne formaty obracasz w edytorze.
 - [ ] **Poprawka perspektywy** (wyrównanie pionów). P4 T L
-- [ ] **Redukcja szumu**. P4 T M
-- [ ] **Rozmycie / pogłębienie ostrości w obszarze** (maska radialna). P4 T M
+- [x] **Redukcja szumu**. P4 T M Gotowe w Efektach (nie rozmywa krawędzi).
+- [x] **Rozmycie / pogłębienie ostrości w obszarze** (maska radialna). P4 T M Gotowe jako „Rozmycie poza środkiem” w Efektach.
 - [x] **Znak wodny** (tekst lub obraz) przy eksporcie. P2 T M Gotowe jako logo (PNG, JPEG, WebP): położenie, rozmiar, krycie; dla jednego lub wielu zdjęć przy eksporcie. Znak tekstowy nie zrobiony.
 - [ ] **Rysowanie i strzałki** na zdjęciu. P4 T M
 
@@ -65,7 +65,7 @@ Lista powstała z pamięci o Picasie 3, z przeglądu FIBO i z oficjalnego podrę
 - [x] Czarno-białe, sepia, ocieplenie, podbicie, negatyw, ziarno, zmiękczenie, poświata, Orton, miękki fokus
 - [x] Czerń i biel z ogniskiem, winieta, gradientowy odcień, dwutonowy, mapa cieplna, noktowizor, podczerwień
 - [x] Mat, cross process, Lomo, lata 60., Polaroid, HDR, posteryzacja, pikselizacja, szkic, komiks, neon, ramka
-- [ ] **Przechylenie i przesunięcie (tilt-shift)**, miniatura. P4 T M
+- [x] **Przechylenie i przesunięcie (tilt-shift)**, miniatura. P4 T M Gotowe w Efektach.
 - [x] **Efekt „Kolor selektywny”** (zostaw jeden kolor). P3 T M Gotowe: tylko czerwony, żółty, zielony lub niebieski.
 - [x] **Własne zestawy efektów** (zapisz receptę i użyj na innych zdjęciach). P3 T M Gotowe: „Moje zestawy” w Efektach.
 
@@ -99,7 +99,7 @@ Lista powstała z pamięci o Picasie 3, z przeglądu FIBO i z oficjalnego podrę
 - [x] Podgląd informacji (EXIF: aparat, data, wymiary), tagi w panelu
 - [x] Zapis tagów i ocen do plików XMP, odczyt z EXIF XP i IPTC
 - [x] **Pełny podgląd EXIF** (przysłona, czas, ISO, ogniskowa, obiektyw, flesz) i kopiowanie wartości. P2 T S Gotowe w panelu Informacje (kopiowanie wartości nie zrobione).
-- [ ] **Edycja EXIF/IPTC**: autor, prawa autorskie, opis (w XMP, bez ruszania pliku). P3 T M
+- [x] **Edycja EXIF/IPTC**: autor, prawa autorskie, opis (w XMP, bez ruszania pliku). P3 T M Autor i prawa autorskie gotowe (menu zdjęcia, zapis do XMP); pozostałe pola IPTC nie.
 - [x] **Usuwanie metadanych** z wybranych zdjęć (kopie bez GPS) jako osobna akcja. P3 T S Gotowe: Eksport → „Kopie bez metadanych” (pełny rozmiar, jakość 98).
 - [x] **Wykrywanie uszkodzonych plików** i raport. P4 T S Gotowe (menu → Sprawdź pliki).
 
@@ -137,17 +137,17 @@ Edytor, szczegóły z podręcznika:
 - [ ] **Soft focus i focal B&W z punktem środkowym**: wskazanie środka na zdjęciu, suwaki rozmiaru i ostrości (dziś jeden suwak siły). P2 T M
 - [ ] **Tint i graduated tint z wyborem koloru** zakraplaczem (dziś kolor jest stały). P2 T M
 - [x] **Filtered B&W**: czerń i biel z kolorowym filtrem (czerwony, żółty, zielony…). P3 T S Gotowe: filtry czerwony, żółty, zielony.
-- [ ] **Jednoprzyciskowe poprawki światła** obok suwaków doświetlenia, świateł i cieni (jak w Picasie). P3 T S
-- [ ] **Gotowe rozmiary kadru** z podręcznika (np. 4x6) z przeciąganiem ramki i zmianą proporcji rogami. P3 T M
+- [x] **Jednoprzyciskowe poprawki światła** obok suwaków doświetlenia, świateł i cieni (jak w Picasie). P3 T S Gotowe: przyciski w Jednym kliknięciu i nad suwakami światła.
+- [x] **Gotowe rozmiary kadru** z podręcznika (np. 4x6) z przeciąganiem ramki i zmianą proporcji rogami. P3 T M Częściowo: rozmiary gotowe, przeciąganie ramki rogami jeszcze nie.
 - [x] **Opis pod zdjęciem w edytorze** z przełącznikiem „pokaż na zdjęciu”, zapis w metadanych, szukanie po opisach (zob. sekcja 1). P1 T S Gotowe w panelu Informacje podglądu; przełącznik „pokaż na zdjęciu” nie zrobiony.
 - [ ] **Obrót zdjęcia „w programie”** bez ruszania pliku do czasu zapisu (przyciski w tacy). P4 T S
 
 Taca i wyjście:
-- [ ] **Taca zdjęć** z przyciskami **Zatrzymaj, Wyczyść, Dodaj do albumu, Gwiazdka, Obróć** oraz akcjami **Drukuj, E-mail, Kolaż, Eksport** na całej zawartości. P2 T M
+- [x] **Taca zdjęć** z przyciskami **Zatrzymaj, Wyczyść, Dodaj do albumu, Gwiazdka, Obróć** oraz akcjami **Drukuj, E-mail, Kolaż, Eksport** na całej zawartości. P2 T M Gotowe: Zatrzymaj zaznaczone, Do albumu, Ulubione, Obróć, Kolaż, Eksport i druk, E-mail.
 - [ ] **Kolaż: zapis jako tapeta pulpitu lub wygaszacz**, tło ze zdjęcia lub kolor (czarny, biały, szary), efekt filmowej wielokrotnej ekspozycji. P3 T M
 - [x] **Pokaz slajdów: pokaz opisów, obracanie, ocenianie gwiazdkami i ustawienie czasu slajdu w trakcie pokazu**. P2 T S Gotowe: czas slajdu, opisy i ocenianie (obracanie w pokazie jeszcze nie).
-- [ ] **Płyta z prezentem → „Paczka prezentowa”**: zapis wybranych zdjęć w wybranym rozmiarze razem z samodzielnym pokazem HTML do folderu lub na pendrive. P3 T M
-- [ ] **Wydruk: układy na stronie** (np. 4 zdjęcia 9x13 na A4), przycisk „Przegląd” przed drukiem. P2 T M
+- [x] **Płyta z prezentem → „Paczka prezentowa”**: zapis wybranych zdjęć w wybranym rozmiarze razem z samodzielnym pokazem HTML do folderu lub na pendrive. P3 T M Załatwia to eksport galerii HTML (pomniejszone zdjęcia i samodzielna strona index.html).
+- [x] **Wydruk: układy na stronie** (np. 4 zdjęcia 9x13 na A4), przycisk „Przegląd” przed drukiem. P2 T M Gotowe: układy 1, 2, 4, 6, 9 oraz arkusze 12 i 20 na stronie A4 z podglądem strony przed wydrukiem.
 - [ ] 🚫 Albumy internetowe, wysyłka na blog (BlogThis!), konto Hello, zamawianie odbitek, wysyłka przez Gmail i Picasa Mail (chmura, konta, dane wychodzą z komputera)
 - [ ] 🚫 Przycisk „Wysłane” (Uploaded): dotyczy Picasa Web Albums
 

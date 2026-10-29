@@ -22,6 +22,11 @@ const ASPECTS: { label: string; v: number | null }[] = [
   { label: 'Oryginał', v: null }, { label: '1:1', v: 1 }, { label: '4:3', v: 4 / 3 }, { label: '3:2', v: 3 / 2 },
   { label: '16:9', v: 16 / 9 }, { label: '5:4', v: 5 / 4 }, { label: '3:4', v: 3 / 4 }, { label: '2:3', v: 2 / 3 },
 ]
+/** Formaty odbitek (poziomo): proporcje wyliczone z wymiarów papieru, więc kadr pasuje do wydruku bez białych pasów. */
+const PRINT_SIZES: { label: string; v: number }[] = [
+  { label: '9×13 cm', v: 13 / 9 }, { label: '10×15 cm', v: 15 / 10 }, { label: '13×18 cm', v: 18 / 13 }, { label: '15×21 cm', v: 21 / 15 },
+  { label: '20×25 cm', v: 25 / 20 }, { label: '20×30 cm', v: 30 / 20 }, { label: 'A4', v: Math.SQRT2 }, { label: '4×6"', v: 6 / 4 }, { label: '5×7"', v: 7 / 5 }, { label: '8×10"', v: 10 / 8 },
+]
 
 type TuneDef = { key: keyof Adjust; label: string; min: number; max: number }
 const TUNE_GROUPS: { id: string; title: string; icon: typeof Sun; items: TuneDef[] }[] = [
@@ -47,7 +52,7 @@ const FX_GROUPS: { id: string; title: string; icon: typeof Sun; ids: string[] }[
   { id: 'fx-color', title: 'Kolor i ton', icon: Palette, ids: ['bw', 'sepia', 'warm', 'boost', 'duotone', 'heatmap', 'night', 'infrared', 'invert'] },
   { id: 'fx-bw', title: 'Czerń i biel z filtrem, jeden kolor', icon: Aperture, ids: ['bwred', 'bwyellow', 'bwgreen', 'keepred', 'keepyellow', 'keepgreen', 'keepblue'] },
   { id: 'fx-retro', title: 'Retro i film', icon: History, ids: ['grain', 'matte', 'cross', 'lomo', 'sixties', 'polaroid', 'frame'] },
-  { id: 'fx-focus', title: 'Światło i ostrość', icon: Aperture, ids: ['soften', 'glow', 'orton', 'softfocus', 'focalbw', 'vignette', 'gradtint', 'hdr'] },
+  { id: 'fx-focus', title: 'Światło i ostrość', icon: Aperture, ids: ['denoise', 'tiltshift', 'radialblur', 'soften', 'glow', 'orton', 'softfocus', 'focalbw', 'vignette', 'gradtint', 'hdr'] },
   { id: 'fx-art', title: 'Kreatywne', icon: Pencil, ids: ['posterize', 'pixelate', 'sketch', 'comic', 'neon'] },
 ]
 const TEXT_COLORS: [string, string][] = [['#ffffff', 'Biały'], ['#111111', 'Czarny'], ['#ffd400', 'Żółty'], ['#ff4d4d', 'Czerwony'], ['#3ea6ff', 'Niebieski'], ['#4cd964', 'Zielony']]
@@ -520,6 +525,8 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
                 <div className="chips">
                   {ONE_CLICK.map((fid) => <Chip key={fid} on={fxAmount(fid) !== undefined} onClick={() => toggleFx(fid)}>{fxLabel(fid)}</Chip>)}
                   <Chip on={edit.adj.fill > 0} onClick={() => change((s) => ({ ...s, adj: { ...s.adj, fill: s.adj.fill ? 0 : 40 } }))}>Doświetlenie</Chip>
+                  <Chip on={edit.adj.highlights > 0} onClick={() => change((s) => ({ ...s, adj: { ...s.adj, highlights: s.adj.highlights ? 0 : 45 } }))}>Przygaś światła</Chip>
+                  <Chip on={edit.adj.shadows > 0} onClick={() => change((s) => ({ ...s, adj: { ...s.adj, shadows: s.adj.shadows ? 0 : 45 } }))}>Rozjaśnij cienie</Chip>
                 </div>
               </Sec>
               <Sec id="b-rot" icon={<RotateCw size={17} />} title="Obrót i odbicie" hint="Prostowanie, czerwone oczy" defaultOpen>
@@ -553,6 +560,15 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
                     <Chip key={a.label} on={edit.geo.aspect === a.v} onClick={() => change((s) => ({ ...s, geo: { ...s.geo, aspect: a.v, panX: 0, panY: 0, zoom: a.v === null ? 1 : s.geo.zoom } }))}>{a.label}</Chip>
                   ))}
                 </div>
+                <label style={{ marginTop: 10 }}>Formaty odbitek</label>
+                <div className="chips">
+                  {PRINT_SIZES.map((a) => {
+                    const cur = edit.geo.aspect
+                    const on = cur !== null && (Math.abs(cur - a.v) < 1e-6 || Math.abs(cur - 1 / a.v) < 1e-6)
+                    return <Chip key={a.label} on={on} onClick={() => change((s) => ({ ...s, geo: { ...s.geo, aspect: a.v, panX: 0, panY: 0 } }))}>{a.label}</Chip>
+                  })}
+                  <Chip on={false} onClick={() => change((s) => (s.geo.aspect === null ? s : { ...s, geo: { ...s.geo, aspect: 1 / s.geo.aspect!, panX: 0, panY: 0 } }))} label="Obróć ramkę: pionowo lub poziomo">Obróć ramkę</Chip>
+                </div>
                 <Slider label="Zbliżenie" value={edit.geo.zoom} min={1} max={4} onStart={snap} onChange={(v) => live((s) => ({ ...s, geo: { ...s.geo, zoom: v } }))} />
                 <Slider label="Przesunięcie poziome" value={edit.geo.panX} min={-1} max={1} onStart={snap} onChange={(v) => live((s) => ({ ...s, geo: { ...s.geo, panX: v } }))} />
                 <Slider label="Przesunięcie pionowe" value={edit.geo.panY} min={-1} max={1} onStart={snap} onChange={(v) => live((s) => ({ ...s, geo: { ...s.geo, panY: v } }))} />
@@ -576,6 +592,14 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
               {TUNE_GROUPS.map((g) => (
                 <Sec key={g.id} id={g.id} icon={<g.icon size={17} />} title={g.title}
                   hint={g.items.some((t) => edit.adj[t.key]) ? 'Zmieniono' : 'Bez zmian'} defaultOpen={g.id === 'tune-light'}>
+                  {g.id === 'tune-light' && (
+                    <div className="chips" style={{ marginBottom: 6 }}>
+                      <Chip on={false} onClick={() => change((s) => ({ ...s, adj: { ...s.adj, fill: 40 } }))}>Doświetl</Chip>
+                      <Chip on={false} onClick={() => change((s) => ({ ...s, adj: { ...s.adj, highlights: 45 } }))}>Przygaś światła</Chip>
+                      <Chip on={false} onClick={() => change((s) => ({ ...s, adj: { ...s.adj, shadows: 45 } }))}>Rozjaśnij cienie</Chip>
+                      <Chip on={false} onClick={() => change((s) => ({ ...s, adj: { ...s.adj, fill: 0, highlights: 0, shadows: 0 } }))}>Wyzeruj światło</Chip>
+                    </div>
+                  )}
                   {g.items.map((t) => (
                     <Slider key={t.key} label={t.label} value={edit.adj[t.key]} min={t.min} max={t.max} onStart={snap}
                       onChange={(v) => live((s) => ({ ...s, adj: { ...s.adj, [t.key]: v } }))} />

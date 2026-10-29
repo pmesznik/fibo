@@ -12,6 +12,7 @@ use std::{
 };
 
 mod backup;
+mod color;
 mod formats;
 mod photos_backup;
 mod rotate;
@@ -59,6 +60,9 @@ struct Photo {
     albums: Vec<i64>,
     caption: Option<String>,
     exif: Option<String>,
+    author: Option<String>,
+    copyright: Option<String>,
+    color: Option<i64>,
 }
 
 fn open_db(path: &Path) -> rusqlite::Result<Connection> {
@@ -120,6 +124,10 @@ fn open_db(path: &Path) -> rusqlite::Result<Connection> {
     let _ = conn.execute("ALTER TABLE photos ADD COLUMN geo_manual INTEGER NOT NULL DEFAULT 0", []);
     // Migracje: opis zdjęcia oraz data ustawiona ręcznie (ma pierwszeństwo przed datą z pliku).
     let _ = conn.execute("ALTER TABLE photos ADD COLUMN caption TEXT", []);
+    // Migracje: autor i prawa autorskie (zapisywane też w pliku XMP) oraz kolor dominujący (0 do 11, zob. color.rs).
+    let _ = conn.execute("ALTER TABLE photos ADD COLUMN author TEXT", []);
+    let _ = conn.execute("ALTER TABLE photos ADD COLUMN copyright TEXT", []);
+    let _ = conn.execute("ALTER TABLE photos ADD COLUMN color INTEGER", []);
     // Migracja: tekst z danych EXIF (aparat, obiektyw, ISO, przysłona…) do szukania; uzupełnia się przy skanowaniu lub „Odśwież dane zdjęć”.
     let _ = conn.execute("ALTER TABLE photos ADD COLUMN exif_text TEXT", []);
     let _ = conn.execute("ALTER TABLE photos ADD COLUMN taken_manual INTEGER NOT NULL DEFAULT 0", []);
@@ -415,7 +423,7 @@ fn list_photos(state: State<'_, AppState>) -> Result<Vec<Photo>, String> {
             "SELECT id, path, name, size, modified, taken, width, height, camera, rating, favorite,
                     (SELECT group_concat(t.name, char(31)) FROM photo_tags pt JOIN tags t ON t.id = pt.tag_id
                      WHERE pt.photo_id = photos.id), lat, lon,
-                    (SELECT group_concat(album_id) FROM album_photos WHERE photo_id = photos.id), caption, exif_text
+                    (SELECT group_concat(album_id) FROM album_photos WHERE photo_id = photos.id), caption, exif_text, author, copyright, color
              FROM photos WHERE hidden = 0 ORDER BY COALESCE(taken, datetime(modified,'unixepoch')) DESC",
         )
         .map_err(|e| e.to_string())?;
@@ -445,6 +453,9 @@ fn list_photos(state: State<'_, AppState>) -> Result<Vec<Photo>, String> {
                     .unwrap_or_default(),
                 caption: r.get(15)?,
                 exif: r.get(16)?,
+                author: r.get(17)?,
+                copyright: r.get(18)?,
+                color: r.get(19)?,
             })
         })
         .map_err(|e| e.to_string())?
@@ -521,11 +532,14 @@ async fn thumbnail(state: State<'_, AppState>, id: i64) -> Result<String, String
                 let tmp = dst2.with_extension("tmp");
                 let dims = make_thumb_dims(Path::new(&src), &tmp)?;
                 fs::rename(&tmp, &dst2).map_err(|e| e.to_string())?;
-                Ok::<_, String>(dims)
+                Ok::<_, String>((dims, color::dominant_of_file(&dst2)))
             })
             .await
             .map_err(|e| e.to_string())?
-            .map(|dims| {
+            .map(|(dims, dominant)| {
+                if let (Some(c), Ok(conn)) = (dominant, state.db.lock()) {
+                    let _ = conn.execute("UPDATE photos SET color = ?2 WHERE id = ?1", params![id, c]);
+                }
                 // Formaty bez taniego odczytu rozmiaru (RAW, JPEG XL) dostają go przy pierwszej miniaturze: siatka układa je wtedy w dobrych proporcjach.
                 if let Some((w, h)) = dims {
                     if let Ok(conn) = state.db.lock() {
@@ -565,6 +579,9 @@ fn put_thumbnail(state: State<'_, AppState>, request: tauri::ipc::Request<'_>) -
     fs::rename(&tmp, &dst).map_err(|e| e.to_string())?;
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     conn.execute("UPDATE photos SET width = ?2, height = ?3 WHERE id = ?1", params![id, w, h]).map_err(|e| e.to_string())?;
+    if let Some(c) = color::dominant_of_file(&dst) {
+        let _ = conn.execute("UPDATE photos SET color = ?2 WHERE id = ?1", params![id, c]);
+    }
     Ok(())
 }
 
@@ -726,6 +743,8 @@ struct Sidecar {
     rating: i64,
     favorite: bool,
     tags: Vec<String>,
+    author: Option<String>,
+    copyright: Option<String>,
 }
 
 fn xmp_path(photo: &Path) -> PathBuf {
@@ -743,6 +762,13 @@ fn xml_unescape(s: &str) -> String {
 }
 
 fn build_xmp(rating: i64, favorite: bool, tags: &[String]) -> String {
+    build_xmp_full(rating, favorite, tags, None, None)
+}
+
+/// To samo z autorem (`dc:creator`) i prawami autorskimi (`dc:rights`), czyli polami, które czytają inne programy do zdjęć.
+fn build_xmp_full(rating: i64, favorite: bool, tags: &[String], author: Option<&str>, copyright: Option<&str>) -> String {
+    let creator = author.map(|a| format!("   <dc:creator>\n    <rdf:Seq>\n     <rdf:li>{}</rdf:li>\n    </rdf:Seq>\n   </dc:creator>\n", xml_escape(a))).unwrap_or_default();
+    let rights = copyright.map(|c| format!("   <dc:rights>\n    <rdf:Alt>\n     <rdf:li xml:lang=\"x-default\">{}</rdf:li>\n    </rdf:Alt>\n   </dc:rights>\n", xml_escape(c))).unwrap_or_default();
     let items: String = tags.iter().map(|t| format!("     <rdf:li>{}</rdf:li>\n", xml_escape(t))).collect();
     let subject = if tags.is_empty() {
         String::new()
@@ -760,7 +786,7 @@ fn build_xmp(rating: i64, favorite: bool, tags: &[String]) -> String {
     xmlns:fibo=\"https://pmesznik.github.io/fibo/ns/1.0/\"\n\
     xmp:Rating=\"{rating}\"\n\
     fibo:Favorite=\"{fav}\">\n\
-{subject}  </rdf:Description>\n\
+{subject}{creator}{rights}  </rdf:Description>\n\
  </rdf:RDF>\n\
 </x:xmpmeta>\n\
 <?xpacket end=\"w\"?>\n"
@@ -781,6 +807,18 @@ fn xmp_value(text: &str, name: &str) -> Option<String> {
 }
 
 /// Słowa kluczowe z pakietu XMP (`dc:subject`).
+/// Pierwszy element listy z pola `dc:creator` albo `dc:rights` (tekst bez znaczników), obcięty do rozsądnej długości.
+fn parse_xmp_first_li(text: &str, field: &str) -> Option<String> {
+    let start = text.find(&format!("<{field}>"))?;
+    let rest = &text[start..];
+    let rest = &rest[..rest.find(&format!("</{field}>"))?];
+    let li = &rest[rest.find("<rdf:li")?..];
+    let body = &li[li.find('>')? + 1..];
+    let v: String = xml_unescape(&body[..body.find("</rdf:li>")?]).chars().filter(|c| !c.is_control()).take(MAX_CREDIT).collect();
+    let v = v.trim().to_string();
+    (!v.is_empty()).then_some(v)
+}
+
 fn parse_xmp_tags(text: &str) -> Vec<String> {
     let mut tags: Vec<String> = Vec::new();
     if let Some(start) = text.find("<dc:subject>") {
@@ -828,6 +866,8 @@ fn read_sidecar(photo: &Path) -> Option<Sidecar> {
         rating: parse_xmp_rating(&text),
         favorite: text.to_ascii_lowercase().contains("fibo:favorite=\"true\""),
         tags: parse_xmp_tags(&text),
+        author: parse_xmp_first_li(&text, "dc:creator"),
+        copyright: parse_xmp_first_li(&text, "dc:rights"),
     })
 }
 
@@ -946,7 +986,7 @@ fn read_embedded(path: &Path, exif: Option<&ExifInfo>) -> Option<Sidecar> {
             }
         }
     }
-    (rating > 0 || !tags.is_empty()).then_some(Sidecar { rating, favorite: false, tags })
+    (rating > 0 || !tags.is_empty()).then_some(Sidecar { rating, favorite: false, tags, author: None, copyright: None })
 }
 
 /// Wszystko, co zdjęcie już ma: plik XMP obok (pierwszeństwo) i metadane wewnątrz pliku.
@@ -981,6 +1021,12 @@ fn apply_sidecar(conn: &Connection, id: i64, sc: &Sidecar) -> rusqlite::Result<u
     if sc.favorite {
         changed += conn.execute("UPDATE photos SET favorite = 1 WHERE id = ?1 AND favorite = 0", [id])?;
     }
+    if let Some(a) = &sc.author {
+        changed += conn.execute("UPDATE photos SET author = ?2 WHERE id = ?1 AND author IS NULL", params![id, a])?;
+    }
+    if let Some(c) = &sc.copyright {
+        changed += conn.execute("UPDATE photos SET copyright = ?2 WHERE id = ?1 AND copyright IS NULL", params![id, c])?;
+    }
     for t in &sc.tags {
         conn.execute("INSERT OR IGNORE INTO tags (name) VALUES (?1)", [t])?;
         changed += conn.execute(
@@ -1001,16 +1047,16 @@ enum SidecarOutcome {
 
 /// Zapisuje (albo usuwa, gdy nie ma już żadnych metadanych) plik XMP zdjęcia `id`.
 fn write_sidecar(state: &AppState, id: i64) -> Result<SidecarOutcome, String> {
-    let (path, rating, favorite, tags) = {
+    let (path, rating, favorite, tags, author, copyright) = {
         let conn = state.db.lock().map_err(|e| e.to_string())?;
-        let (path, rating, fav): (String, i64, i64) = conn
-            .query_row("SELECT path, rating, favorite FROM photos WHERE id = ?1", [id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+        let (path, rating, fav, author, copyright): (String, i64, i64, Option<String>, Option<String>) = conn
+            .query_row("SELECT path, rating, favorite, author, copyright FROM photos WHERE id = ?1", [id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)))
             .map_err(|e| e.to_string())?;
         let mut stmt = conn
             .prepare("SELECT t.name FROM photo_tags pt JOIN tags t ON t.id = pt.tag_id WHERE pt.photo_id = ?1 ORDER BY t.name")
             .map_err(|e| e.to_string())?;
         let tags: Vec<String> = stmt.query_map([id], |r| r.get(0)).map_err(|e| e.to_string())?.filter_map(Result::ok).collect();
-        (path, rating, fav != 0, tags)
+        (path, rating, fav != 0, tags, author, copyright)
     };
     let xmp = xmp_path(Path::new(&path));
     // Zbyt duży plik XMP na pewno nie jest nasz: nie wczytujemy go i nie nadpisujemy.
@@ -1021,13 +1067,13 @@ fn write_sidecar(state: &AppState, id: i64) -> Result<SidecarOutcome, String> {
     if existing.as_deref().map(|t| !t.contains(XMP_MARKER)).unwrap_or(false) {
         return Ok(SidecarOutcome::Skipped);
     }
-    if rating == 0 && !favorite && tags.is_empty() {
+    if rating == 0 && !favorite && tags.is_empty() && author.is_none() && copyright.is_none() {
         return match existing {
             Some(_) => fs::remove_file(&xmp).map(|_| SidecarOutcome::Removed).map_err(|e| e.to_string()),
             None => Ok(SidecarOutcome::Unchanged),
         };
     }
-    let xml = build_xmp(rating, favorite, &tags);
+    let xml = build_xmp_full(rating, favorite, &tags, author.as_deref(), copyright.as_deref());
     if existing.as_deref() == Some(xml.as_str()) {
         return Ok(SidecarOutcome::Unchanged);
     }
@@ -1121,6 +1167,28 @@ async fn detect_cards(app: tauri::AppHandle) -> Result<Vec<String>, String> {
     .map_err(|e| e.to_string());
     BUSY.store(false, Ordering::SeqCst);
     result?
+}
+
+const MAX_CREDIT: usize = 200;
+
+/// Autor i prawa autorskie wybranych zdjęć (puste pole usuwa wartość). Zapisują się w bibliotece i, gdy włączono pliki XMP, obok zdjęć;
+/// plików zdjęć program nie zmienia.
+#[tauri::command]
+fn set_credits(state: State<'_, AppState>, ids: Vec<i64>, author: String, copyright: String) -> Result<usize, String> {
+    let clean = |s: String| -> Option<String> {
+        let t: String = s.chars().filter(|c| !c.is_control()).take(MAX_CREDIT).collect::<String>().trim().to_string();
+        (!t.is_empty()).then_some(t)
+    };
+    let (author, copyright) = (clean(author), clean(copyright));
+    let mut n = 0;
+    {
+        let conn = state.db.lock().map_err(|e| e.to_string())?;
+        for id in &ids {
+            n += conn.execute("UPDATE photos SET author = ?2, copyright = ?3 WHERE id = ?1", params![id, author, copyright]).map_err(|e| e.to_string())?;
+        }
+    }
+    sync_ids(&state, &ids);
+    Ok(n)
 }
 
 fn all_photo_ids(state: &AppState) -> Result<Vec<(i64, String)>, String> {
@@ -3104,7 +3172,7 @@ mod tests {
         let evil = ["'; drop table photos; --", "\" or 1=1 --", "x'); delete from tags; --", "robert'); drop table albums;--"];
         {
             let conn = state.db.lock().unwrap();
-            let sc = Sidecar { rating: 0, favorite: false, tags: evil.iter().filter_map(|t| norm_tag(t)).collect() };
+            let sc = Sidecar { rating: 0, favorite: false, tags: evil.iter().filter_map(|t| norm_tag(t)).collect(), author: None, copyright: None };
             apply_sidecar(&conn, id, &sc).unwrap();
             for e in evil {
                 let name = clean_album_name(e).unwrap();
@@ -3288,7 +3356,21 @@ fn main() {
             app.manage(AppState { db: Mutex::new(db), thumbs, sidecar: AtomicBool::new(sidecar) });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![list_roots, remove_root, rescan_roots, list_albums, create_album, rename_album, set_album_hidden, put_thumbnail, get_skip_gif_png, set_skip_gif_png, detect_cards, rotate::rotate_photos, list_album_order, set_album_order, open_photo_external, delete_album, add_to_album, remove_from_album, rename_photo, move_photos, get_sidecar_enabled, set_sidecar_enabled, export_sidecars, import_sidecars, scan_folder, refresh_library, find_duplicates, trash_photos, export_photos, set_location, rename_batch, import_photos, gallery::export_gallery, gallery::export_gpx, gallery::export_gif, pdf::export_pdf, check::check_files, list_smart, save_smart, delete_smart, gallery::rename_folder, locks::list_locked, locks::set_folder_locked, set_date, shift_dates, set_caption, photo_exif, list_props, set_props, people::photo_people, people::reassign_person_faces, backup::backup_library, photos_backup::backup_photos, backup::restore_library, hide_photos, hidden_count, restore_hidden, people::faces_status, people::set_faces_enabled, people::faces_start, people::faces_stop, people::faces_regroup, people::faces_reanalyze, people::faces_delete_all, people::list_people, people::person_photos, people::person_faces, people::set_person_cover, people::rename_person, people::merge_people, people::merge_suggestions, people::move_faces, people::reject_person_in_photos, people::move_person_faces, people::reject_faces, people::delete_person, people::restore_rejected_faces, people::ignore_person, list_photos, thumbnail, thumbnail_data, people::face_crop, set_rating, set_favorite, add_tag, remove_tag, delete_tag, save_edit, save_collage, read_image, read_audio, has_original, restore_original])
+        .invoke_handler(tauri::generate_handler![list_roots, remove_root, rescan_roots, list_albums, create_album, rename_album, set_album_hidden, put_thumbnail, set_credits, color::index_colors, get_skip_gif_png, set_skip_gif_png, detect_cards, rotate::rotate_photos, list_album_order, set_album_order, open_photo_external, delete_album, add_to_album, remove_from_album, rename_photo, move_photos, get_sidecar_enabled, set_sidecar_enabled, export_sidecars, import_sidecars, scan_folder, refresh_library, find_duplicates, trash_photos, export_photos, set_location, rename_batch, import_photos, gallery::export_gallery, gallery::export_gpx, gallery::export_gif, pdf::export_pdf, check::check_files, list_smart, save_smart, delete_smart, gallery::rename_folder, locks::list_locked, locks::set_folder_locked, set_date, shift_dates, set_caption, photo_exif, list_props, set_props, people::photo_people, people::reassign_person_faces, backup::backup_library, photos_backup::backup_photos, backup::restore_library, hide_photos, hidden_count, restore_hidden, people::faces_status, people::set_faces_enabled, people::faces_start, people::faces_stop, people::faces_regroup, people::faces_reanalyze, people::faces_delete_all, people::list_people, people::person_photos, people::person_faces, people::set_person_cover, people::rename_person, people::merge_people, people::merge_suggestions, people::move_faces, people::reject_person_in_photos, people::move_person_faces, people::reject_faces, people::delete_person, people::restore_rejected_faces, people::ignore_person, list_photos, thumbnail, thumbnail_data, people::face_crop, set_rating, set_favorite, add_tag, remove_tag, delete_tag, save_edit, save_collage, read_image, read_audio, has_original, restore_original])
         .run(tauri::generate_context!())
         .expect("błąd uruchomienia aplikacji");
+
+    #[test]
+    fn credits_roundtrip_through_xmp_and_are_escaped() {
+        let xml = build_xmp_full(3, false, &["morze".to_string()], Some("Jan <Kowalski> & Syn"), Some("© 2026 Jan Kowalski"));
+        assert!(xml.contains("<dc:creator>") && xml.contains("<dc:rights>"));
+        assert!(!xml.contains("<Kowalski>"), "znaki specjalne są zamienione");
+        assert_eq!(parse_xmp_first_li(&xml, "dc:creator").as_deref(), Some("Jan <Kowalski> & Syn"));
+        assert_eq!(parse_xmp_first_li(&xml, "dc:rights").as_deref(), Some("© 2026 Jan Kowalski"));
+        assert_eq!(parse_xmp_tags(&xml), vec!["morze".to_string()]);
+        // Bez autora i praw plik wygląda jak dawniej.
+        let plain = build_xmp(3, false, &["morze".to_string()]);
+        assert!(!plain.contains("dc:creator") && !plain.contains("dc:rights"));
+        assert_eq!(parse_xmp_first_li(&plain, "dc:creator"), None);
+    }
 }

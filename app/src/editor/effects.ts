@@ -245,6 +245,30 @@ export const EFFECTS: Effect[] = [
   { id: 'orton', label: 'Orton', slider: true, fn(img, t) { const b = boxBlur(img.d, img.w, img.h, bigRadius(img) / 2); const { d } = img; for (let i = 0; i < d.length; i += 4) for (let c = 0; c < 3; c++) d[i + c] = clamp(lerp(d[i + c], Math.min(255, b[i + c] * 1.25 + 12), t * .55)) } },
   { id: 'softfocus', label: 'Miękki fokus', slider: true, fn(img, t) { const b = boxBlur(img.d, img.w, img.h, bigRadius(img) / 1.5); radial(img, (dist, i) => { const k = Math.min(1, Math.max(0, (dist - .25) / .5)) * t; for (let c = 0; c < 3; c++) img.d[i + c] = lerp(img.d[i + c], b[i + c], k) }) } },
   { id: 'focalbw', label: 'Czerń i biel z ogniskiem', slider: true, fn(img, t) { radial(img, (dist, i) => { const k = Math.min(1, Math.max(0, (dist - .2) / .5)) * t; const y = lum(img.d[i], img.d[i + 1], img.d[i + 2]); for (let c = 0; c < 3; c++) img.d[i + c] = lerp(img.d[i + c], y, k) }) } },
+  // Redukcja szumu: wygładza tylko miejsca o drobnych różnicach (szum), a krawędzie zostają ostre.
+  { id: 'denoise', label: 'Redukcja szumu', slider: true, fn(img, t) {
+    const b = boxBlur(img.d, img.w, img.h, 1 + Math.round(t * 2)); const { d } = img; const tol = 18 + 50 * t
+    for (let i = 0; i < d.length; i += 4) {
+      const diff = Math.abs(lum(d[i], d[i + 1], d[i + 2]) - lum(b[i], b[i + 1], b[i + 2]))
+      const k = Math.min(1, Math.max(0, 1 - diff / tol)) * Math.min(1, t * 1.2)
+      for (let c = 0; c < 3; c++) d[i + c] = lerp(d[i + c], b[i + c], k)
+    }
+  } },
+  // Przechylenie i przesunięcie (tilt-shift): ostry pas w środku kadru, rozmycie ku górze i dołowi oraz żywsze kolory (efekt miniatury).
+  { id: 'tiltshift', label: 'Przechylenie i przesunięcie', slider: true, fn(img, t) {
+    const { d, w, h } = img; const b = boxBlur(d, w, h, Math.max(2, bigRadius(img) / 2))
+    for (let y = 0; y < h; y++) {
+      const k = Math.min(1, Math.max(0, (Math.abs(y / h - 0.5) - 0.12) / 0.28)) * t
+      for (let x = 0; x < w; x++) {
+        const i = (y * w + x) * 4
+        for (let c = 0; c < 3; c++) d[i + c] = lerp(d[i + c], b[i + c], k)
+        const m = (d[i] + d[i + 1] + d[i + 2]) / 3
+        for (let c = 0; c < 3; c++) d[i + c] = clamp(m + (d[i + c] - m) * (1 + 0.3 * t))
+      }
+    }
+  } },
+  // Rozmycie poza środkiem (maska radialna): środek zostaje ostry, brzegi są mocno rozmyte.
+  { id: 'radialblur', label: 'Rozmycie poza środkiem', slider: true, fn(img, t) { const b = boxBlur(img.d, img.w, img.h, Math.max(2, bigRadius(img) * 0.9)); radial(img, (dist, i) => { const k = Math.min(1, Math.max(0, (dist - .18) / .45)) * t; for (let c = 0; c < 3; c++) img.d[i + c] = lerp(img.d[i + c], b[i + c], k) }) } },
   { id: 'vignette', label: 'Winieta', slider: true, fn(img, t) { radial(img, (dist, i) => { const k = 1 - Math.pow(Math.max(0, dist - .25) / .75, 1.6) * t * 1.1; for (let c = 0; c < 3; c++) img.d[i + c] = clamp(img.d[i + c] * Math.max(0, k)) }) } },
   { id: 'gradtint', label: 'Gradientowy odcień', slider: true, fn(img, t) { const { d, w, h } = img; for (let y = 0; y < h; y++) { const k = Math.max(0, 1 - y / (h * .6)) * t * .6; for (let x = 0; x < w; x++) { const i = (y * w + x) * 4; d[i] = lerp(d[i], 255, k * .8); d[i + 1] = lerp(d[i + 1], 140, k); d[i + 2] = lerp(d[i + 2], 40, k) } } } },
   { id: 'duotone', label: 'Dwutonowy', slider: true, fn: (img, t) => gradientMap(img, [[20, 20, 90], [255, 220, 120]], t) },

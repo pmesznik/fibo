@@ -20,6 +20,10 @@ export type Photo = {
   albums: number[]
   caption?: string | null
   exif?: string | null
+  author?: string | null
+  copyright?: string | null
+  /** Kolor dominujący: numer 0 do 11 (zob. COLORS w App.tsx), null gdy jeszcze nie policzono. */
+  color?: number | null
 }
 
 export type Album = { id: number; name: string; count: number; hidden: boolean }
@@ -131,6 +135,9 @@ export const getSkipGifPng = () => invoke<boolean>('get_skip_gif_png')
 export const setSkipGifPng = (skip: boolean) => invoke('set_skip_gif_png', { skip })
 /** Dyski wyglądające na kartę pamięci aparatu (zawierają folder DCIM), jeszcze nieobserwowane przez FIBO. */
 export const detectCards = () => invoke<string[]>('detect_cards')
+
+export const setCredits = (ids: number[], author: string, copyright: string) => invoke<number>('set_credits', { ids, author, copyright })
+export const indexColors = () => invoke<{ done: number }>('index_colors')
 
 export const readImage = (id: number) => invoke<ArrayBuffer>('read_image', { id })
 

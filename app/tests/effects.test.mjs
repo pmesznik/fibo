@@ -57,3 +57,35 @@ test('retusz przy krawędzi zdjęcia nie wychodzi poza obraz', () => {
   assert.doesNotThrow(() => mod.healSpot({ d, w: 20, h: 20 }, { x: 0, y: 0, r: 0.2 }))
   assert.doesNotThrow(() => mod.healSpot({ d, w: 20, h: 20 }, { x: 1, y: 1, r: 0.2 }))
 })
+
+/** Obraz w skali szarości z funkcji (x, y) → jasność. */
+const gray = (w, h, f) => { const d = new Uint8ClampedArray(w * h * 4); for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const i = (y * w + x) * 4; const v = f(x, y); d[i] = d[i + 1] = d[i + 2] = v; d[i + 3] = 255 } return { d, w, h } }
+const at = (img, x, y) => img.d[(y * img.w + x) * 4]
+
+test('redukcja szumu wygładza drobny szum, a krawędź zostaje ostra', () => {
+  // Lewa połowa ciemna z szumem ±6, prawa jasna z szumem ±6, między nimi ostra krawędź.
+  const noise = (x, y) => ((x * 7 + y * 13) % 5) * 3 - 6
+  const img = gray(40, 20, (x, y) => (x < 20 ? 60 : 200) + noise(x, y))
+  const variance = (im, x0, x1) => { let s = 0, n = 0; for (let y = 4; y < 16; y++) for (let x = x0; x < x1; x++) { const v = at(im, x, y); s += v; n++ } const m = s / n; let q = 0; for (let y = 4; y < 16; y++) for (let x = x0; x < x1; x++) q += (at(im, x, y) - m) ** 2; return q / n }
+  const before = variance(img, 4, 16)
+  const out = gray(40, 20, (x, y) => at(img, x, y))
+  mod.EFFECT_BY_ID.get('denoise').fn(out, 1)
+  assert.ok(variance(out, 4, 16) < before * 0.6, `szum maleje: ${before} -> ${variance(out, 4, 16)}`)
+  assert.ok(at(out, 25, 10) - at(out, 14, 10) > 110, 'krawędź zostaje wyraźna')
+})
+
+test('rozmycie poza środkiem zostawia środek bez zmian, a brzegi rozmywa', () => {
+  const img = gray(60, 60, (x, y) => ((x + y) % 2 === 0 ? 0 : 255))
+  const copy = gray(60, 60, (x, y) => at(img, x, y))
+  mod.EFFECT_BY_ID.get('radialblur').fn(copy, 1)
+  assert.equal(at(copy, 30, 30), at(img, 30, 30), 'środek bez zmian')
+  assert.ok(Math.abs(at(copy, 1, 1) - 127) < Math.abs(at(img, 1, 1) - 127), 'brzeg jest bardziej szary, czyli rozmyty')
+})
+
+test('przechylenie i przesunięcie zostawia pas środkowy ostry', () => {
+  const img = gray(40, 40, (x) => (x % 2 === 0 ? 0 : 255))
+  const copy = gray(40, 40, (x, y) => at(img, x, y))
+  mod.EFFECT_BY_ID.get('tiltshift').fn(copy, 1)
+  assert.equal(at(copy, 10, 20), at(img, 10, 20), 'środek bez zmian')
+  assert.notEqual(at(copy, 10, 1), at(img, 10, 1), 'góra jest rozmyta')
+})

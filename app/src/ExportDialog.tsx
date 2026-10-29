@@ -1,14 +1,15 @@
 import { useState } from 'react'
 import { pl } from './pl'
 import { X, Download } from './FiboIcons'
-import { exportGallery, exportGif, exportGpx, exportPdf, exportPhotos, pickFile, pickFolder, type Watermark } from './api'
+import { Thumb } from './Thumb'
+import { exportGallery, exportGif, exportGpx, exportPdf, exportPhotos, pickFile, pickFolder, type Photo, type Watermark } from './api'
 
 const SIZES: [number, string][] = [[1024, '1024 px (e-mail)'], [1600, '1600 px'], [2048, '2048 px'], [0, 'Oryginalny rozmiar']]
 const QUALITIES: [number, string][] = [[75, 'Mała'], [88, 'Dobra'], [95, 'Najlepsza']]
 
 /** Eksport kopii zaznaczonych zdjęć do wybranego folderu (pomniejszonych, bez metadanych i lokalizacji). */
-export function ExportDialog({ ids, onClose, say }: { ids: number[]; onClose: () => void; say: (m: string, kind?: 'ok' | 'err') => void }) {
-  const [size, setSize] = useState(1600)
+export function ExportDialog({ ids, onClose, say, initialSize, photos }: { ids: number[]; onClose: () => void; say: (m: string, kind?: 'ok' | 'err') => void; initialSize?: number; photos?: Photo[] }) {
+  const [size, setSize] = useState(initialSize ?? 1600)
   const [quality, setQuality] = useState(88)
   const [busy, setBusy] = useState(false)
   // Znak wodny z własnego logo: plik, położenie, rozmiar i krycie (ustawienia są zapamiętywane na tym komputerze).
@@ -148,10 +149,31 @@ export function ExportDialog({ ids, onClose, say }: { ids: number[]; onClose: ()
           <h3 style={{ margin: '18px 0 4px', fontSize: 14 }}>PDF do druku</h3>
           <p style={{ margin: '0 0 6px', color: 'var(--muted)', fontSize: 13 }}>Strony A4 ze zdjęciami (jakość jak wyżej). Plik otworzysz w dowolnym programie do PDF i wydrukujesz lub wyślesz.</p>
           <div className="chips">
-            {([[[1, 1], '1 na stronie'], [[2, 2], '4 na stronie'], [[2, 3], '6 na stronie'], [[3, 4], 'Arkusz kontaktowy (12)']] as [[number, number], string][]).map(([v, l]) => (
+            {([[[1, 1], '1 na stronie'], [[1, 2], '2 na stronie (ok. 13×18)'], [[2, 2], '4 na stronie (ok. 9×13)'], [[2, 3], '6 na stronie'], [[3, 3], '9 na stronie'], [[3, 4], 'Arkusz kontaktowy (12)'], [[4, 5], 'Arkusz kontaktowy (20)']] as [[number, number], string][]).map(([v, l]) => (
               <button key={l} className={`chip${layout[0] === v[0] && layout[1] === v[1] ? ' on' : ''}`} aria-pressed={layout[0] === v[0] && layout[1] === v[1]} onClick={() => setLayout(v)}>{l}</button>
             ))}
           </div>
+          {(() => {
+            const per = layout[0] * layout[1]
+            const pages = Math.ceil(ids.length / per)
+            const shown = Math.min(per, ids.length)
+            return (
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 10 }}>
+                <div role="img" aria-label={`Podgląd pierwszej strony A4: ${layout[0]} w poziomie, ${layout[1]} w pionie`}
+                  style={{ width: 96, aspectRatio: '595 / 842', flex: 'none', background: '#fff', border: '1px solid var(--glass-line)', borderRadius: 3, boxShadow: 'var(--elev-1)', padding: 5,
+                    display: 'grid', gridTemplateColumns: `repeat(${layout[0]}, 1fr)`, gridTemplateRows: `repeat(${layout[1]}, 1fr)`, gap: 3 }}>
+                  {Array.from({ length: per }).map((_, k) => {
+                    const ph = k < shown ? photos?.find((p) => p.id === ids[k]) : undefined
+                    return <div key={k} style={{ position: 'relative', overflow: 'hidden', background: k < shown ? 'var(--tonal)' : 'transparent', outline: k < shown ? 'none' : '1px dashed var(--glass-line)' }}>{ph && <Thumb photo={ph} fit="contain" />}</div>
+                  })}
+                </div>
+                <div style={{ fontSize: 13, color: 'var(--muted)' }}>
+                  <b style={{ color: 'var(--text)' }}>Przegląd przed drukiem</b><br />
+                  {pages} {pages === 1 ? 'strona' : pages < 5 ? 'strony' : 'stron'} A4, po {per} {per === 1 ? 'zdjęciu' : 'zdjęć'} na stronie. Zdjęcia nie są przycinane, tylko dopasowane do pola.
+                </div>
+              </div>
+            )
+          })()}
           <button className="wide" disabled={busy} onClick={runPdf}>Utwórz PDF</button>
           <h3 style={{ margin: '18px 0 4px', fontSize: 14 }}>Animowany GIF</h3>
           <p style={{ margin: '0 0 6px', color: 'var(--muted)', fontSize: 13 }}>Z zaznaczonych zdjęć (2 do 60, w widocznej kolejności) powstaje animacja do 480 px.</p>

@@ -4,6 +4,7 @@ import { MapView } from './MapView'
 import { People, FaceImg } from './People'
 import { ExportDialog } from './ExportDialog'
 import { ProgressDock } from './ProgressDock'
+import { CreditsDialog } from './CreditsDialog'
 import { MoveFacesDialog } from './MergePeople'
 import { LocationDialog } from './LocationDialog'
 import { RenameDialog } from './RenameDialog'
@@ -17,7 +18,7 @@ import { UpdateDialog, useUpdater } from './Updater'
 import { exportSidecars, getSidecarEnabled, importSidecars, setSidecarEnabled } from './api'
 import {
   addToAlbum, createAlbum, deleteAlbum, setAlbumHidden, listAlbumOrder, setAlbumOrder, listAlbums, listRoots, movePhotos, removeFromAlbum, removeRoot,
-  renameAlbum, renamePhoto, rescanRoots, trashPhotos, listSmart, saveSmart, deleteSmart, type SmartAlbum, listLocked, setFolderLocked, revealInExplorer, openPhotoExternal, findDuplicates, rejectPersonInPhotos, rotatePhotos, getSkipGifPng, setSkipGifPng, detectCards, listPeople, listProps, renameFolder, type Prop, type Person, personPhotos, importPhotos, backupLibrary, backupPhotos, restoreLibrary, pickFile, facesStart, facesStatus, hidePhotos, hiddenCount, restoreHidden, type Album,
+  renameAlbum, renamePhoto, rescanRoots, trashPhotos, listSmart, saveSmart, deleteSmart, type SmartAlbum, listLocked, setFolderLocked, revealInExplorer, openPhotoExternal, findDuplicates, indexColors, rejectPersonInPhotos, rotatePhotos, getSkipGifPng, setSkipGifPng, detectCards, listPeople, listProps, renameFolder, type Prop, type Person, personPhotos, importPhotos, backupLibrary, backupPhotos, restoreLibrary, pickFile, facesStart, facesStatus, hidePhotos, hiddenCount, restoreHidden, type Album,
 } from './api'
 import { AlbumPicker, PromptDialog } from './Dialogs'
 import { addTag, deleteTag, inTauri, listPhotos, pickFolder, refreshLibrary, removeTag, scanFolder, setFavorite, setRating, type Photo } from './api'
@@ -64,6 +65,13 @@ const DEMO: Photo[] = Array.from({ length: 48 }, (_, i) => ({
 }))
 
 const folderName = (p: string) => p.split(/[\\/]/).filter(Boolean).pop() ?? p
+/** Kolory dominujące (numery jak w backendzie: color.rs). */
+const COLORS: { name: string; css: string }[] = [
+  { name: 'czerwony', css: '#d93025' }, { name: 'pomarańczowy', css: '#f28b1c' }, { name: 'żółty', css: '#f4d01e' }, { name: 'zielony', css: '#2e9d3d' },
+  { name: 'turkusowy', css: '#1fb8c4' }, { name: 'niebieski', css: '#2f5fd7' }, { name: 'fioletowy', css: '#7e3fc4' }, { name: 'różowy', css: '#ea6fa8' },
+  { name: 'brązowy', css: '#7a4a22' }, { name: 'biały', css: '#ffffff' }, { name: 'szary', css: '#8a8f98' }, { name: 'czarny', css: '#14161a' },
+]
+
 const pl = (n: number, one: string, few: string, many: string) =>
   n === 1 ? one : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? few : many
 const dirOf = (path: string) => path.replace(/[\\/][^\\/]*$/, '')
@@ -90,6 +98,7 @@ export default function App() {
   const [toast, setToast] = useState<{ text: string; kind?: 'ok' | 'err' } | null>(null)
   const [folder, setFolder] = useState<string | null>(null)
   const [minStars, setMinStars] = useState(0)
+  const [color, setColor] = useState<number | null>(null)
   // Filtry dodatkowe: zakres dat (RRRR-MM-DD) oraz zdjęcia, którym czegoś brakuje (porządkowanie biblioteki).
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
@@ -161,7 +170,9 @@ export default function App() {
   const [dateIds, setDateIds] = useState<number[] | null>(null)
   const [renameIds, setRenameIds] = useState<number[] | null>(null)
   const [locIds, setLocIds] = useState<number[] | null>(null)
+  const [creditIds, setCreditIds] = useState<number[] | null>(null)
   const [exportIds, setExportIds] = useState<number[] | null>(null)
+  const [exportSize, setExportSize] = useState<number | undefined>(undefined)
   const [person, setPerson] = useState<{ id?: number; name: string; ids: Set<number> } | null>(null)
   const [hiddenN, setHiddenN] = useState(0)
   const reloadHidden = useCallback(async () => { if (inTauri) setHiddenN(await hiddenCount()) }, [])
@@ -250,6 +261,13 @@ export default function App() {
     } catch (e) { say(`Błąd importu: ${e}`, 'err') } finally { setBusy(false) }
   }
 
+  // Kolory dominujące zdjęć z gotowymi miniaturami liczą się po cichu w tle, raz po starcie (nowe miniatury mają kolor od razu).
+  useEffect(() => {
+    if (!inTauri) return
+    const t = window.setTimeout(() => { indexColors().then((r) => { if (r.done > 0) reload() }).catch(() => {}) }, 9000)
+    return () => window.clearTimeout(t)
+  }, [reload])
+
   // Ustawienie: nie dodawaj plików GIF i PNG przy skanowaniu (jak w Picasie, bo to zwykle grafiki ze stron).
   const [skipGifPng, setSkipGifPngState] = useState(false)
   useEffect(() => { if (inTauri) getSkipGifPng().then(setSkipGifPngState).catch(() => {}) }, [])
@@ -274,9 +292,9 @@ export default function App() {
   }, [])
 
   /** Obrót o 90° bez utraty jakości (JPEG: zmiana znacznika orientacji, piksele bez zmian). */
-  const rotateSelected = async (cw: boolean) => {
+  const rotateSelected = (cw: boolean) => rotateIds(realIds(), cw)
+  const rotateIds = async (ids: number[], cw: boolean) => {
     setMenu(null)
-    const ids = realIds()
     if (!ids.length) return
     try {
       const r = await rotatePhotos(ids, cw)
@@ -382,6 +400,7 @@ export default function App() {
       (!trayView || tray.includes(p.id)) &&
       (!onlyFav || p.favorite) &&
       p.rating >= minStars &&
+      (color === null || p.color === color) &&
       (!dateFrom || whenOf(p).slice(0, 10).replace(/:/g, '-') >= dateFrom) &&
       (!dateTo || whenOf(p).slice(0, 10).replace(/:/g, '-') <= dateTo) &&
       (missing === '' || (missing === 'tags' ? p.tags.length === 0 : missing === 'geo' ? p.lat == null || p.lon == null : p.rating === 0)) &&
@@ -395,7 +414,7 @@ export default function App() {
     else if (sort === 'size') list.sort((a, b) => b.size - a.size)
     else list.sort((a, b) => (sort === 'date-desc' ? whenOf(b).localeCompare(whenOf(a)) : whenOf(a).localeCompare(whenOf(b))))
     return list
-  }, [all, albumNames, propOf, query, folder, albumId, person, trayView, tray, onlyFav, minStars, dateFrom, dateTo, missing, sort, activeTags, albumPos])
+  }, [all, albumNames, propOf, query, folder, albumId, person, trayView, tray, onlyFav, minStars, color, dateFrom, dateTo, missing, sort, activeTags, albumPos])
 
   // Foldery od najnowszego; rok albumu to rok jego najnowszego zdjęcia (jak w Picasie).
   const folders = useMemo(() => {
@@ -539,6 +558,14 @@ export default function App() {
   const rateSelected = (rating: number) => {
     for (const id of sel) { patch(id, { rating }); if (inTauri && id >= 0) setRating(id, rating) }
     setMenu(null)
+  }
+  /** Gwiazdka z tacy: dodaje wszystkie zdjęcia z tacy do ulubionych (a gdy już wszystkie są ulubione, usuwa je z ulubionych). */
+  const favIds = (ids: number[]) => {
+    const picked = all.filter((p) => ids.includes(p.id) && p.id >= 0)
+    if (!picked.length) return
+    const value = !picked.every((p) => p.favorite)
+    for (const p of picked) { patch(p.id, { favorite: value }); if (inTauri) setFavorite(p.id, value) }
+    say(value ? `Dodano do ulubionych: ${picked.length}` : `Usunięto z ulubionych: ${picked.length}`, 'ok')
   }
   const favSelected = () => {
     const picked = all.filter((p) => sel.includes(p.id))
@@ -853,7 +880,7 @@ export default function App() {
     )
   }
 
-  const filtersOn = minStars > 0 || !!dateFrom || !!dateTo || missing !== '' || sort !== 'date-desc' || !!folder || activeTags.length > 0
+  const filtersOn = minStars > 0 || color !== null || !!dateFrom || !!dateTo || missing !== '' || sort !== 'date-desc' || !!folder || activeTags.length > 0
   const selPhotos = sel.length ? all.filter((p) => sel.includes(p.id)) : []
   const subtitle = busy ? `Skanowanie… ${progress}` : `${photos.length} z ${all.length} ${pl(all.length, 'zdjęcia', 'zdjęć', 'zdjęć')}${selPhotos.length ? ` · zaznaczono ${selPhotos.length} (${sizeText(selPhotos)})` : ''}`
 
@@ -937,6 +964,14 @@ export default function App() {
               <div style={{ display: 'flex', gap: 8 }}>
                 <div style={{ flex: 1 }}><label htmlFor="date-from" style={{ marginTop: 0, fontSize: 12 }}>Od</label><input id="date-from" type="date" value={dateFrom} max={dateTo || undefined} onChange={(e) => setDateFrom(e.target.value)} /></div>
                 <div style={{ flex: 1 }}><label htmlFor="date-to" style={{ marginTop: 0, fontSize: 12 }}>Do</label><input id="date-to" type="date" value={dateTo} min={dateFrom || undefined} onChange={(e) => setDateTo(e.target.value)} /></div>
+              </div>
+              <label>Kolor dominujący</label>
+              <div className="chips" role="group" aria-label="Kolor dominujący zdjęcia">
+                {COLORS.map((c, i) => (
+                  <Chip key={c.name} on={color === i} onClick={() => setColor(color === i ? null : i)} label={`Kolor: ${c.name}`}>
+                    <span aria-hidden style={{ width: 14, height: 14, borderRadius: '50%', background: c.css, border: '1px solid var(--glass-line)', display: 'inline-block' }} /> {c.name}
+                  </Chip>
+                ))}
               </div>
               <label>Pokaż tylko zdjęcia</label>
               <div className="chips">
@@ -1101,7 +1136,7 @@ export default function App() {
                   {years.map((y) => <Chip key={y} onClick={() => jumpToYear(y)}>{y}</Chip>)}
                 </div>
               )}
-              {(query || folder || albumId !== null || person || trayView || minStars > 0 || dateFrom || dateTo || missing || activeTags.length > 0) && (
+              {(query || folder || albumId !== null || person || trayView || minStars > 0 || color !== null || dateFrom || dateTo || missing || activeTags.length > 0) && (
                 <div className="chips" style={{ marginTop: 10 }}>
                   {activeTags.map((t) => <Chip key={t} on onClick={() => toggleTagFilter(t)} label={`Usuń filtr tagu ${t}`}><Tag size={13} /> {t} <X size={13} /></Chip>)}
                   {query && <Chip on onClick={() => setQuery('')} label="Usuń szukanie"><SearchIcon size={13} /> {query} <X size={13} /></Chip>}
@@ -1109,10 +1144,12 @@ export default function App() {
                   {(query.trim() || minStars > 0 || dateFrom || dateTo || missing || activeTags.length > 0) && <Chip onClick={saveSmartAlbum} label="Zapisz filtry jako album inteligentny"><Star size={13} /> Zapisz jako album inteligentny</Chip>}
                   {trayView && <Chip on onClick={() => setTrayView(false)} label="Pokaż całą bibliotekę"><ListChecks size={13} /> Taca <X size={13} /></Chip>}
                   {person && <Chip on onClick={() => setPerson(null)} label="Pokaż całą bibliotekę"><Users size={13} /> {person.name} <X size={13} /></Chip>}
+                  {person && <Chip onClick={slideshow} label="Pokaz zdjęć tej osoby"><Play size={13} /> Pokaz zdjęć</Chip>}
                   {person && <Chip onClick={async () => { try { setTogether((await listPeople()).filter((o) => !o.ignored)) } catch (e) { say(`Błąd: ${e}`, 'err') } }} label="Pokaż tylko zdjęcia razem z inną osobą"><Users size={13} /> Razem z…</Chip>}
                   {folder && <Chip on onClick={() => setFolder(null)} label="Usuń filtr folderu"><FolderOpen size={13} /> {folderName(folder)} <X size={13} /></Chip>}
                   {(dateFrom || dateTo) && <Chip on onClick={() => { setDateFrom(''); setDateTo('') }} label="Usuń filtr dat"><CalendarDays size={13} /> {dateFrom || '…'} – {dateTo || '…'} <X size={13} /></Chip>}
                   {missing && <Chip on onClick={() => setMissing('')} label="Usuń filtr braków">{missing === 'tags' ? 'Bez tagów' : missing === 'geo' ? 'Bez lokalizacji' : 'Bez oceny'} <X size={13} /></Chip>}
+                  {color !== null && <Chip on onClick={() => setColor(null)} label="Usuń filtr koloru"><span aria-hidden style={{ width: 12, height: 12, borderRadius: '50%', background: COLORS[color].css, border: '1px solid var(--glass-line)', display: 'inline-block' }} /> {COLORS[color].name} <X size={13} /></Chip>}
                   {minStars > 0 && <Chip on onClick={() => setMinStars(0)} label="Usuń filtr oceny">≥ {minStars} <Star size={12} fill="currentColor" /> <X size={13} /></Chip>}
                 </div>
               )}
@@ -1388,6 +1425,7 @@ export default function App() {
                 <button className="text menu-item" role="menuitem" onClick={() => { setMenu(null); setMoveFaces(photosOfPerson()) }}><Users size={18} /> To inna osoba: przenieś twarz…</button>
               </>
             )}
+            <button className="text menu-item" role="menuitem" onClick={() => { setMenu(null); setCreditIds(realIds()) }}><Pencil size={18} /> Autor i prawa autorskie…</button>
             <button className="text menu-item" role="menuitem" onClick={() => rotateSelected(true)}><RotateCw size={18} /> Obróć w prawo (bez utraty jakości)</button>
             <button className="text menu-item" role="menuitem" onClick={() => rotateSelected(false)}><RotateCcw size={18} /> Obróć w lewo (bez utraty jakości)</button>
             <button className="text menu-item" role="menuitem" onClick={pasteEditSelected}><Wand2 size={18} /> Wklej edycję do zaznaczonych…</button>
@@ -1407,11 +1445,19 @@ export default function App() {
           onCreate={() => { setPicker(false); newAlbum(true) }} />
       )}
       {tray.length > 0 && (
-        <div className="glass fixed flex items-center gap-1" role="group" aria-label="Taca zdjęć"
-          style={{ left: 16, bottom: 'calc(16px + var(--sab))', zIndex: 1040, padding: '6px 8px 6px 14px', borderRadius: 'var(--r-lg)' }}>
+        <div className="glass fixed flex flex-wrap items-center gap-1" role="group" aria-label="Taca zdjęć"
+          style={{ left: 16, bottom: 'calc(16px + var(--sab))', zIndex: 1040, padding: '6px 8px 6px 14px', borderRadius: 'var(--r-lg)', maxWidth: 'min(94vw, 760px)' }}>
           <span style={{ fontWeight: 650, fontSize: 13.5, marginRight: 4 }}>Taca: {tray.length}</span>
+          {realIds().length > 0 && <button className="chip" title="Dodaj zaznaczone zdjęcia do tacy" onClick={() => { const n = new Set([...tray, ...realIds()]); setTray([...n]); say(`Dodano do tacy (razem ${n.size})`, 'ok') }}>Zatrzymaj zaznaczone</button>}
           <button className={`chip${trayView ? ' on' : ''}`} aria-pressed={trayView} onClick={() => { setTrayView((v) => !v); setMode('library'); setAlbumId(null); setFolder(null) }}>{trayView ? 'Pokaż wszystko' : 'Pokaż tacę'}</button>
           <button className="chip" onClick={() => { setSel([...tray]); say(`Zaznaczono z tacy: ${tray.length}. Kliknij prawym przyciskiem, żeby wybrać akcję`, 'ok') }}>Zaznacz</button>
+          <button className="chip" title="Dodaj zdjęcia z tacy do albumu" onClick={() => { setSel([...tray]); setPicker(true) }}><FolderOpen size={14} /> Do albumu</button>
+          <button className="chip" title="Dodaj zdjęcia z tacy do ulubionych (gwiazdka)" onClick={() => favIds(tray)}><Star size={14} /> Ulubione</button>
+          <button className="ico" aria-label="Obróć zdjęcia z tacy w lewo" title="Obróć w lewo (bez utraty jakości)" onClick={() => rotateIds(tray, false)}><RotateCcw size={17} /></button>
+          <button className="ico" aria-label="Obróć zdjęcia z tacy w prawo" title="Obróć w prawo (bez utraty jakości)" onClick={() => rotateIds(tray, true)}><RotateCw size={17} /></button>
+          <button className="chip" disabled={tray.length < 2} title="Zrób kolaż ze zdjęć z tacy" onClick={() => { setSel([...tray]); setCollage(true) }}><LayoutDashboard size={14} /> Kolaż</button>
+          <button className="chip" title="Eksport lub wydruk (PDF) zdjęć z tacy" onClick={() => setExportIds([...tray])}><Download size={14} /> Eksport i druk</button>
+          <button className="chip" title="Pomniejszone kopie do wysłania e-mailem (1024 px, bez lokalizacji)" onClick={() => { setExportSize(1024); setExportIds([...tray]) }}>E-mail</button>
           <button className="ico" aria-label="Wyczyść tacę" title="Wyczyść tacę" onClick={() => { setTray([]); setTrayView(false) }}><X size={18} /></button>
         </div>
       )}
@@ -1461,7 +1507,7 @@ export default function App() {
         return <LocationDialog ids={locIds} initial={first ? { lat: first.lat as number, lon: first.lon as number } : null} say={say}
           onSaved={() => { reload() }} onClose={() => setLocIds(null)} />
       })()}
-      {exportIds && exportIds.length > 0 && <ExportDialog ids={exportIds} say={say} onClose={() => setExportIds(null)} />}
+      {exportIds && exportIds.length > 0 && <ExportDialog ids={exportIds} photos={all} initialSize={exportSize} say={say} onClose={() => { setExportIds(null); setExportSize(undefined) }} />}
       {prompt && <PromptDialog {...prompt} onClose={() => setPrompt(null)} />}
 
       <UpdateDialog u={updater} />
@@ -1489,6 +1535,7 @@ export default function App() {
         <MoveFacesDialog personId={person.id} personName={person.name} photoIds={moveFaces} say={say} onClose={() => setMoveFaces(null)}
           onDone={(ids) => { dropFromPerson(ids); setSel([]) }} />
       )}
+      {creditIds && creditIds.length > 0 && <CreditsDialog photos={all.filter((p) => creditIds.includes(p.id))} say={say} onClose={() => setCreditIds(null)} onDone={reload} />}
       {cardOffer && (
         <div className="glass fixed left-3 z-[1550] flex flex-wrap items-center gap-3 p-3" style={{ bottom: 'calc(12px + var(--sab))', borderRadius: 'var(--r-lg)', maxWidth: 'min(92vw, 460px)' }} role="status">
           <span style={{ flex: '1 1 200px', fontSize: 14 }}>Wykryto kartę pamięci z aparatu ({cardOffer}) ze zdjęciami.</span>
