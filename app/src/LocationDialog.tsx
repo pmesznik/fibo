@@ -76,9 +76,9 @@ export function LocationDialog({ ids, initial, onClose, onSaved, say }: {
           <div ref={box} aria-label="Mapa do wyboru miejsca" style={{ height: 300, borderRadius: 'var(--r-md)', overflow: 'hidden', background: 'var(--tonal)' }} />
           <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
             <div style={{ flex: 1 }}><label htmlFor="loc-lat" style={{ marginTop: 0 }}>Szerokość</label>
-              <input id="loc-lat" inputMode="decimal" value={lat} onChange={(e) => { setLat(e.target.value) }} onBlur={() => { const p = typed(); if (p) place(p, true) }} /></div>
+              <input id="loc-lat" type="text" inputMode="decimal" value={lat} onChange={(e) => { setLat(e.target.value) }} onBlur={() => { const p = typed(); if (p) place(p, true) }} /></div>
             <div style={{ flex: 1 }}><label htmlFor="loc-lon" style={{ marginTop: 0 }}>Długość</label>
-              <input id="loc-lon" inputMode="decimal" value={lon} onChange={(e) => { setLon(e.target.value) }} onBlur={() => { const p = typed(); if (p) place(p, true) }} /></div>
+              <input id="loc-lon" type="text" inputMode="decimal" value={lon} onChange={(e) => { setLon(e.target.value) }} onBlur={() => { const p = typed(); if (p) place(p, true) }} /></div>
           </div>
           <button className="primary" style={{ marginTop: 12 }} disabled={busy || !pos} onClick={() => save(false)}>
             <span className="inline-flex items-center gap-2"><MapPin size={17} /> Ustaw tę lokalizację</span>

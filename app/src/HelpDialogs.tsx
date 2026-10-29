@@ -29,13 +29,13 @@ const SHORTCUTS: [string, string][] = [
   ['Prawy przycisk', 'Menu: tagi, album, nazwa, data, lokalizacja, eksport, ukrywanie, Kosz'],
   ['? lub F1', 'Ta lista skrótów'],
   ['Esc', 'Zamknij okno, menu lub panel'],
-  ['W podglądzie: ← →', 'Poprzednie i następne zdjęcie'],
-  ['W podglądzie: E', 'Edycja zdjęcia'],
-  ['W podglądzie: F', 'Ulubione'],
-  ['W podglądzie: spacja', 'Pokaz slajdów'],
-  ['W podglądzie: + − i kółko', 'Powiększanie'],
-  ['W podglądzie: B', 'Przytrzymaj, aby zobaczyć oryginał'],
-  ['W podglądzie: Ctrl+Z, Ctrl+Y', 'Cofnij i ponów zmiany w edytorze'],
+  ['Podgląd: ← →', 'Poprzednie i następne zdjęcie'],
+  ['Podgląd: E', 'Edycja zdjęcia'],
+  ['Podgląd: F', 'Ulubione'],
+  ['Podgląd: spacja', 'Pokaz slajdów'],
+  ['Podgląd: + − i kółko', 'Powiększanie'],
+  ['Podgląd: B', 'Przytrzymaj, aby zobaczyć oryginał'],
+  ['Podgląd: Ctrl+Z, Ctrl+Y', 'Cofnij i ponów zmiany w edytorze'],
 ]
 
 export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
