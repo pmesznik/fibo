@@ -201,3 +201,8 @@ details.sec > .sec-body { padding:0 14px 14px; }
 .swatch { width: 28px; height: 28px; min-height: 0; padding: 0; border-radius: 50%; border: 2px solid var(--glass-line); cursor: pointer; transition: transform .15s; }
 .swatch:hover { transform: scale(1.12); }
 .swatch.on { box-shadow: 0 0 0 3px var(--accent); border-color: var(--panel); }
+
+/* Przełącznik zakładek w oknach (segmentowany) */
+.seg { display: flex; gap: 4px; padding: 4px; margin: 4px 0 12px; background: var(--tonal); border-radius: 99px; }
+.seg button { flex: 1; min-height: 34px; padding: 0 10px; border: 0; background: transparent; border-radius: 99px; font-size: 13px; color: var(--muted); }
+.seg button.on { background: var(--panel); color: var(--text); font-weight: 650; box-shadow: var(--elev-1); }

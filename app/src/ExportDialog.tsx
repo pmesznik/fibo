@@ -12,6 +12,7 @@ export function ExportDialog({ ids, onClose, say, initialSize, photos }: { ids: 
   const [size, setSize] = useState(initialSize ?? 1600)
   const [quality, setQuality] = useState(88)
   const [busy, setBusy] = useState(false)
+  const [tab, setTab] = useState<'copies' | 'gallery' | 'pdf' | 'gif' | 'gpx'>('copies')
   // Znak wodny z własnego logo: plik, położenie, rozmiar i krycie (ustawienia są zapamiętywane na tym komputerze).
   const [wm, setWm] = useState<{ path: string; position: string; sizePct: number; opacity: number } | null>(() => {
     try {
@@ -97,12 +98,19 @@ export function ExportDialog({ ids, onClose, say, initialSize, photos }: { ids: 
   return (
     <>
       <div className="fixed inset-0 z-[1700]" style={{ background: 'rgba(0,0,0,.45)' }} onClick={onClose} />
-      <div className="glass fixed left-1/2 top-1/2 z-[1800] flex max-h-[85vh] w-[min(92vw,420px)] -translate-x-1/2 -translate-y-1/2 flex-col" style={{ borderRadius: 'var(--r-lg)' }} role="dialog" aria-label="Eksport zdjęć">
+      <div className="glass fixed left-1/2 top-1/2 z-[1800] flex max-h-[85vh] w-[min(92vw,520px)] -translate-x-1/2 -translate-y-1/2 flex-col" style={{ borderRadius: 'var(--r-lg)' }} role="dialog" aria-label="Eksport zdjęć">
         <div className="dr-head" style={{ paddingBottom: 0 }}>
           <span>Eksport zdjęć</span>
           <button className="ico" aria-label="Zamknij" onClick={onClose}><X size={22} /></button>
         </div>
         <div style={{ padding: '4px 16px 16px', overflowY: 'auto' }}>
+          <div className="seg" role="tablist" aria-label="Rodzaj eksportu">
+            {([['copies', 'Kopie'], ['gallery', 'Galeria'], ['pdf', 'PDF'], ['gif', 'GIF'], ['gpx', 'Lokalizacje']] as [typeof tab, string][]).map(([v, l]) => (
+              <button key={v} role="tab" aria-selected={tab === v} className={tab === v ? 'on' : ''} onClick={() => setTab(v)}>{l}</button>
+            ))}
+          </div>
+          {tab === 'copies' && (
+          <>
           <p style={{ margin: '0 0 8px', color: 'var(--muted)', fontSize: 13 }}>
             {ids.length} {ids.length === 1 ? 'zdjęcie' : 'zdjęć'}. Kopie są zapisywane jako JPEG bez danych EXIF (także bez lokalizacji GPS). Oryginały zostają nietknięte, a istniejące pliki nie są nadpisywane.
           </p>
@@ -141,12 +149,18 @@ export function ExportDialog({ ids, onClose, say, initialSize, photos }: { ids: 
           <h3 style={{ margin: '18px 0 4px', fontSize: 14 }}>Kopie bez metadanych</h3>
           <p style={{ margin: '0 0 6px', color: 'var(--muted)', fontSize: 13 }}>Pełny rozmiar i najwyższa jakość, ale bez EXIF, aparatu i lokalizacji GPS. Dobre przed opublikowaniem zdjęć.</p>
           <button className="wide" disabled={busy} onClick={runStrip}>Zapisz kopie bez metadanych</button>
-          <h3 style={{ margin: '18px 0 4px', fontSize: 14 }}>Albo galeria HTML</h3>
+          </>
+          )}
+          {tab === 'gallery' && (
+          <>
           <p style={{ margin: '0 0 6px', color: 'var(--muted)', fontSize: 13 }}>Strona do otwarcia w przeglądarce, z miniaturami, powiększeniem i opisami zdjęć. Działa offline i niczego nie ładuje z internetu.</p>
           <label htmlFor="gal-title" style={{ marginTop: 0 }}>Tytuł galerii (nazwa folderu)</label>
           <input id="gal-title" type="text" value={title} maxLength={80} autoComplete="off" onChange={(e) => setTitle(e.target.value)} />
           <button className="wide" disabled={busy || !title.trim()} onClick={runGallery}>Utwórz galerię HTML</button>
-          <h3 style={{ margin: '18px 0 4px', fontSize: 14 }}>PDF do druku</h3>
+          </>
+          )}
+          {tab === 'pdf' && (
+          <>
           <p style={{ margin: '0 0 6px', color: 'var(--muted)', fontSize: 13 }}>Strony A4 ze zdjęciami (jakość jak wyżej). Plik otworzysz w dowolnym programie do PDF i wydrukujesz lub wyślesz.</p>
           <div className="chips">
             {([[[1, 1], '1 na stronie'], [[1, 2], '2 na stronie (ok. 13×18)'], [[2, 2], '4 na stronie (ok. 9×13)'], [[2, 3], '6 na stronie'], [[3, 3], '9 na stronie'], [[3, 4], 'Arkusz kontaktowy (12)'], [[4, 5], 'Arkusz kontaktowy (20)']] as [[number, number], string][]).map(([v, l]) => (
@@ -175,7 +189,10 @@ export function ExportDialog({ ids, onClose, say, initialSize, photos }: { ids: 
             )
           })()}
           <button className="wide" disabled={busy} onClick={runPdf}>Utwórz PDF</button>
-          <h3 style={{ margin: '18px 0 4px', fontSize: 14 }}>Animowany GIF</h3>
+          </>
+          )}
+          {tab === 'gif' && (
+          <>
           <p style={{ margin: '0 0 6px', color: 'var(--muted)', fontSize: 13 }}>Z zaznaczonych zdjęć (2 do 60, w widocznej kolejności) powstaje animacja do 480 px.</p>
           <div className="chips">
             {([[500, '0,5 s'], [1000, '1 s'], [2000, '2 s']] as [number, string][]).map(([v, l]) => (
@@ -183,9 +200,14 @@ export function ExportDialog({ ids, onClose, say, initialSize, photos }: { ids: 
             ))}
           </div>
           <button className="wide" disabled={busy || ids.length < 2} onClick={runGif}>Utwórz animowany GIF</button>
-          <h3 style={{ margin: '18px 0 4px', fontSize: 14 }}>Lokalizacje do GPX</h3>
+          </>
+          )}
+          {tab === 'gpx' && (
+          <>
           <p style={{ margin: '0 0 6px', color: 'var(--muted)', fontSize: 13 }}>Plik z punktami (nazwa zdjęcia, data, opis) dla map i aplikacji do tras. Zdjęcia bez lokalizacji są pomijane.</p>
           <button className="wide" disabled={busy} onClick={runGpx}>Zapisz lokalizacje jako GPX</button>
+          </>
+          )}
         </div>
       </div>
     </>
