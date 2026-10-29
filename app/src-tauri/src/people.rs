@@ -64,6 +64,8 @@ pub fn init_schema(conn: &Connection) -> rusqlite::Result<()> {
     let _ = conn.execute("ALTER TABLE faces ADD COLUMN rejected INTEGER NOT NULL DEFAULT 0", []);
     // Migracja: pewność przypisania twarzy do osoby (podobieństwo do środka osoby, 0-1); NULL = jeszcze nie policzona.
     let _ = conn.execute("ALTER TABLE faces ADD COLUMN conf REAL", []);
+    // „To nie ta osoba”: twarz wraca do nierozpoznanych, ale nie może znowu trafić do tej jednej osoby (do innych może).
+    conn.execute_batch("CREATE TABLE IF NOT EXISTS face_not (face_id INTEGER NOT NULL, person_id INTEGER NOT NULL, PRIMARY KEY (face_id, person_id));")?;
     Ok(())
 }
 
@@ -343,6 +345,11 @@ fn regroup(conn: &Connection, snapshot: Option<Vec<AnchorFace>>, reanalyzed: &Ha
     }
     // Najlepsze twarze pierwsze: to one najpewniej dołączają do osób zakotwiczonych.
     loose.sort_by(|a, b| b.quality.total_cmp(&a.quality));
+    // Pary (twarz, osoba) wykluczone przez użytkownika: „To nie ta osoba”.
+    let barred: HashSet<(i64, i64)> = match conn.prepare("SELECT face_id, person_id FROM face_not") {
+        Ok(mut s) => s.query_map([], |r| Ok((r.get(0)?, r.get(1)?))).map(|it| it.filter_map(Result::ok).collect()).unwrap_or_default(),
+        Err(_) => HashSet::new(),
+    };
 
     let mut assign: HashMap<i64, Option<i64>> = HashMap::new(); // twarz -> osoba (istniejąca zakotwiczona) albo None
     // Dołączanie do osób zakotwiczonych w kilku przebiegach: twarz, która nie pasowała do wzorców osoby, może pasować do ujęć, które osoba
@@ -354,12 +361,15 @@ fn regroup(conn: &Connection, snapshot: Option<Vec<AnchorFace>>, reanalyzed: &Ha
             let mut joined = 0;
             for &i in &pool {
                 let f = &loose[i];
-                if let Decision::Join { id, learn } = anchors.decide_at(&f.emb, f.quality, f.photo, f.when) {
-                    anchors.apply_at(id, &f.emb, f.quality, learn, f.photo, f.when);
-                    assign.insert(f.id, Some(id));
-                    joined += 1;
-                } else {
-                    rest.push(i);
+                match anchors.decide_at(&f.emb, f.quality, f.photo, f.when) {
+                    Decision::Join { id, learn } if !barred.contains(&(f.id, id)) => {
+                        anchors.apply_at(id, &f.emb, f.quality, learn, f.photo, f.when);
+                        assign.insert(f.id, Some(id));
+                        joined += 1;
+                    }
+                    _ => {
+                        rest.push(i);
+                    }
                 }
             }
             pool = rest;
@@ -429,7 +439,10 @@ fn regroup(conn: &Connection, snapshot: Option<Vec<AnchorFace>>, reanalyzed: &Ha
         final_person.insert(loose[pool[k]].id, g.map(|g| person_of_group[&g]));
     }
     for f in &loose {
-        let new = final_person.get(&f.id).copied().flatten();
+        let mut new = final_person.get(&f.id).copied().flatten();
+        if new.map(|p| barred.contains(&(f.id, p))).unwrap_or(false) {
+            new = None; // grupa wciągnęła twarz, którą użytkownik wyłączył z tej osoby
+        }
         if new != f.old {
             tx.execute("UPDATE faces SET person_id = ?2 WHERE id = ?1", params![f.id, new]).map_err(|e| e.to_string())?;
         }
@@ -1119,6 +1132,7 @@ pub fn move_faces_core(conn: &Connection, ids: &[i64], to: Option<i64>) -> Resul
     };
     for id in ids {
         conn.execute("UPDATE faces SET person_id = ?2, manual = 1, rejected = 0, conf = NULL WHERE id = ?1", params![id, target]).map_err(|e| e.to_string())?;
+        conn.execute("DELETE FROM face_not WHERE face_id = ?1 AND person_id = ?2", params![id, target]).map_err(|e| e.to_string())?;
     }
     conn.execute("DELETE FROM people WHERE id NOT IN (SELECT person_id FROM faces WHERE person_id IS NOT NULL)", []).map_err(|e| e.to_string())?;
     Ok(target)
@@ -1152,10 +1166,16 @@ fn faces_of_person_in_photos(conn: &Connection, person: i64, photos: &[i64]) -> 
     Ok(ids)
 }
 
-/// „To nie ta osoba”: twarze osoby na wskazanych zdjęciach przestają jej należeć i nie wrócą do żadnej osoby przy grupowaniu.
+/// „To nie ta osoba”: twarze osoby na wskazanych zdjęciach wracają do nierozpoznanych. Nie wrócą już do tej osoby, ale mogą pasować do innej.
 pub fn reject_person_in_photos_core(conn: &Connection, person: i64, photos: &[i64]) -> Result<usize, String> {
     let ids = faces_of_person_in_photos(conn, person, photos)?;
-    reject_faces_core(conn, &ids)
+    let mut n = 0;
+    for id in &ids {
+        conn.execute("INSERT OR IGNORE INTO face_not (face_id, person_id) VALUES (?1, ?2)", params![id, person]).map_err(|e| e.to_string())?;
+        n += conn.execute("UPDATE faces SET person_id = NULL, manual = 0, conf = NULL WHERE id = ?1", [id]).map_err(|e| e.to_string())?;
+    }
+    conn.execute("DELETE FROM people WHERE name IS NULL AND ignored = 0 AND id NOT IN (SELECT person_id FROM faces WHERE person_id IS NOT NULL)", []).map_err(|e| e.to_string())?;
+    Ok(n)
 }
 
 /// Przenosi twarze osoby na wskazanych zdjęciach do innej osoby (`to`) albo do nowej osoby (`to` = None).
@@ -1627,7 +1647,9 @@ mod tests {
         // Zdjęcie 2 nie pasuje do Anny: „To nie ta osoba”.
         assert_eq!(reject_person_in_photos_core(&c, 1, &[2]).unwrap(), 1);
         let (p, r): (Option<i64>, i64) = c.query_row("SELECT person_id, rejected FROM faces WHERE id = 11", [], |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
-        assert_eq!((p, r), (None, 1));
+        assert_eq!((p, r), (None, 0), "twarz wraca do nierozpoznanych, nie do odrzuconych");
+        let barred: i64 = c.query_row("SELECT COUNT(*) FROM face_not WHERE face_id = 11 AND person_id = 1", [], |r| r.get(0)).unwrap();
+        assert_eq!(barred, 1);
         // Zdjęcie 1: to była Ola.
         assert_eq!(move_person_faces_core(&c, 1, &[1], Some(2)).unwrap(), 2);
         // Na zdjęciu 3 Ola już jest, więc twarz Anny nie może do niej trafić.

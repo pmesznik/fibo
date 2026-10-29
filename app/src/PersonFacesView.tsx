@@ -36,7 +36,7 @@ export function PersonFacesView({ personId, name, onOpen, onPhotoGone, onChanged
       await rejectFaces([c.face])
       setCards((l) => l?.filter((x) => x.face !== c.face) ?? l)
       onPhotoGone(c.photo); onChanged()
-      say(`To nie „${name}”: twarz odpięta od tej osoby (nie wróci do żadnej osoby przy grupowaniu)`, 'ok')
+      say(`To nie „${name}”: twarz wróciła do nierozpoznanych i może trafić do innej osoby`, 'ok')
     } catch (e) { say(`Błąd: ${e}`, 'err') }
   }
   const confirmAll = async () => {

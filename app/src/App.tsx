@@ -319,7 +319,7 @@ export default function App() {
     try {
       await rejectPersonInPhotos(person.id, ids)
       dropFromPerson(ids); setSel([])
-      say(`Odpięto od osoby „${person.name}”: ${ids.length} ${pl(ids.length, 'zdjęcie', 'zdjęcia', 'zdjęć')}. Twarz nie wróci do żadnej osoby (przywrócisz ją w zakładce Osoby)`, 'ok')
+      say(`Odpięto od osoby „${person.name}”: ${ids.length} ${pl(ids.length, 'zdjęcie', 'zdjęcia', 'zdjęć')}. Twarze wróciły do nierozpoznanych i mogą trafić do innej osoby`, 'ok')
     } catch (e) { say(`${e}`, 'err') }
   }
 
