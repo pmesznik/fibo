@@ -125,13 +125,15 @@ export async function faceBlob(id: number) {
 }
 
 // ---- Rozpoznawanie twarzy (wszystko lokalnie) ----
-export type FacesStatus = { enabled: boolean; models_ok: boolean; running: boolean; photos: number; scanned: number; faces: number; people: number }
-export type FacesProgress = { done: number; total: number; faces: number; finished: boolean; error: string | null }
+export type FacesStatus = { enabled: boolean; models_ok: boolean; running: boolean; photos: number; scanned: number; faces: number; people: number; unassigned: number }
+export type FacesProgress = { done: number; total: number; faces: number; finished: boolean; grouping?: boolean; error: string | null }
 export type Person = { id: number; name: string | null; count: number; photos: number; cover: number | null; ignored: boolean }
 export const facesStatus = () => invoke<FacesStatus>('faces_status')
 export const setFacesEnabled = (on: boolean) => invoke('set_faces_enabled', { on })
 export const facesStart = () => invoke<boolean>('faces_start')
 export const facesStop = () => invoke('faces_stop')
+export const facesRegroup = () => invoke<boolean>('faces_regroup')
+export const facesReanalyze = () => invoke<boolean>('faces_reanalyze')
 export const facesDeleteAll = () => invoke('faces_delete_all')
 export const listPeople = () => invoke<Person[]>('list_people')
 export const personPhotos = (id: number) => invoke<number[]>('person_photos', { id })

@@ -9,8 +9,9 @@ use tract_onnx::prelude::*;
 
 type Plan = std::sync::Arc<TypedRunnableModel>;
 
-/// Rozmiar kwadratowego wejścia detektora; zdjęcie jest do niego skalowane z zachowaniem proporcji.
-const DET_SIZE: usize = 640;
+/// Dłuższy bok wejścia detektora (zdjęcie jest skalowane z zachowaniem proporcji). Większe wejście znajduje mniejsze twarze,
+/// ale kosztuje więcej czasu; YuNet jest siecią w pełni splotową, więc może pracować na dowolnym rozmiarze podzielnym przez 32.
+pub const DEFAULT_BASE: usize = 1280;
 const STRIDES: [usize; 3] = [8, 16, 32];
 const NMS_IOU: f32 = 0.3;
 /// Rozmiar twarzy po wyrównaniu, wymagany przez SFace.
@@ -30,24 +31,43 @@ pub struct Detection {
     pub lm: [(f32, f32); 5],
 }
 
+/// Detektor na ustalonym kształcie wejścia (h x w).
+struct DetPlan {
+    plan: Plan,
+    h: usize,
+    w: usize,
+}
+
 pub struct Engine {
-    detector: Plan,
+    /// Dwa kształty (poziomy 4:3 i pionowy 3:4), żeby nie liczyć pustych pasów kwadratowego wejścia.
+    dets: [DetPlan; 2],
     embedder: Plan,
 }
 
 fn load(bytes: &[u8], shape: &[usize]) -> TractResult<Plan> {
-    tract_onnx::onnx()
-        .model_for_read(&mut std::io::Cursor::new(bytes))?
-        .with_input_fact(0, f32::fact(shape).into())?
-        .into_optimized()?
-        .into_runnable()
+    let mut model = tract_onnx::onnx().model_for_read(&mut std::io::Cursor::new(bytes))?;
+    // Model zapisuje rozmiary warstw pośrednich dla jednego rozmiaru wejścia; czyścimy je, żeby można było użyć innego (np. prostokątnego).
+    let outlets: Vec<OutletId> = model.nodes().iter().flat_map(|n| (0..n.outputs.len()).map(move |o| OutletId::new(n.id, o))).collect();
+    for o in outlets {
+        model.set_outlet_fact(o, InferenceFact::default())?;
+    }
+    model.with_input_fact(0, f32::fact(shape).into())?.into_optimized()?.into_runnable()
 }
 
 impl Engine {
     pub fn new(yunet: &[u8], sface: &[u8]) -> Result<Engine, String> {
-        let detector = load(yunet, &[1, 3, DET_SIZE, DET_SIZE]).map_err(|e| format!("model detekcji: {e}"))?;
+        Engine::with_base(yunet, sface, DEFAULT_BASE)
+    }
+
+    /// `base` to dłuższy bok wejścia detektora (np. 640 szybciej, 1280 dokładniej dla małych twarzy).
+    pub fn with_base(yunet: &[u8], sface: &[u8], base: usize) -> Result<Engine, String> {
+        let long = base.div_ceil(32) * 32;
+        let short = (base * 3 / 4).div_ceil(32) * 32;
+        let mk = |h: usize, w: usize| -> Result<DetPlan, String> {
+            Ok(DetPlan { plan: load(yunet, &[1, 3, h, w]).map_err(|e| format!("model detekcji: {e}"))?, h, w })
+        };
         let embedder = load(sface, &[1, 3, ALIGN, ALIGN]).map_err(|e| format!("model rozpoznawania: {e}"))?;
-        Ok(Engine { detector, embedder })
+        Ok(Engine { dets: [mk(short, long)?, mk(long, short)?], embedder })
     }
 
     /// Szuka twarzy na zdjęciu. `min_score` to próg pewności (0.0-1.0).
@@ -56,17 +76,22 @@ impl Engine {
         if iw < 16 || ih < 16 {
             return Ok(vec![]);
         }
-        let scale = DET_SIZE as f32 / iw.max(ih) as f32;
-        let (nw, nh) = (((iw as f32 * scale).round() as u32).max(1), ((ih as f32 * scale).round() as u32).max(1));
-        let small = image::imageops::resize(img, nw, nh, FilterType::Triangle);
+        let dp = if ih > iw { &self.dets[1] } else { &self.dets[0] };
+        let (dw, dh) = (dp.w, dp.h);
+        let scale = (dw as f32 / iw as f32).min(dh as f32 / ih as f32);
+        let (nw, nh) = (((iw as f32 * scale).round() as u32).clamp(1, dw as u32), ((ih as f32 * scale).round() as u32).clamp(1, dh as u32));
+        let small = if (nw, nh) == (iw, ih) { img.clone() } else { image::imageops::resize(img, nw, nh, FilterType::Triangle) };
         // YuNet oczekuje kolejności BGR i wartości 0-255, tło poza zdjęciem jest czarne.
-        let mut input = tract_ndarray::Array4::<f32>::zeros((1, 3, DET_SIZE, DET_SIZE));
+        let plane = dw * dh;
+        let mut data = vec![0f32; 3 * plane];
         for (x, y, p) in small.enumerate_pixels() {
-            input[[0, 0, y as usize, x as usize]] = p[2] as f32;
-            input[[0, 1, y as usize, x as usize]] = p[1] as f32;
-            input[[0, 2, y as usize, x as usize]] = p[0] as f32;
+            let i = y as usize * dw + x as usize;
+            data[i] = p[2] as f32;
+            data[plane + i] = p[1] as f32;
+            data[2 * plane + i] = p[0] as f32;
         }
-        let out = self.detector.run(tvec!(Tensor::from(input).into())).map_err(|e| e.to_string())?;
+        let input = tract_ndarray::Array4::<f32>::from_shape_vec((1, 3, dh, dw), data).map_err(|e| e.to_string())?;
+        let out = dp.plan.run(tvec!(Tensor::from(input).into())).map_err(|e| e.to_string())?;
         if out.len() != 12 {
             return Err(format!("nieoczekiwana liczba wyjść detektora: {}", out.len()));
         }
@@ -75,12 +100,13 @@ impl Engine {
         };
         let mut found: Vec<Detection> = Vec::new();
         for (k, &s) in STRIDES.iter().enumerate() {
-            let cols = DET_SIZE / s;
+            let (cols, rows) = (dw / s, dh / s);
+            let cells = cols * rows;
             let (cls, obj, bbox, kps) = (get(k)?, get(3 + k)?, get(6 + k)?, get(9 + k)?);
-            if cls.len() != cols * cols || bbox.len() != cols * cols * 4 || kps.len() != cols * cols * 10 {
+            if cls.len() != cells || bbox.len() != cells * 4 || kps.len() != cells * 10 {
                 return Err("nieoczekiwany kształt wyjść detektora".into());
             }
-            for idx in 0..cols * cols {
+            for idx in 0..cells {
                 let score = (cls[idx].clamp(0.0, 1.0) * obj[idx].clamp(0.0, 1.0)).sqrt();
                 if score < min_score {
                     continue;
@@ -103,7 +129,21 @@ impl Engine {
 
     /// Wektor (128 liczb, długość 1) opisujący twarz: wyrównuje twarz po punktach charakterystycznych i liczy cechy.
     pub fn embed(&self, img: &RgbImage, d: &Detection) -> Result<Vec<f32>, String> {
-        let aligned = align(img, &d.lm);
+        self.embed_aligned(&align(img, &d.lm))
+    }
+
+    /// Wektor odporny na kierunek twarzy: średnia z wektora twarzy i jej odbicia lustrzanego (znormalizowana).
+    /// Poprawia dokładność, bo twarze są prawie symetryczne, a szum modelu się uśrednia.
+    pub fn embed_tta(&self, aligned: &RgbImage) -> Result<Vec<f32>, String> {
+        let a = self.embed_aligned(aligned)?;
+        let b = self.embed_aligned(&image::imageops::flip_horizontal(aligned))?;
+        let mut v: Vec<f32> = a.iter().zip(&b).map(|(x, y)| x + y).collect();
+        normalize(&mut v);
+        Ok(v)
+    }
+
+    /// Wektor z już wyrównanej twarzy 112x112 (RGB).
+    pub fn embed_aligned(&self, aligned: &RgbImage) -> Result<Vec<f32>, String> {
         let mut input = tract_ndarray::Array4::<f32>::zeros((1, 3, ALIGN, ALIGN));
         for (x, y, p) in aligned.enumerate_pixels() {
             for ch in 0..3 {
@@ -118,6 +158,40 @@ impl Engine {
         normalize(&mut v);
         Ok(v)
     }
+}
+
+/// Ocena jakości twarzy 0.0-1.0 (do decyzji, czy twarz może zakładać osobę i zasilać grupę):
+/// pewność detektora, rozmiar, ustawienie głowy (en face kontra profil) i ostrość wyrównanej twarzy.
+pub fn quality(d: &Detection, aligned: &RgbImage) -> f32 {
+    let clamp01 = |v: f32| v.clamp(0.0, 1.0);
+    let s_score = clamp01((d.score - 0.6) / 0.35);
+    let s_size = clamp01((d.w.min(d.h) - 40.0) / 80.0);
+    // Profil: nos daleko od środka między oczami (w jednostkach odległości między oczami).
+    let (re, le, nose) = (d.lm[0], d.lm[1], d.lm[2]);
+    let eye_dist = ((le.0 - re.0).powi(2) + (le.1 - re.1).powi(2)).sqrt().max(1.0);
+    let yaw = ((nose.0 - (re.0 + le.0) / 2.0).abs() / eye_dist).min(2.0);
+    let s_pose = clamp01(1.0 - yaw / 0.55);
+    let s_sharp = clamp01(sharpness(aligned) / 120.0);
+    0.2 * s_score + 0.3 * s_size + 0.3 * s_pose + 0.2 * s_sharp
+}
+
+/// Ostrość obrazu jako wariancja laplasjanu jasności (im większa, tym ostrzejszy obraz).
+pub fn sharpness(img: &RgbImage) -> f32 {
+    let (w, h) = img.dimensions();
+    if w < 3 || h < 3 {
+        return 0.0;
+    }
+    let l = |x: u32, y: u32| { let p = img.get_pixel(x, y); 0.299 * p[0] as f32 + 0.587 * p[1] as f32 + 0.114 * p[2] as f32 };
+    let (mut sum, mut sum2, mut n) = (0.0f64, 0.0f64, 0.0f64);
+    for y in 1..h - 1 {
+        for x in 1..w - 1 {
+            let v = (4.0 * l(x, y) - l(x - 1, y) - l(x + 1, y) - l(x, y - 1) - l(x, y + 1)) as f64;
+            sum += v;
+            sum2 += v * v;
+            n += 1.0;
+        }
+    }
+    ((sum2 / n) - (sum / n).powi(2)) as f32
 }
 
 pub fn normalize(v: &mut [f32]) {
@@ -255,5 +329,18 @@ mod tests {
         let b = e.embed(&small, &ds[0]).unwrap();
         let c = cosine(&a, &b);
         assert!(c > 0.8, "ta sama twarz w innym rozmiarze: cos = {c}");
+    }
+}
+
+#[cfg(test)]
+mod shape_probe {
+    #[test]
+    #[ignore]
+    fn probe_shapes() {
+        let y = std::fs::read(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("models/yunet.onnx")).unwrap();
+        for shape in [[1usize, 3, 640, 640], [1, 3, 480, 640], [1, 3, 640, 480], [1, 3, 960, 1280], [1, 3, 736, 960]] {
+            let r = super::load(&y, &shape);
+            eprintln!("{shape:?}: {}", match r { Ok(_) => "ok".to_string(), Err(e) => format!("{e:#}").chars().take(600).collect::<String>() });
+        }
     }
 }

@@ -8,7 +8,7 @@ import { createHash } from 'node:crypto'
 const root = fileURLToPath(new URL('..', import.meta.url))
 const read = (p) => readFileSync(root + p, 'utf8')
 const src = (n) => read(`src-tauri/src/${n}`)
-const faceFiles = ['faces.rs', 'people.rs', 'secure.rs']
+const faceFiles = ['faces.rs', 'people.rs', 'secure.rs', 'cluster.rs']
 // Kod produkcyjny: bez komentarzy i bez modułu testów (testy mogą wypisywać komunikaty).
 const noComments = (s) => s.split('#[cfg(test)]')[0].replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '')
 

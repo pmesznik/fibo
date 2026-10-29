@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { listen } from '@tauri-apps/api/event'
 import { EyeOff, Eye, Pencil, Star, Pause, Play, Trash2, Users, X } from './FiboIcons'
 import {
-  facesDeleteAll, facesStart, personFaces, setPersonCover, facesStatus, facesStop, faceBlob, ignorePerson, listPeople, mergePeople, personPhotos,
+  facesDeleteAll, facesReanalyze, facesRegroup, facesStart, personFaces, setPersonCover, facesStatus, facesStop, faceBlob, ignorePerson, listPeople, mergePeople, personPhotos,
   renamePerson, setFacesEnabled, type FacesProgress, type FacesStatus, type Person,
 } from './api'
 import { PromptDialog } from './Dialogs'
@@ -69,6 +69,14 @@ export function People({ say, ask, onOpenPerson, onChanged }: {
       setTimeout(refresh, 400)
     } catch (e) { say(`Błąd: ${e}`, 'err') }
   }
+  const regroup = async () => {
+    try { await facesRegroup(); setTimeout(refresh, 600) } catch (e) { say(`Błąd: ${e}`, 'err') }
+  }
+  const reanalyze = () => ask({
+    text: 'Przeanalizować wszystkie zdjęcia od nowa? To potrwa kilka minut w tle. Imiona osób i Twoje ręczne poprawki zostają, a twarze zostaną znalezione dokładniej.',
+    yes: 'Przeanalizuj od nowa',
+    run: async () => { try { await facesReanalyze(); setTimeout(refresh, 600) } catch (e) { say(`Błąd: ${e}`, 'err') } },
+  })
   const wipe = () => ask({
     text: 'Usunąć wszystkie dane twarzy i wyłączyć rozpoznawanie? Znikną rozpoznane osoby, imiona i wycinki twarzy. Same zdjęcia zostają nietknięte.',
     yes: 'Usuń dane twarzy',
@@ -126,11 +134,11 @@ export function People({ say, ask, onOpenPerson, onChanged }: {
     <div>
       <div style={{ marginBottom: 14 }}>
         <h1 style={{ margin: 0, font: '700 22px/1.2 system-ui' }}>Ludzie</h1>
-        <div style={{ color: 'var(--muted)', fontSize: 13 }}>{st.people} {pl(st.people, 'osoba', 'osoby', 'osób')} · {st.faces} {pl(st.faces, 'twarz', 'twarze', 'twarzy')} · przeciągnij osobę na inną, żeby je połączyć</div>
+        <div style={{ color: 'var(--muted)', fontSize: 13 }}>{st.people} {pl(st.people, 'osoba', 'osoby', 'osób')} · {st.faces} {pl(st.faces, 'twarz', 'twarze', 'twarzy')}{st.unassigned > 0 ? ` (${st.unassigned} bez grupy: za mało pewne)` : ''} · przeciągnij osobę na inną, żeby je połączyć</div>
         <div className="glass" style={{ borderRadius: 'var(--r-lg)', padding: '10px 14px', marginTop: 10, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <div style={{ flex: '1 1 220px', minWidth: 0 }}>
             <div style={{ fontSize: 13.5 }}>
-              {st.running ? 'Analizuję zdjęcia na tym komputerze…' : pct >= 100 ? 'Wszystkie zdjęcia przeanalizowane' : 'Analiza wstrzymana'} ({st.scanned} z {st.photos})
+              {prog?.grouping ? 'Grupuję twarze w osoby…' : st.running ? 'Analizuję zdjęcia na tym komputerze…' : pct >= 100 ? 'Wszystkie zdjęcia przeanalizowane' : 'Analiza wstrzymana'} ({st.scanned} z {st.photos})
             </div>
             <div role="progressbar" aria-label="Postęp analizy twarzy" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}
               style={{ height: 6, borderRadius: 3, background: 'var(--tonal)', marginTop: 6, overflow: 'hidden' }}>
@@ -141,6 +149,8 @@ export function People({ say, ask, onOpenPerson, onChanged }: {
           {(st.running || pct < 100) && (
             <button className="chip" onClick={toggleRun}>{st.running ? <><Pause size={15} /> Wstrzymaj</> : <><Play size={15} /> Wznów</>}</button>
           )}
+          {!st.running && <button className="chip" onClick={regroup} title="Grupuje twarze w osoby od nowa (szybko). Imiona i ręczne poprawki zostają.">Pogrupuj od nowa</button>}
+          {!st.running && <button className="chip" onClick={reanalyze} title="Analizuje wszystkie zdjęcia od nowa, dokładniej">Przeanalizuj ponownie</button>}
           <button className="chip" onClick={wipe}><Trash2 size={15} /> Usuń dane twarzy</button>
         </div>
         {pending && (

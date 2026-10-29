@@ -160,3 +160,4 @@ Taca i wyjście:
 ## Dodatkowe (z próśb użytkownika)
 - [x] **Duplikaty: wybór ważniejszego katalogu**: kolejność katalogów, główne zdjęcie i „Duplikat”, pełne ścieżki, otwarcie w Eksploratorze.
 - [x] **Znak wodny z własnym logo** przy eksporcie (jedno lub wiele zdjęć).
+- [x] **Rozpoznawanie twarzy v2**: detekcja w większej rozdzielczości (+30-40% twarzy), wektory z odbiciem lustrzanym, ocena jakości twarzy, grupowanie hierarchiczne z zasadą „jedno zdjęcie = jedna osoba”, zakotwiczone osoby (imiona i ręczne poprawki), analiza na wielu wątkach (ok. 3,5 razy szybciej), przyciski „Pogrupuj od nowa” i „Przeanalizuj ponownie”.
