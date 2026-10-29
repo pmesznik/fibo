@@ -14,7 +14,7 @@ export { FaceImg }
 const pl = (n: number, one: string, few: string, many: string) =>
   n === 1 ? one : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? few : many
 
-/** Zakładka Ludzie: zgoda na rozpoznawanie twarzy, postęp analizy i lista osób. Wszystko liczy się na tym komputerze. */
+/** Zakładka Osoby: zgoda na rozpoznawanie twarzy, postęp analizy i lista osób. Wszystko liczy się na tym komputerze. */
 export function People({ say, ask, onOpenPerson, onChanged }: {
   say: (m: string, kind?: 'ok' | 'err') => void
   ask: (c: { text: string; yes: string; run: () => void }) => void
@@ -105,8 +105,8 @@ export function People({ say, ask, onOpenPerson, onChanged }: {
   if (!st.enabled) {
     return (
       <div style={{ maxWidth: 560, margin: '0 auto' }}>
-        <h1 style={{ margin: '0 0 6px', font: '700 22px/1.2 system-ui', display: 'flex', alignItems: 'center', gap: 10 }}><Users size={24} /> Ludzie</h1>
-        <p style={{ color: 'var(--muted)', margin: '0 0 14px' }}>FIBO może znaleźć twarze na zdjęciach i pogrupować je w osoby, żebyś mógł przeglądać zdjęcia według ludzi.</p>
+        <h1 style={{ margin: '0 0 6px', font: '700 22px/1.2 system-ui', display: 'flex', alignItems: 'center', gap: 10 }}><Users size={24} /> Osoby</h1>
+        <p style={{ color: 'var(--muted)', margin: '0 0 14px' }}>FIBO może znaleźć twarze na zdjęciach i pogrupować je w osoby, żeby można było przeglądać zdjęcia według osób.</p>
         <div className="glass" style={{ borderRadius: 'var(--r-lg)', padding: 18 }}>
           <b>Prywatność: wszystko zostaje na tym komputerze</b>
           <ul style={{ margin: '8px 0 12px', paddingLeft: 20, color: 'var(--muted)', fontSize: 14, lineHeight: 1.55 }}>
@@ -127,7 +127,7 @@ export function People({ say, ask, onOpenPerson, onChanged }: {
   return (
     <div>
       <div style={{ marginBottom: 14 }}>
-        <h1 style={{ margin: 0, font: '700 22px/1.2 system-ui' }}>Ludzie</h1>
+        <h1 style={{ margin: 0, font: '700 22px/1.2 system-ui' }}>Osoby</h1>
         <div style={{ color: 'var(--muted)', fontSize: 13 }}>{st.people} {pl(st.people, 'osoba', 'osoby', 'osób')} · {st.faces} {pl(st.faces, 'twarz', 'twarze', 'twarzy')}{st.unassigned > 0 ? ` (${st.unassigned} bez grupy: za mało pewne)` : ''} · przeciągnij osobę na inną albo użyj przycisku „Połącz”</div>
         <div className="glass" style={{ borderRadius: 'var(--r-lg)', padding: '10px 14px', marginTop: 10, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <div style={{ flex: '1 1 220px', minWidth: 0 }}>
@@ -181,7 +181,7 @@ export function People({ say, ask, onOpenPerson, onChanged }: {
               if (from && from.id !== p.id) setMerge({ a: from, b: p })
             }}
             style={{ opacity: p.ignored ? 0.55 : dragId === p.id ? 0.4 : 1, borderRadius: 'var(--r-lg)', outline: overId === p.id ? '3px solid var(--accent)' : 'none', outlineOffset: 4, cursor: 'grab' }}>
-            <button className="bare block w-full text-center" aria-label={`${p.name ?? 'Nieznana osoba'}, ${p.photos} zdjęć`} onClick={() => open(p)}>
+            <button className="bare block w-full text-center" aria-label={`${p.name ?? 'Nieznana osoba'}, ${p.photos} ${pl(p.photos, 'zdjęcie', 'zdjęcia', 'zdjęć')}`} onClick={() => open(p)}>
               <div style={{ width: 120, height: 120, margin: '0 auto', borderRadius: '50%', overflow: 'hidden', boxShadow: 'var(--elev-1)', background: 'var(--tonal)' }}>
                 {p.cover !== null && <FaceImg id={p.cover} />}
               </div>

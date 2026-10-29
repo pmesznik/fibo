@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { pl } from './pl'
 import { X, Shuffle, Save } from './FiboIcons'
 import { readImage, saveCollage, type Photo } from './api'
 import { Chip } from './ui'
@@ -232,7 +233,7 @@ export function Collage({ photos, onClose, onSaved, say }: {
       <button className="glass" aria-label="Zamknij kolaż" title="Zamknij (Esc)" onClick={onClose}
         style={{ position: 'absolute', left: 12, top: 'calc(12px + var(--sat))', width: 46, height: 46, padding: 0, borderRadius: '50%', display: 'grid', placeItems: 'center' }}><X size={20} /></button>
       <div className="glass" style={{ position: 'absolute', left: 70, top: 'calc(12px + var(--sat))', height: 46, padding: '0 18px', borderRadius: 'var(--r-lg)', display: 'flex', alignItems: 'center', gap: 8 }}>
-        <b>Kolaż</b><span style={{ color: 'var(--muted)', fontSize: 13 }}>{items.length} zdjęć{photos.length > MAX_PHOTOS ? ` (maks. ${MAX_PHOTOS})` : ''}</span>
+        <b>Kolaż</b><span style={{ color: 'var(--muted)', fontSize: 13 }}>{items.length} {pl(items.length, 'zdjęcie', 'zdjęcia', 'zdjęć')}{photos.length > MAX_PHOTOS ? ` (maks. ${MAX_PHOTOS})` : ''}</span>
       </div>
 
       <aside className="glass flex flex-col" style={{ margin: 12, width: 'min(92vw,360px)', borderRadius: 'var(--r-lg)', overflow: 'hidden', marginTop: 'calc(70px + var(--sat))' }}>

@@ -19,7 +19,7 @@ const GROUPS = [
     { icon: 'Images', label: 'Biblioteka', where: 'Pasek zakładek (góra)', desc: 'Wszystkie zdjęcia z dodanych folderów, pogrupowane według lat lub miesięcy. Używana też jako ikona pustej biblioteki.' },
     { icon: 'FolderOpen', label: 'Albumy / Foldery', where: 'Pasek zakładek; menu: sekcja Foldery; chip filtra folderu', desc: 'Widok albumów, czyli folderów ze zdjęciami pogrupowanych według roku. Oznacza też filtr po folderze.' },
     { icon: 'Heart', label: 'Ulubione', where: 'Pasek zakładek; pasek zaznaczenia; podgląd', desc: 'Widok zdjęć oznaczonych sercem oraz przycisk dodania zdjęcia do ulubionych (skrót F).' },
-    { icon: 'Users', label: 'Ludzie', where: 'Pasek zakładek', desc: 'Przyszłe rozpoznawanie twarzy (funkcje AI). Na razie pokazuje informację „Wkrótce”.' },
+    { icon: 'Users', label: 'Osoby', where: 'Pasek zakładek', desc: 'Osoby rozpoznane na zdjęciach (rozpoznawanie twarzy działa lokalnie i trzeba je włączyć). Pozwala nazwać, połączyć i poprawić osoby.' },
     { icon: 'MapPin', label: 'Mapa', where: 'Pasek zakładek', desc: 'Globus ze zdjęciami: pinezka w miejscu zrobienia zdjęcia, kliknięcie pokazuje zdjęcia z tego miejsca.' },
     { icon: 'Plus', label: 'Dodaj folder', where: 'Przycisk w prawym górnym rogu; okno tagów (dodaj tag)', desc: 'Otwiera wybór folderu i skanuje zdjęcia do biblioteki. W oknie tagów zatwierdza nowy tag.' },
     { icon: 'ImageUp', label: 'Dodaj folder (kafel)', where: 'Menu: Szybkie akcje', desc: 'To samo co przycisk +, w formie dużego kafla w menu.' },

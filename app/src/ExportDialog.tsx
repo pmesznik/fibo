@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { pl } from './pl'
 import { X, Download } from './FiboIcons'
 import { exportGallery, exportGif, exportGpx, exportPdf, exportPhotos, pickFile, pickFolder, type Watermark } from './api'
 
@@ -59,7 +60,7 @@ export function ExportDialog({ ids, onClose, say }: { ids: number[]; onClose: ()
       if (!dir) return
       setBusy(true)
       const r = await exportGallery(ids, dir, title, size > 0 ? size : 2048, quality)
-      say(r.errors.length ? `Galeria: ${r.done} zdjęć, błędy: ${r.errors.length} (${r.errors[0]})` : `Galeria gotowa (${r.done} zdjęć): ${r.folder}. Otwórz plik index.html`, r.errors.length ? 'err' : 'ok')
+      say(r.errors.length ? `Galeria: ${r.done} ${pl(r.done, 'zdjęcie', 'zdjęcia', 'zdjęć')}, błędy: ${r.errors.length} (${r.errors[0]})` : `Galeria gotowa (${r.done} ${pl(r.done, 'zdjęcie', 'zdjęcia', 'zdjęć')}): ${r.folder}. Otwórz plik index.html`, r.errors.length ? 'err' : 'ok')
       if (!r.errors.length) onClose()
     } catch (e) { say(`Błąd galerii: ${e}`, 'err') } finally { setBusy(false) }
   }

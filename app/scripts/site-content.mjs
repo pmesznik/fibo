@@ -54,7 +54,7 @@ export const PL = {
         <li>Dwuklik na zdjęciu otwiera podgląd na cały ekran z edytorem.</li>
       </ol>
       <p>Obsługiwane formaty: JPG, PNG, WebP, GIF, BMP i TIFF. Pliki RAW, HEIC i wideo nie są jeszcze obsługiwane.</p>
-      <p><strong>Układ ekranu.</strong> Główny ekran jest czysty: przycisk menu (☰) w lewym górnym rogu, przycisk <strong>+</strong> w prawym i pływający pasek widoków u góry (Biblioteka, Albumy, Ulubione, Ludzie, Mapa). Narzędzia są w menu po lewej: szukanie, szybkie akcje, filtry, tagi, foldery i wygląd.</p>` },
+      <p><strong>Układ ekranu.</strong> Główny ekran jest czysty: przycisk menu (☰) w lewym górnym rogu, przycisk <strong>+</strong> w prawym i pływający pasek widoków u góry (Biblioteka, Albumy, Ulubione, Osoby, Mapa). Narzędzia są w menu po lewej: szukanie, szybkie akcje, filtry, tagi, foldery i wygląd.</p>` },
     { id: 'library', t: 'Biblioteka i albumy', h: `
       <ul>
         <li><strong>Grupowanie według daty.</strong> Zdjęcia są ułożone według daty zrobienia (z danych EXIF, a gdy ich brak, z daty pliku). Nagłówki pokazują lata albo miesiące, a chipy „Rok” przewijają do wybranego roku. Przełączasz to w menu → Wygląd → Grupowanie.</li>
@@ -177,15 +177,15 @@ export const PL = {
         <li>Zdjęcia dodane przed obsługą mapy nie mają zapisanych współrzędnych: wybierz <em>Wczytaj lokalizacje ze zdjęć</em> w zakładce Mapa albo <em>Odśwież dane zdjęć</em> w menu.</li>
         <li>Mapa pobiera kafelki z darmowej usługi OpenFreeMap, więc <strong>wymaga internetu</strong>. Reszta programu działa offline.</li>
       </ul>` },
-    { id: 'people', t: 'Ludzie (rozpoznawanie twarzy)', h: `
-      <p>Zakładka <strong>Ludzie</strong> grupuje zdjęcia według osób. Funkcja jest <strong>domyślnie wyłączona</strong>: włączasz ją przyciskiem <em>Włącz rozpoznawanie twarzy</em> po przeczytaniu informacji o prywatności. Analiza działa w tle (można ją wstrzymać i wznowić), a nowe zdjęcia są dopisywane same.</p>
+    { id: 'people', t: 'Osoby (rozpoznawanie twarzy)', h: `
+      <p>Zakładka <strong>Osoby</strong> grupuje zdjęcia według osób. Funkcja jest <strong>domyślnie wyłączona</strong>: włączasz ją przyciskiem <em>Włącz rozpoznawanie twarzy</em> po przeczytaniu informacji o prywatności. Analiza działa w tle (można ją wstrzymać i wznowić), a nowe zdjęcia są dopisywane same.</p>
       <ul>
         <li><strong>Nic nie wychodzi z komputera.</strong> Twarze są wykrywane i porównywane lokalnie (modele YuNet i SFace, dołączone do instalatora, bez pobierania w trakcie działania). Moduł nie ma żadnego kodu sieciowego, a testy to sprawdzają.</li>
         <li><strong>Wektory twarzy są zaszyfrowane</strong> kluczem Twojego konta Windows (DPAPI). Skopiowana baza FIBO ich nie ujawni.</li>
         <li><strong>Imiona zostają w bazie FIBO</strong> i nie trafiają do plików zdjęć ani XMP.</li>
         <li>Przy osobie możesz <em>nadać imię</em>, <em>wybrać okładkę</em> (twarz pokazywaną na liście: przycisk <em>Zmień okładkę</em> przy osobie albo <em>Okładka</em> przy znaczku osoby w podglądzie zdjęcia), <em>połączyć</em> ją z inną (gdy ta sama osoba trafiła do dwóch grup): przeciągnij jedną osobę na drugą i kliknij <em>Zatwierdź</em> albo <em>pominąć</em>. Kliknięcie osoby pokazuje jej zdjęcia.</li>
         <li><strong>Dokładność i szybkość.</strong> Zdjęcia są analizowane na kilku wątkach naraz, a twarze szukane w większej rozdzielczości, więc znajdują się także małe twarze w tle (około 40% więcej niż wcześniej na zdjęciach testowych). Wektor twarzy jest uśredniany z jej odbiciem lustrzanym, a każda twarz dostaje ocenę jakości (ostrość, rozmiar, ustawienie głowy). Słabe twarze nie zakładają osób, tylko dołączają do pewnych albo zostają bez grupy.</li>
-        <li><strong>Precyzja grupowania.</strong> Dwie twarze z jednego zdjęcia nigdy nie trafiają do jednej osoby (rozdziela to np. rodzeństwo na wspólnych zdjęciach). Grupowanie jest hierarchiczne, więc nie zależy od kolejności zdjęć. Osoby z imieniem i twarze poprawione ręcznie są zakotwiczone: automatyczne grupowanie ich nie rusza, a nowe pasujące twarze mogą do nich dołączać. Przyciski <em>Pogrupuj od nowa</em> i <em>Przeanalizuj ponownie</em> w zakładce Ludzie odświeżają wynik bez utraty imion.</li>
+        <li><strong>Precyzja grupowania.</strong> Dwie twarze z jednego zdjęcia nigdy nie trafiają do jednej osoby (rozdziela to np. rodzeństwo na wspólnych zdjęciach). Grupowanie jest hierarchiczne, więc nie zależy od kolejności zdjęć. Osoby z imieniem i twarze poprawione ręcznie są zakotwiczone: automatyczne grupowanie ich nie rusza, a nowe pasujące twarze mogą do nich dołączać. Przyciski <em>Pogrupuj od nowa</em> i <em>Przeanalizuj ponownie</em> w zakładce Osoby odświeżają wynik bez utraty imion.</li>
         <li><strong>Usuń dane twarzy</strong> kasuje osoby, wektory i wycinki twarzy oraz wyłącza funkcję. Zdjęcia nie są ruszane.</li>
       </ul>` },
     { id: 'duplicates', t: 'Duplikaty', h: `

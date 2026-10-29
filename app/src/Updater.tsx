@@ -135,7 +135,7 @@ export function UpdateDialog({ u }: { u: UpdaterApi }) {
               <p style={{ margin: '8px 0 16px', color: 'var(--muted)' }}>
                 FIBO {u.current || ''} jest aktualne. Program sam sprawdza aktualizacje raz dziennie i pyta, czy je zainstalować.
               </p>
-              <button className="primary" onClick={u.closeInfo} autoFocus>OK</button>
+              <button className="primary" onClick={u.closeInfo} autoFocus>Zamknij</button>
             </>
           )}
           {i.kind === 'error' && (

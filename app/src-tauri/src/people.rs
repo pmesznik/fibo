@@ -199,7 +199,7 @@ pub(crate) fn load_oriented(path: &Path) -> Result<RgbImage, String> {
     Ok(img.to_rgb8())
 }
 
-/// Kwadratowy wycinek twarzy z marginesem, do pokazania w oknie Ludzie.
+/// Kwadratowy wycinek twarzy z marginesem, do pokazania w oknie Osoby.
 fn crop_face(img: &RgbImage, d: &Detection) -> RgbImage {
     let side = (d.w.max(d.h) * 1.6).max(8.0);
     let (cx, cy) = (d.x + d.w / 2.0, d.y + d.h / 2.0);
@@ -1056,7 +1056,7 @@ pub fn restore_rejected_faces(state: State<'_, AppState>) -> Result<usize, Strin
     conn.execute("UPDATE faces SET rejected = 0 WHERE rejected = 1", []).map_err(|e| e.to_string())
 }
 
-/// Ukrywa osobę na liście Ludzie (np. przypadkowy przechodzień). Jej twarze zostają, żeby kolejne zdjęcia nie tworzyły jej od nowa.
+/// Ukrywa osobę na liście Osoby (np. przypadkowy przechodzień). Jej twarze zostają, żeby kolejne zdjęcia nie tworzyły jej od nowa.
 #[tauri::command]
 pub fn ignore_person(state: State<'_, AppState>, id: i64, ignored: bool) -> Result<(), String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;

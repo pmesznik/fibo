@@ -50,7 +50,7 @@ const TABS: { id: Mode; icon: typeof Images; label: string }[] = [
   { id: 'library', icon: Images, label: 'Biblioteka' },
   { id: 'albums', icon: FolderOpen, label: 'Albumy' },
   { id: 'favs', icon: Heart, label: 'Ulubione' },
-  { id: 'people', icon: Users, label: 'Ludzie' },
+  { id: 'people', icon: Users, label: 'Osoby' },
   { id: 'map', icon: MapPin, label: 'Mapa' },
 ]
 
@@ -296,7 +296,7 @@ export default function App() {
     try {
       const n = await refreshLibrary()
       await reload()
-      say(`Odświeżono dane ${n} zdjęć`, 'ok')
+      say(`Odświeżono dane ${n} ${pl(n, 'zdjęcia', 'zdjęć', 'zdjęć')}`, 'ok')
     } catch (e) {
       say(`Błąd odświeżania: ${e}`, 'err')
     } finally {
@@ -479,7 +479,7 @@ export default function App() {
     try {
       const r = await importSidecars()
       await reload()
-      say(r.files ? `Wczytano metadane z ${r.files} zdjęć (nowe tagi i oceny: ${r.changed})` : 'Nie znaleziono tagów ani ocen zapisanych w plikach', 'ok')
+      say(r.files ? `Wczytano metadane z ${r.files} ${pl(r.files, 'zdjęcia', 'zdjęć', 'zdjęć')} (nowe tagi i oceny: ${r.changed})` : 'Nie znaleziono tagów ani ocen zapisanych w plikach', 'ok')
     } catch (e) { say(`Błąd wczytywania metadanych: ${e}`, 'err') } finally { setXmpBusy(false) }
   }
 
@@ -704,7 +704,7 @@ export default function App() {
   const smartSummary = (a: SmartAlbum) => {
     try {
       const f = JSON.parse(a.filters) as { query?: string; minStars?: number; dateFrom?: string; dateTo?: string; missing?: string; tags?: string[] }
-      return [f.query && `„${f.query}”`, f.minStars ? `≥ ${f.minStars} gwiazdek` : '', (f.dateFrom || f.dateTo) ? `${f.dateFrom || '…'} – ${f.dateTo || '…'}` : '', f.missing === 'tags' ? 'bez tagów' : f.missing === 'geo' ? 'bez lokalizacji' : f.missing === 'rating' ? 'bez oceny' : '', ...(f.tags ?? []).map((t) => `#${t}`)].filter(Boolean).join(' · ') || 'Wszystkie zdjęcia'
+      return [f.query && `„${f.query}”`, f.minStars ? `co najmniej ${f.minStars} ${pl(f.minStars, 'gwiazdka', 'gwiazdki', 'gwiazdek')}` : '', (f.dateFrom || f.dateTo) ? `${f.dateFrom || '…'} – ${f.dateTo || '…'}` : '', f.missing === 'tags' ? 'bez tagów' : f.missing === 'geo' ? 'bez lokalizacji' : f.missing === 'rating' ? 'bez oceny' : '', ...(f.tags ?? []).map((t) => `#${t}`)].filter(Boolean).join(' · ') || 'Wszystkie zdjęcia'
     } catch { return '' }
   }
 
@@ -876,7 +876,7 @@ export default function App() {
               <label>Minimalna ocena</label>
               <div className="chips">
                 {[0, 1, 2, 3, 4, 5].map((n) => (
-                  <Chip key={n} on={minStars === n} onClick={() => setMinStars(n)} label={n ? `Co najmniej ${n} gwiazdek` : 'Dowolna ocena'}>
+                  <Chip key={n} on={minStars === n} onClick={() => setMinStars(n)} label={n ? `Co najmniej ${n} ${pl(n, 'gwiazdka', 'gwiazdki', 'gwiazdek')}` : 'Dowolna ocena'}>
                     {n === 0 ? 'Wszystkie' : <>{n} <Star size={12} fill="currentColor" /></>}
                   </Chip>
                 ))}
@@ -902,7 +902,7 @@ export default function App() {
             <Sec id="tags" icon={<Tag size={17} />} title="Tagi"
               hint={activeTags.length ? `Wybrane: ${activeTags.join(', ')}` : `${allTags.length} ${pl(allTags.length, 'tag', 'tagi', 'tagów')}`}>
               {allTags.length === 0 ? (
-                <p style={{ margin: 0, color: 'var(--muted)', fontSize: 13 }}>Brak tagów. Zaznacz zdjęcie i dotknij ikony tagu na pasku na dole.</p>
+                <p style={{ margin: 0, color: 'var(--muted)', fontSize: 13 }}>Brak tagów. Zaznacz zdjęcie i kliknij ikonę tagu na pasku na dole.</p>
               ) : (
                 <>
                   <p style={{ margin: '0 0 8px', color: 'var(--muted)', fontSize: 13 }}>Wybranie kilku tagów pokazuje zdjęcia mające wszystkie z nich.</p>
@@ -1029,7 +1029,7 @@ export default function App() {
             <div style={{ marginBottom: 14 }}>
               {person && (
                 <button className="chip" style={{ marginBottom: 8 }} aria-label="Wróć do listy osób" onClick={() => { setPerson(null); setMode('people') }}>
-                  <ChevronLeft size={15} /> Ludzie
+                  <ChevronLeft size={15} /> Osoby
                 </button>
               )}
               <h1 style={{ margin: 0, font: '700 22px/1.2 system-ui' }}>{mode === 'favs' ? 'Ulubione' : person ? person.name : albumId !== null ? (albums.find((a) => a.id === albumId)?.name ?? 'Album') : folder ? folderName(folder) : 'Biblioteka'}</h1>
@@ -1078,8 +1078,8 @@ export default function App() {
                 <div>
                   <Images size={44} strokeWidth={1.2} style={{ margin: '0 auto 10px' }} />
                   <p style={{ margin: 0 }}>
-                    {all.length === 0 ? 'Brak zdjęć. Dotknij + w prawym górnym rogu i wskaż folder.'
-                      : mode === 'favs' ? 'Brak ulubionych. Zaznacz zdjęcie i dotknij serca.' : 'Brak wyników. Zmień filtry w menu.'}
+                    {all.length === 0 ? 'Brak zdjęć. Kliknij + w prawym górnym rogu i wskaż folder.'
+                      : mode === 'favs' ? 'Brak ulubionych. Zaznacz zdjęcie i kliknij serce.' : 'Brak wyników. Zmień filtry w menu.'}
                   </p>
                 </div>
               </div>
@@ -1124,7 +1124,7 @@ export default function App() {
                     const cover = all.find((p) => p.albums.includes(a.id))
                     return (
                       <div key={a.id} style={a.hidden ? { opacity: 0.55 } : undefined}>
-                        <button className="bare block w-full text-left" aria-label={`Album ${a.name}, ${a.count} zdjęć`} onClick={() => { setAlbumId(a.id); setFolder(null); setMode('library') }}>
+                        <button className="bare block w-full text-left" aria-label={`Album ${a.name}, ${a.count} ${pl(a.count, 'zdjęcie', 'zdjęcia', 'zdjęć')}`} onClick={() => { setAlbumId(a.id); setFolder(null); setMode('library') }}>
                           <div className="relative aspect-[4/3] overflow-hidden" style={{ borderRadius: 'var(--r-card)', boxShadow: 'var(--elev-1)', background: 'var(--tonal)' }}>
                             {cover ? <Thumb photo={cover} /> : <div className="empty" style={{ fontSize: 13 }}>Pusty album</div>}
                           </div>
@@ -1161,7 +1161,7 @@ export default function App() {
             </section>
 
             <h2 style={{ margin: '0 0 12px', font: '650 18px/1.2 system-ui' }}>Foldery</h2>
-            {folders.length === 0 && <div className="empty" style={{ height: '30vh' }}>Brak folderów. Dotknij „Dodaj folder” i wskaż folder ze zdjęciami.</div>}
+            {folders.length === 0 && <div className="empty" style={{ height: '30vh' }}>Brak folderów. Kliknij „Dodaj folder” i wskaż folder ze zdjęciami.</div>}
             {foldersByYear.map((g) => (
               <section key={g.year} style={{ marginBottom: 28 }}>
                 <h2 style={{ margin: '0 0 12px', font: '650 18px/1.2 system-ui' }}>{g.year}</h2>

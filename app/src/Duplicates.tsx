@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { pl } from './pl'
 import { listen } from '@tauri-apps/api/event'
 import { Copy, Trash2, X, ScanSearch, Crown, FolderOpen } from './FiboIcons'
 import { findDuplicates, revealInExplorer, trashPhotos, type DupGroup, type Photo } from './api'
@@ -186,7 +187,7 @@ export function Duplicates({ all, suspended, onClose, onOpen, onTrashed, say }: 
           return (
             <section key={g.ids.join('-')} className="sec" aria-label={`Grupa ${gi + 1}`}>
               <h2 className="sec-h"><i><Copy size={17} /></i>
-                Grupa {gi + 1}<span style={{ font: '400 13px system-ui', color: 'var(--muted)' }}>{list.length} zdjęć · {g.kind === 'exact' ? 'identyczne' : 'podobne'}</span>
+                Grupa {gi + 1}<span style={{ font: '400 13px system-ui', color: 'var(--muted)' }}>{list.length} {pl(list.length, 'zdjęcie', 'zdjęcia', 'zdjęć')} · {g.kind === 'exact' ? 'identyczne' : 'podobne'}</span>
               </h2>
               <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))' }}>
                 {list.map((p) => {

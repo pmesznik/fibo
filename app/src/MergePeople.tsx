@@ -262,7 +262,7 @@ export function FacesManager({ person, people, onClose, onChanged, say }: {
   }
   const doReject = async () => {
     setBusy(true)
-    try { const n = sel.size; await rejectFaces([...sel]); await after(`Odrzucono ${n} ${pl(n, 'twarz', 'twarze', 'twarzy')}: nie należą już do nikogo (przywrócisz je w zakładce Ludzie)`) }
+    try { const n = sel.size; await rejectFaces([...sel]); await after(`Odrzucono ${n} ${pl(n, 'twarz', 'twarze', 'twarzy')}: nie należą już do nikogo (przywrócisz je w zakładce Osoby)`) }
     catch (e) { say(`${e}`, 'err') } finally { setBusy(false) }
   }
 
