@@ -93,7 +93,7 @@ function SpeedChart({ values, id }: { values: number[]; id: string }) {
   )
 }
 
-function Card({ job, min, onMin, onStop }: { job: Job; min: boolean; onMin: () => void; onStop?: () => void }) {
+function Card({ job, min, compact, onMin, onStop }: { job: Job; min: boolean; compact: boolean; onMin: () => void; onStop?: () => void }) {
   const { title, unit, Icon } = META[job.kind]
   const pct = job.total > 0 ? Math.min(100, (job.done / job.total) * 100) : 0
   const left = job.total - job.done
@@ -104,7 +104,7 @@ function Card({ job, min, onMin, onStop }: { job: Job; min: boolean; onMin: () =
   const status = job.finished ? (job.error ? 'Przerwano' : 'Gotowe') : job.grouping ? 'Grupowanie osób…' : staged ? job.label : null
 
   return (
-    <div className="glass pd-card" role="status" aria-live="polite" aria-label={`${title}: ${Math.round(pct)}%`}>
+    <div className={`glass pd-card${compact ? ' pd-compact' : ''}`} role="status" aria-live="polite" aria-label={`${title}: ${Math.round(pct)}%`}>
       <div className="pd-head">
         <span className="pd-ico" style={{ color: job.finished && !job.error ? 'var(--ok, #2e9d5b)' : 'var(--accent)' }}>{job.finished && !job.error ? <Check size={18} /> : <Icon size={18} />}</span>
         <span className="pd-title">{title}</span>
@@ -132,7 +132,7 @@ function Card({ job, min, onMin, onStop }: { job: Job; min: boolean; onMin: () =
             </div>
           ) : (
             <>
-              <SpeedChart values={job.history} id={`pd-${job.kind}`} />
+              {!compact && <SpeedChart values={job.history} id={`pd-${job.kind}`} />}
               <div className="pd-stats">
                 <div><span>Prędkość</span><b>{job.rate > 0 ? `${job.rate >= 10 ? Math.round(job.rate) : job.rate.toFixed(1).replace('.', ',')} / s` : '…'}</b></div>
                 <div><span>Pozostało</span><b>{job.grouping ? 'chwila' : indeterminate ? '…' : waiting ? 'liczę…' : eta(sec)}</b></div>
@@ -220,7 +220,7 @@ export function ProgressDock() {
   if (!shown.length) return null
   return (
     <div className="pd-dock">
-      {shown.map((j) => <Card key={j.kind} job={j} min={min} onMin={() => setMin((m) => !m)} onStop={j.kind === 'faces' && !j.finished ? () => { facesStop().catch(() => {}) } : undefined} />)}
+      {shown.map((j) => <Card key={j.kind} job={j} min={min} compact={shown.length > 1} onMin={() => setMin((m) => !m)} onStop={j.kind === 'faces' && !j.finished ? () => { facesStop().catch(() => {}) } : undefined} />)}
     </div>
   )
 }

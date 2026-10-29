@@ -24,3 +24,7 @@ Instalator budowany jest też w GitHub Actions (zakładka Actions, workflow „B
 
 ## Licencja
 GPL-2.0-or-later. Ikony i logo: własny zestaw FIBO.
+
+## Podgląd wyglądu w przeglądarce
+
+`npm run dev` w folderze `app`, a potem adres `http://localhost:1420/?mock` pokazuje program z przykładowymi zdjęciami i osobami (bez prawdziwych danych). W konsoli przeglądarki `window.__mockEmit('job-progress', { kind: 'dups', done: 40, total: 120, finished: false })` wywołuje okna postępu. Ten tryb działa tylko w wersji deweloperskiej.

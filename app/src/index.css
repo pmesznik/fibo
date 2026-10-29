@@ -140,7 +140,12 @@ details.sec > .sec-body { padding:0 14px 14px; }
 }
 
 /* Okno postępu zadań w tle (dodawanie zdjęć, rozpoznawanie twarzy) */
-.pd-dock { position: fixed; right: 16px; bottom: calc(16px + var(--sab)); z-index: 1600; display: flex; flex-direction: column; gap: 10px; width: min(92vw, 340px); }
+.pd-dock { position: fixed; right: 16px; bottom: calc(16px + var(--sab)); z-index: 1600; display: flex; flex-direction: column; gap: 10px; width: min(92vw, 340px); max-height: calc(100vh - 32px - var(--sab)); overflow-y: auto; scrollbar-width: none; }
+.pd-dock::-webkit-scrollbar { display: none; }
+.pd-compact { padding: 10px 14px 12px; }
+.pd-compact .pd-pct { font-size: 24px; }
+.pd-compact .pd-main { margin-top: 8px; }
+.pd-compact .pd-bar { margin-top: 8px; }
 .pd-card { border-radius: var(--r-lg); padding: 14px 16px 16px; box-shadow: var(--elev-2, 0 10px 30px rgba(0,0,0,.25)); animation: pd-in .35s var(--ease, ease-out); }
 .pd-head { display: flex; align-items: center; gap: 10px; }
 .pd-ico { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 10px; background: color-mix(in srgb, var(--accent) 14%, transparent); }
@@ -169,3 +174,11 @@ details.sec > .sec-body { padding:0 14px 14px; }
 @keyframes pd-slide { from { margin-left: 0; } to { margin-left: 62%; } }
 @keyframes pd-ping { 0% { transform: scale(.6); opacity: .5; } 100% { transform: scale(2); opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .pd-fill::after, .pd-indet, .pd-pulse, .pd-card { animation: none; } }
+
+/* Przyciski zatwierdzania twarzy w widoku osoby (zielony: to ta osoba, czerwony: to nie ta osoba) */
+.fc-btn { width: 38px; height: 30px; border-radius: var(--r-md, 10px); display: grid; place-items: center; background: var(--tonal); border: 1px solid var(--line); cursor: pointer; transition: background .15s, border-color .15s, transform .15s; }
+.fc-btn:hover { transform: translateY(-1px); }
+.fc-yes { color: #2f9e62; }
+.fc-yes:hover, .fc-yes:focus-visible { background: color-mix(in srgb, #2f9e62 20%, transparent); border-color: #2f9e62; }
+.fc-no { color: #d9534f; }
+.fc-no:hover, .fc-no:focus-visible { background: color-mix(in srgb, #d9534f 20%, transparent); border-color: #d9534f; }

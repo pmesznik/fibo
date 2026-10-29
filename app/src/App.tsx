@@ -897,7 +897,7 @@ export default function App() {
 
       <nav id="tabs" className="glass" aria-label="Widoki">
         {TABS.map((t) => (
-          <button key={t.id} className={mode === t.id ? 'active' : ''} aria-current={mode === t.id ? 'page' : undefined}
+          <button key={t.id} className={(person ? 'people' : mode) === t.id ? 'active' : ''} aria-current={(person ? 'people' : mode) === t.id ? 'page' : undefined}
             onClick={() => { setMode(t.id); if (t.id === 'albums') setFolder(null); if (t.id === 'albums' || t.id === 'library') { setAlbumId(null); setPerson(null) } }}>
             <t.icon size={19} strokeWidth={1.8} />
             <span>{t.label}</span>
@@ -1134,7 +1134,7 @@ export default function App() {
                 const meta = [pr.date && pr.date.split('-').reverse().join('.'), pr.place].filter(Boolean).join(' · ')
                 return <div style={{ marginTop: 6, fontSize: 13.5 }}>{meta && <b>{meta}</b>}{meta && pr.description ? ' · ' : ''}<span style={{ color: 'var(--muted)' }}>{pr.description}</span></div>
               })()}
-              {years.length > 1 && (
+              {!faceView && years.length > 1 && (
                 <div className="chips" style={{ marginTop: 10 }} role="navigation" aria-label="Przejdź do roku">
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--muted)', fontSize: 13 }}><CalendarDays size={15} /> Rok</span>
                   {years.map((y) => <Chip key={y} onClick={() => jumpToYear(y)}>{y}</Chip>)}

@@ -459,7 +459,7 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
           {people.map((p) => (
             <button key={`r${p.id}`} className="chip glass" style={{ gap: 6 }} aria-label={`To nie jest ${p.name ?? 'ta osoba'}: wskaż właściwą osobę`} title="Źle rozpoznana twarz: przenieś ją do innej osoby"
               onClick={async () => { try { setReassign({ from: p, options: (await listPeople()).filter((o) => o.id !== p.id && !o.ignored) }) } catch (e) { say(`Błąd: ${e}`, 'err') } }}>
-              <Pencil size={13} /> To inna osoba
+              <Pencil size={13} /> To nie {p.name ?? 'ta osoba'}
             </button>
           ))}
           {people.map((p) => (

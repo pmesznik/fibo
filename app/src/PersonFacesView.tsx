@@ -53,12 +53,12 @@ export function PersonFacesView({ personId, name, onOpen, onPhotoGone, onChanged
 
   const tile = (c: FaceCard) => (
     <div key={c.face} className="group" style={{ width: TILE }}>
-      <div style={{ position: 'relative', width: TILE, height: TILE, background: 'var(--tonal)', boxShadow: 'var(--elev-1)', borderRadius: 4, overflow: 'hidden' }}>
+      <div style={{ position: 'relative', width: TILE, height: TILE, background: 'var(--tonal)', boxShadow: 'var(--elev-1)', borderRadius: 'var(--r-card)', overflow: 'hidden' }}>
         <button className="bare" style={{ display: 'block', width: '100%', height: '100%' }} aria-label={`Twarz ${name}: otwórz całe zdjęcie`} title="Kliknij, aby zobaczyć całe zdjęcie" onClick={() => onOpen(c.photo)}>
           <FaceImg id={c.face} size={TILE} />
         </button>
         {c.unsure && (
-          <span aria-hidden title="Program nie jest pewien, czy to ta osoba" style={{ position: 'absolute', left: 0, bottom: 0, width: 34, height: 34, background: '#f28b1c', clipPath: 'polygon(0 0, 0 100%, 100% 100%)', color: '#fff', fontWeight: 800, fontSize: 14, display: 'flex', alignItems: 'flex-end', paddingLeft: 4, paddingBottom: 1 }}>?</span>
+          <span aria-hidden title="Program nie jest pewien, czy to ta osoba" style={{ position: 'absolute', left: 0, bottom: 0, width: 38, height: 38, background: '#f28b1c', clipPath: 'polygon(0 0, 0 100%, 100% 100%)', color: '#fff', fontWeight: 800, fontSize: 14, display: 'flex', alignItems: 'flex-end', paddingLeft: 6, paddingBottom: 3 }}>?</span>
         )}
         {!c.unsure && (
           <button className="bare opacity-0 transition group-hover:opacity-100 focus:opacity-100" aria-label={`To nie ${name}: odepnij twarz`} title="To nie ta osoba"
@@ -67,8 +67,8 @@ export function PersonFacesView({ personId, name, onOpen, onPhotoGone, onChanged
       </div>
       {c.unsure && (
         <div style={{ display: 'flex', justifyContent: 'center', gap: 14, marginTop: 6 }}>
-          <button className="bare" aria-label={`Potwierdź: to ${name}`} title="To ta osoba" style={{ width: 34, height: 28, borderRadius: 6, background: '#e8f4ea', color: '#2e7d32', border: '1px solid #b9dcbe', display: 'grid', placeItems: 'center' }} onClick={() => confirmOne(c)}><Check size={17} strokeWidth={3} /></button>
-          <button className="bare" aria-label={`To nie ${name}: odepnij twarz`} title="To nie ta osoba" style={{ width: 34, height: 28, borderRadius: 6, background: '#fbeaea', color: '#c62828', border: '1px solid #e8b9b9', display: 'grid', placeItems: 'center' }} onClick={() => rejectOne(c)}><X size={17} strokeWidth={3} /></button>
+          <button className="fc-btn fc-yes" aria-label={`Potwierdź: to ${name}`} title="To ta osoba" onClick={() => confirmOne(c)}><Check size={17} strokeWidth={3} /></button>
+          <button className="fc-btn fc-no" aria-label={`To nie ${name}: odepnij twarz`} title="To nie ta osoba" onClick={() => rejectOne(c)}><X size={17} strokeWidth={3} /></button>
         </div>
       )}
     </div>
