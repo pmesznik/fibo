@@ -4,6 +4,7 @@ import { MapView } from './MapView'
 import { People, FaceImg } from './People'
 import { ExportDialog } from './ExportDialog'
 import { ProgressDock } from './ProgressDock'
+import { MoveFacesDialog } from './MergePeople'
 import { LocationDialog } from './LocationDialog'
 import { RenameDialog } from './RenameDialog'
 import { DateDialog } from './DateDialog'
@@ -16,7 +17,7 @@ import { UpdateDialog, useUpdater } from './Updater'
 import { exportSidecars, getSidecarEnabled, importSidecars, setSidecarEnabled } from './api'
 import {
   addToAlbum, createAlbum, deleteAlbum, setAlbumHidden, listAlbumOrder, setAlbumOrder, listAlbums, listRoots, movePhotos, removeFromAlbum, removeRoot,
-  renameAlbum, renamePhoto, rescanRoots, trashPhotos, listSmart, saveSmart, deleteSmart, type SmartAlbum, listLocked, setFolderLocked, revealInExplorer, openPhotoExternal, findDuplicates, listPeople, listProps, renameFolder, type Prop, type Person, personPhotos, importPhotos, backupLibrary, backupPhotos, restoreLibrary, pickFile, facesStart, facesStatus, hidePhotos, hiddenCount, restoreHidden, type Album,
+  renameAlbum, renamePhoto, rescanRoots, trashPhotos, listSmart, saveSmart, deleteSmart, type SmartAlbum, listLocked, setFolderLocked, revealInExplorer, openPhotoExternal, findDuplicates, rejectPersonInPhotos, rotatePhotos, getSkipGifPng, setSkipGifPng, detectCards, listPeople, listProps, renameFolder, type Prop, type Person, personPhotos, importPhotos, backupLibrary, backupPhotos, restoreLibrary, pickFile, facesStart, facesStatus, hidePhotos, hiddenCount, restoreHidden, type Album,
 } from './api'
 import { AlbumPicker, PromptDialog } from './Dialogs'
 import { addTag, deleteTag, inTauri, listPhotos, pickFolder, refreshLibrary, removeTag, scanFolder, setFavorite, setRating, type Photo } from './api'
@@ -28,7 +29,7 @@ import { Justified } from './Justified'
 import { Chip, Sec, Toast } from './ui'
 import {
   Images, FolderOpen, Users, MapPin, Heart, Star, Plus, Play, Maximize2, X,
-  SlidersHorizontal, Search as SearchIcon, ImageUp, Ruler, LayoutDashboard, Check, ListChecks, Tag, CalendarDays, Copy, RefreshCw, Download, Save, Pencil, Trash2, Eye, EyeOff, ChevronLeft, Wand2, Info,
+  SlidersHorizontal, Search as SearchIcon, ImageUp, Ruler, LayoutDashboard, Check, ListChecks, Tag, CalendarDays, Copy, RefreshCw, Download, Save, Pencil, Trash2, Eye, EyeOff, ChevronLeft, Wand2, Info, RotateCw, RotateCcw,
 } from './FiboIcons'
 
 type Mode = 'library' | 'albums' | 'favs' | 'people' | 'map'
@@ -161,7 +162,7 @@ export default function App() {
   const [renameIds, setRenameIds] = useState<number[] | null>(null)
   const [locIds, setLocIds] = useState<number[] | null>(null)
   const [exportIds, setExportIds] = useState<number[] | null>(null)
-  const [person, setPerson] = useState<{ name: string; ids: Set<number> } | null>(null)
+  const [person, setPerson] = useState<{ id?: number; name: string; ids: Set<number> } | null>(null)
   const [hiddenN, setHiddenN] = useState(0)
   const reloadHidden = useCallback(async () => { if (inTauri) setHiddenN(await hiddenCount()) }, [])
   useEffect(() => { reloadHidden() }, [reloadHidden])
@@ -232,9 +233,9 @@ export default function App() {
   }
 
   /** Import z karty pamięci: kopiuje zdjęcia do folderu biblioteki według daty (RRRR/RRRR-MM-DD), a potem dodaje je do biblioteki. */
-  const importFromCard = async () => {
+  const importFromCard = async (known?: string) => {
     try {
-      const src = await pickFolder('Wskaż kartę pamięci lub folder ze zdjęciami do zaimportowania')
+      const src = known ?? await pickFolder('Wskaż kartę pamięci lub folder ze zdjęciami do zaimportowania')
       if (!src) return
       const dest = await pickFolder('Wskaż folder biblioteki, do którego skopiować zdjęcia')
       if (!dest) return
@@ -247,6 +248,57 @@ export default function App() {
         : `Zaimportowano ${r.copied} ${pl(r.copied, 'zdjęcie', 'zdjęcia', 'zdjęć')}${r.skipped ? `, pominięto ${r.skipped} już zaimportowanych` : ''} (do biblioteki dodano ${n}). Karta nie została zmieniona`,
         r.errors.length ? 'err' : 'ok')
     } catch (e) { say(`Błąd importu: ${e}`, 'err') } finally { setBusy(false) }
+  }
+
+  // Ustawienie: nie dodawaj plików GIF i PNG przy skanowaniu (jak w Picasie, bo to zwykle grafiki ze stron).
+  const [skipGifPng, setSkipGifPngState] = useState(false)
+  useEffect(() => { if (inTauri) getSkipGifPng().then(setSkipGifPngState).catch(() => {}) }, [])
+  const toggleSkipGifPng = async () => {
+    try { await setSkipGifPng(!skipGifPng); setSkipGifPngState(!skipGifPng); say(!skipGifPng ? 'Pliki GIF i PNG nie będą dodawane przy skanowaniu (te już w bibliotece zostają)' : 'Skanowanie dodaje znowu także pliki GIF i PNG', 'ok') } catch (e) { say(`Błąd: ${e}`, 'err') }
+  }
+
+  // Karta pamięci aparatu: po podłączeniu (sprawdzamy przy starcie, po powrocie do okna i co pół minuty) proponujemy import.
+  const [cardOffer, setCardOffer] = useState<string | null>(null)
+  const cardSeen = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    if (!inTauri) return
+    const check = () => detectCards().then((cards) => {
+      const fresh = cards.find((c) => !cardSeen.current.has(c))
+      if (fresh) { cardSeen.current.add(fresh); setCardOffer(fresh) }
+      setCardOffer((cur) => (cur && !cards.includes(cur) ? null : cur))
+    }).catch(() => {})
+    const first = window.setTimeout(check, 4000)
+    const every = window.setInterval(check, 30000)
+    window.addEventListener('focus', check)
+    return () => { window.clearTimeout(first); window.clearInterval(every); window.removeEventListener('focus', check) }
+  }, [])
+
+  /** Obrót o 90° bez utraty jakości (JPEG: zmiana znacznika orientacji, piksele bez zmian). */
+  const rotateSelected = async (cw: boolean) => {
+    setMenu(null)
+    const ids = realIds()
+    if (!ids.length) return
+    try {
+      const r = await rotatePhotos(ids, cw)
+      await reload()
+      const parts = [r.done ? `Obrócono ${r.done} ${pl(r.done, 'zdjęcie', 'zdjęcia', 'zdjęć')} bez utraty jakości` : '', r.skipped ? `${r.skipped} w innym formacie niż JPEG obrócisz w edytorze (zapis jako kopia)` : '', r.errors.length ? `błędy: ${r.errors.length} (${r.errors[0]})` : ''].filter(Boolean)
+      say(parts.join('. '), r.errors.length ? 'err' : 'ok')
+    } catch (e) { say(`Błąd obrotu: ${e}`, 'err') }
+  }
+
+  // Poprawianie osób z widoku zdjęć danej osoby: zdjęcie, na którym twarz nie pasuje, można odpiąć od osoby albo przenieść do innej.
+  const [moveFaces, setMoveFaces] = useState<number[] | null>(null)
+  const photosOfPerson = () => (person?.id === undefined ? [] : realIds().filter((i) => person.ids.has(i)))
+  const dropFromPerson = (ids: number[]) => setPerson((p) => (p ? { ...p, ids: new Set([...p.ids].filter((i) => !ids.includes(i))) } : p))
+  const rejectFromPerson = async () => {
+    setMenu(null)
+    const ids = photosOfPerson()
+    if (person?.id === undefined || !ids.length) return
+    try {
+      await rejectPersonInPhotos(person.id, ids)
+      dropFromPerson(ids); setSel([])
+      say(`Odpięto od osoby „${person.name}”: ${ids.length} ${pl(ids.length, 'zdjęcie', 'zdjęcia', 'zdjęć')}. Twarz nie wróci do żadnej osoby (przywrócisz ją w zakładce Osoby)`, 'ok')
+    } catch (e) { say(`${e}`, 'err') }
   }
 
   const doBackup = async () => {
@@ -850,7 +902,7 @@ export default function App() {
                 { icon: ImageUp, label: 'Dodaj folder', fn: () => addFolder(true), on: false },
                 { icon: ImageUp, label: 'Dodaj folder jednorazowo', fn: () => addFolder(false), on: false },
                 { icon: Info, label: 'Sprawdź pliki', fn: () => { setDrawer(false); setHelpDlg('check') }, on: false },
-                { icon: Download, label: 'Importuj z karty', fn: importFromCard, on: false },
+                { icon: Download, label: 'Importuj z karty', fn: () => importFromCard(), on: false },
                 { icon: ListChecks, label: 'Statystyki', fn: () => { setDrawer(false); setHelpDlg('stats') }, on: false },
                 { icon: SlidersHorizontal, label: 'Skróty klawiszowe', fn: () => { setDrawer(false); setHelpDlg('keys') }, on: false },
                 { icon: Play, label: 'Pokaz slajdów', fn: slideshow, on: false },
@@ -992,6 +1044,9 @@ export default function App() {
                   </>
                 )
               })()}
+              <div className="chips" style={{ marginTop: 10 }}>
+                <Chip on={skipGifPng} onClick={toggleSkipGifPng} label="Nie dodawaj plików GIF i PNG przy skanowaniu">Pomijaj GIF i PNG przy skanowaniu</Chip>
+              </div>
               {hiddenN > 0 && (
                 <button className="wide" onClick={unhideAll}><Eye size={17} /> Przywróć ukryte zdjęcia ({hiddenN})</button>
               )}
@@ -1188,7 +1243,7 @@ export default function App() {
 
         {mode === 'people' && (
           <People say={say} ask={setConfirm} onChanged={() => {}}
-            onOpenPerson={(name, ids) => { setPerson({ name, ids: new Set(ids) }); setAlbumId(null); setFolder(null); setMode('library') }} />
+            onOpenPerson={(name, ids, id) => { setPerson({ id, name, ids: new Set(ids) }); setAlbumId(null); setFolder(null); setMode('library') }} />
         )}
       </main>
 
@@ -1327,6 +1382,14 @@ export default function App() {
               } catch (e) { say(`Błąd: ${e}`, 'err') }
             }}><Copy size={18} /> Zaznacz podobne</button>}
             <button className="text menu-item" role="menuitem" onClick={() => { setMenu(null); setDateIds(realIds()) }}><CalendarDays size={18} /> Zmień datę…</button>
+            {person?.id !== undefined && photosOfPerson().length > 0 && (
+              <>
+                <button className="text menu-item" role="menuitem" onClick={rejectFromPerson}><X size={18} /> To nie „{person.name}”: odepnij od tej osoby</button>
+                <button className="text menu-item" role="menuitem" onClick={() => { setMenu(null); setMoveFaces(photosOfPerson()) }}><Users size={18} /> To inna osoba: przenieś twarz…</button>
+              </>
+            )}
+            <button className="text menu-item" role="menuitem" onClick={() => rotateSelected(true)}><RotateCw size={18} /> Obróć w prawo (bez utraty jakości)</button>
+            <button className="text menu-item" role="menuitem" onClick={() => rotateSelected(false)}><RotateCcw size={18} /> Obróć w lewo (bez utraty jakości)</button>
             <button className="text menu-item" role="menuitem" onClick={pasteEditSelected}><Wand2 size={18} /> Wklej edycję do zaznaczonych…</button>
             <button className="text menu-item" role="menuitem" onClick={() => { setMenu(null); setLocIds(realIds()) }}><MapPin size={18} /> Ustaw lokalizację…</button>
             <button className="text menu-item" role="menuitem" onClick={() => { setMenu(null); setExportIds(realIds()) }}><Download size={18} /> Eksportuj pomniejszone…</button>
@@ -1422,6 +1485,17 @@ export default function App() {
           </span>
         </div>
       )}
+      {moveFaces && person?.id !== undefined && (
+        <MoveFacesDialog personId={person.id} personName={person.name} photoIds={moveFaces} say={say} onClose={() => setMoveFaces(null)}
+          onDone={(ids) => { dropFromPerson(ids); setSel([]) }} />
+      )}
+      {cardOffer && (
+        <div className="glass fixed left-3 z-[1550] flex flex-wrap items-center gap-3 p-3" style={{ bottom: 'calc(12px + var(--sab))', borderRadius: 'var(--r-lg)', maxWidth: 'min(92vw, 460px)' }} role="status">
+          <span style={{ flex: '1 1 200px', fontSize: 14 }}>Wykryto kartę pamięci z aparatu ({cardOffer}) ze zdjęciami.</span>
+          <button className="primary" style={{ width: 'auto', padding: '0 16px' }} disabled={busy} onClick={() => { const c = cardOffer; setCardOffer(null); importFromCard(c) }}>Importuj zdjęcia</button>
+          <button className="chip" onClick={() => setCardOffer(null)}>Nie teraz</button>
+        </div>
+      )}
       {inTauri && <ProgressDock />}
       <Toast text={toast?.text ?? null} kind={toast?.kind} />
 
@@ -1453,7 +1527,7 @@ export default function App() {
           onOpenPerson={async (pid, name) => {
             try {
               const ids = await personPhotos(pid)
-              setPerson({ name: name ?? 'Nieznana osoba', ids: new Set(ids) }); setAlbumId(null); setFolder(null); setMode('library')
+              setPerson({ id: pid, name: name ?? 'Nieznana osoba', ids: new Set(ids) }); setAlbumId(null); setFolder(null); setMode('library')
               setViewer(null)
             } catch (e) { say(`Błąd: ${e}`, 'err') }
           }}

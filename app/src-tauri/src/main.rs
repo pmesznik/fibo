@@ -14,6 +14,7 @@ use std::{
 mod backup;
 mod formats;
 mod photos_backup;
+mod rotate;
 mod check;
 mod cluster;
 mod faces;
@@ -318,7 +319,7 @@ fn scan_blocking_stats(state: &AppState, root: &str, progress: &dyn Fn(usize), s
     let walker = WalkDir::new(root).into_iter().filter_entry(|e| e.file_name() != ORIGINALS_DIR);
     for entry in walker.filter_map(Result::ok) {
         let path = entry.path();
-        if !entry.file_type().is_file() || !is_photo(path) {
+        if !entry.file_type().is_file() || !formats::should_scan(path) {
             continue;
         }
         if let Ok(meta) = entry.metadata() {
@@ -1073,6 +1074,55 @@ fn set_sidecar_enabled(state: State<'_, AppState>, enabled: bool) -> Result<(), 
     Ok(())
 }
 
+#[tauri::command]
+fn get_skip_gif_png() -> bool {
+    formats::skip_gif_png()
+}
+
+#[tauri::command]
+fn set_skip_gif_png(state: State<'_, AppState>, skip: bool) -> Result<(), String> {
+    formats::set_skip_gif_png(skip);
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('skip-gif-png', ?1)", [if skip { "1" } else { "0" }]).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Karta pamięci aparatu: dysk z folderem DCIM. Szukamy tylko liter od D do Z (A i B to dawne stacje dyskietek, a odłączone dyski sieciowe
+/// potrafią długo nie odpowiadać), a dyski już obserwowane przez FIBO pomijamy.
+#[tauri::command]
+async fn detect_cards(app: tauri::AppHandle) -> Result<Vec<String>, String> {
+    static BUSY: AtomicBool = AtomicBool::new(false);
+    if BUSY.swap(true, Ordering::SeqCst) {
+        return Ok(Vec::new());
+    }
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let roots: Vec<String> = {
+            let conn = state.db.lock().map_err(|e| e.to_string())?;
+            let mut stmt = conn.prepare("SELECT path FROM roots").map_err(|e| e.to_string())?;
+            let rows = stmt.query_map([], |r| r.get(0)).map_err(|e| e.to_string())?.filter_map(Result::ok).collect();
+            rows
+        };
+        let mut found = Vec::new();
+        if cfg!(windows) {
+            for letter in 'D'..='Z' {
+                let drive = format!("{letter}:\\");
+                if roots.iter().any(|r| r.to_uppercase().starts_with(&drive.to_uppercase())) {
+                    continue;
+                }
+                if fs::metadata(format!("{drive}DCIM")).map(|m| m.is_dir()).unwrap_or(false) {
+                    found.push(drive);
+                }
+            }
+        }
+        Ok::<_, String>(found)
+    })
+    .await
+    .map_err(|e| e.to_string());
+    BUSY.store(false, Ordering::SeqCst);
+    result?
+}
+
 fn all_photo_ids(state: &AppState) -> Result<Vec<(i64, String)>, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     let mut stmt = conn.prepare("SELECT id, path FROM photos").map_err(|e| e.to_string())?;
@@ -1556,7 +1606,7 @@ fn import_blocking(src: &Path, dest: &Path, progress: &dyn Fn(usize)) -> Result<
     let walker = WalkDir::new(src).into_iter().filter_entry(|e| e.file_name() != ORIGINALS_DIR);
     for entry in walker.filter_map(Result::ok) {
         let path = entry.path();
-        if !entry.file_type().is_file() || !is_photo(path) {
+        if !entry.file_type().is_file() || !formats::should_scan(path) {
             continue;
         }
         let Ok(meta) = entry.metadata() else { continue };
@@ -3228,11 +3278,17 @@ fn main() {
                 .query_row("SELECT value FROM settings WHERE key = 'sidecar'", [], |r| r.get::<_, String>(0))
                 .map(|v| v != "0")
                 .unwrap_or(true);
+            // Ustawienie GIF/PNG: domyślnie dodajemy wszystko (jak dotąd); w menu można je wyłączyć.
+            let skip = db
+                .query_row("SELECT value FROM settings WHERE key = 'skip-gif-png'", [], |r| r.get::<_, String>(0))
+                .map(|v| v == "1")
+                .unwrap_or(false);
+            formats::set_skip_gif_png(skip);
             people::set_thumbs_dir(&thumbs);
             app.manage(AppState { db: Mutex::new(db), thumbs, sidecar: AtomicBool::new(sidecar) });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![list_roots, remove_root, rescan_roots, list_albums, create_album, rename_album, set_album_hidden, put_thumbnail, list_album_order, set_album_order, open_photo_external, delete_album, add_to_album, remove_from_album, rename_photo, move_photos, get_sidecar_enabled, set_sidecar_enabled, export_sidecars, import_sidecars, scan_folder, refresh_library, find_duplicates, trash_photos, export_photos, set_location, rename_batch, import_photos, gallery::export_gallery, gallery::export_gpx, gallery::export_gif, pdf::export_pdf, check::check_files, list_smart, save_smart, delete_smart, gallery::rename_folder, locks::list_locked, locks::set_folder_locked, set_date, shift_dates, set_caption, photo_exif, list_props, set_props, people::photo_people, people::reassign_person_faces, backup::backup_library, photos_backup::backup_photos, backup::restore_library, hide_photos, hidden_count, restore_hidden, people::faces_status, people::set_faces_enabled, people::faces_start, people::faces_stop, people::faces_regroup, people::faces_reanalyze, people::faces_delete_all, people::list_people, people::person_photos, people::person_faces, people::set_person_cover, people::rename_person, people::merge_people, people::merge_suggestions, people::move_faces, people::reject_faces, people::delete_person, people::restore_rejected_faces, people::ignore_person, list_photos, thumbnail, thumbnail_data, people::face_crop, set_rating, set_favorite, add_tag, remove_tag, delete_tag, save_edit, save_collage, read_image, read_audio, has_original, restore_original])
+        .invoke_handler(tauri::generate_handler![list_roots, remove_root, rescan_roots, list_albums, create_album, rename_album, set_album_hidden, put_thumbnail, get_skip_gif_png, set_skip_gif_png, detect_cards, rotate::rotate_photos, list_album_order, set_album_order, open_photo_external, delete_album, add_to_album, remove_from_album, rename_photo, move_photos, get_sidecar_enabled, set_sidecar_enabled, export_sidecars, import_sidecars, scan_folder, refresh_library, find_duplicates, trash_photos, export_photos, set_location, rename_batch, import_photos, gallery::export_gallery, gallery::export_gpx, gallery::export_gif, pdf::export_pdf, check::check_files, list_smart, save_smart, delete_smart, gallery::rename_folder, locks::list_locked, locks::set_folder_locked, set_date, shift_dates, set_caption, photo_exif, list_props, set_props, people::photo_people, people::reassign_person_faces, backup::backup_library, photos_backup::backup_photos, backup::restore_library, hide_photos, hidden_count, restore_hidden, people::faces_status, people::set_faces_enabled, people::faces_start, people::faces_stop, people::faces_regroup, people::faces_reanalyze, people::faces_delete_all, people::list_people, people::person_photos, people::person_faces, people::set_person_cover, people::rename_person, people::merge_people, people::merge_suggestions, people::move_faces, people::reject_person_in_photos, people::move_person_faces, people::reject_faces, people::delete_person, people::restore_rejected_faces, people::ignore_person, list_photos, thumbnail, thumbnail_data, people::face_crop, set_rating, set_favorite, add_tag, remove_tag, delete_tag, save_edit, save_collage, read_image, read_audio, has_original, restore_original])
         .run(tauri::generate_context!())
         .expect("błąd uruchomienia aplikacji");
 }

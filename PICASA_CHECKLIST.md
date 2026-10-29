@@ -54,7 +54,7 @@ Lista powstała z pamięci o Picasie 3, z przeglądu FIBO i z oficjalnego podrę
 - [x] **Retusz** (usuwanie plam i skaz pędzlem). P2 T M Gotowe: kliknięcie plamy zamalowuje ją kolorem z otoczenia.
 - [ ] **Kadrowanie ręczne z ramką** i gotowe formaty wydruku 10x15, 13x18, A4 oraz obrót ramki. P3 T M
 - [x] **Zastosuj te same zmiany do wielu zdjęć** (kopiuj i wklej edycję, edycja wsadowa). P1 T M Gotowe: kopiuj i wklej edycję, wsadowo jako kopie.
-- [ ] **Obrót wielu zdjęć bez utraty jakości** (znacznik orientacji). P2 T S
+- [x] **Obrót wielu zdjęć bez utraty jakości** (znacznik orientacji). P2 T S Gotowe: menu zdjęcia → „Obróć w prawo/w lewo (bez utraty jakości)” dla JPEG (oryginał trafia do .originals); inne formaty obracasz w edytorze.
 - [ ] **Poprawka perspektywy** (wyrównanie pionów). P4 T L
 - [ ] **Redukcja szumu**. P4 T M
 - [ ] **Rozmycie / pogłębienie ostrości w obszarze** (maska radialna). P4 T M
@@ -123,8 +123,8 @@ Biblioteka i foldery:
 - [x] **Menedżer folderów**: dla każdego folderu „obserwuj zawsze”, „skanuj raz”, „usuń z FIBO” (dziś jest tylko obserwuj i przestań obserwować). P2 T S Częściowo: „Dodaj folder jednorazowo” (skanuj raz), obserwuj zawsze i usuń z listy obserwowanych już były.
 - [x] **Sortowanie listy folderów** (data utworzenia, nazwa, data zdjęć). P3 T S Gotowe: od najnowszych albo po nazwie.
 - [ ] **Przeciąganie zdjęcia na folder** przenosi plik (z potwierdzeniem), a na album dodaje do albumu. P3 T M
-- [ ] **Wykrywanie karty pamięci i aparatu** przy podłączeniu oraz wybór nazwy folderu przy imporcie. P3 T M
-- [ ] **Opcja skanowania GIF i PNG** w ustawieniach (domyślnie wyłączona jak w Picasie). P4 T S
+- [x] **Wykrywanie karty pamięci i aparatu** przy podłączeniu. P3 T M Gotowe: dysk z folderem DCIM jest wykrywany, a program proponuje import. Wybór nazwy folderu przy imporcie nie jest zrobiony (zdjęcia trafiają do folderów według daty).
+- [x] **Opcja skanowania GIF i PNG** w ustawieniach. P4 T S Gotowe: menu → Foldery → „Pomijaj GIF i PNG przy skanowaniu” (domyślnie wyłączone, żeby nie zmieniać dotychczasowego działania).
 - [x] **Formaty**: PSD i RAW gotowe (oraz HEIC, AVIF, JPEG XL, TGA, PNM, DDS, HDR, QOI, OpenEXR, ICO, SVG). Filmy MPG, AVI, WMV, MOV jeszcze nie (zob. wideo w sekcji 1).
 
 Widoki i wyszukiwanie:

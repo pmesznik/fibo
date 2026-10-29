@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import { listen } from '@tauri-apps/api/event'
-import { EyeOff, Eye, Pencil, Shuffle, Star, Pause, Play, Trash2, Users, X } from './FiboIcons'
+import { EyeOff, Eye, Pencil, Star, Pause, Play, Trash2, Users, X } from './FiboIcons'
 import {
   facesDeleteAll, facesReanalyze, facesRegroup, facesStart, personFaces, setPersonCover, facesStatus, facesStop, ignorePerson, listPeople, personPhotos, deletePerson, mergeSuggestions, restoreRejectedFaces,
   renamePerson, setFacesEnabled, type FacesProgress, type FacesStatus, type MergeSuggestion, type Person,
 } from './api'
 import { PromptDialog } from './Dialogs'
 import { FaceImg } from './FaceImg'
-import { FacesManager, MergeDialog } from './MergePeople'
+import { MergeDialog } from './MergePeople'
 
 export { FaceImg }
 
@@ -18,7 +18,7 @@ const pl = (n: number, one: string, few: string, many: string) =>
 export function People({ say, ask, onOpenPerson, onChanged }: {
   say: (m: string, kind?: 'ok' | 'err') => void
   ask: (c: { text: string; yes: string; run: () => void }) => void
-  onOpenPerson: (name: string, ids: number[]) => void
+  onOpenPerson: (name: string, ids: number[], id: number) => void
   onChanged: () => void
 }) {
   const [st, setSt] = useState<FacesStatus | null>(null)
@@ -27,7 +27,6 @@ export function People({ say, ask, onOpenPerson, onChanged }: {
   const [renaming, setRenaming] = useState<Person | null>(null)
   // Okno łączenia (a = osoba wyjściowa, b = druga, jeśli już wybrana) i okno zarządzania twarzami jednej osoby.
   const [merge, setMerge] = useState<{ a: Person; b: Person | null } | null>(null)
-  const [manage, setManage] = useState<Person | null>(null)
   // Podpowiedzi: dla osoby bez imienia najlepiej pasująca znana osoba.
   const [sugg, setSugg] = useState<Map<number, MergeSuggestion>>(new Map())
   const [showIgnored, setShowIgnored] = useState(false)
@@ -97,7 +96,7 @@ export function People({ say, ask, onOpenPerson, onChanged }: {
     try { const n = await restoreRejectedFaces(); await facesRegroup(); setTimeout(refresh, 800); say(`Przywrócono ${n} ${pl(n, 'twarz', 'twarze', 'twarzy')} do grupowania`, 'ok') } catch (e) { say(`Błąd: ${e}`, 'err') }
   }
   const open = async (p: Person) => {
-    try { onOpenPerson(p.name ?? 'Nieznana osoba', await personPhotos(p.id)) } catch (e) { say(`Błąd: ${e}`, 'err') }
+    try { onOpenPerson(p.name ?? 'Nieznana osoba', await personPhotos(p.id), p.id) } catch (e) { say(`Błąd: ${e}`, 'err') }
   }
 
   if (!st) return <div className="empty" style={{ height: '40vh' }}>Chwila…</div>
@@ -167,7 +166,7 @@ export function People({ say, ask, onOpenPerson, onChanged }: {
           </div>
         </div>
       )}
-      <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))' }}>
+      <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))' }}>
         {shown.map((p) => (
           <div key={p.id} draggable aria-grabbed={dragId === p.id}
             onDragStart={(e) => { setDragId(p.id); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(p.id)) }}
@@ -202,17 +201,13 @@ export function People({ say, ask, onOpenPerson, onChanged }: {
                 </div>
               )
             })()}
-            <div style={{ display: 'flex', gap: 2, justifyContent: 'center', marginTop: 4 }}>
-              <button className="ico" style={{ minWidth: 40, minHeight: 36 }} aria-label={`Nazwij osobę ${p.name ?? ''}`} title="Nadaj imię" onClick={() => setRenaming(p)}><Pencil size={16} /></button>
-              <button className="ico" style={{ minWidth: 40, minHeight: 36 }} aria-label={`Wybierz okładkę osoby ${p.name ?? ''}`} title="Wybierz twarz na okładkę" onClick={() => pickCover(p)}><Star size={16} /></button>
-              <button className="ico" style={{ minWidth: 40, minHeight: 36 }} aria-label={`Połącz ${p.name ?? 'osobę'} z inną osobą`} title="To ta sama osoba co inna: połącz (z podglądem)" onClick={() => setMerge({ a: p, b: null })}><Users size={16} /></button>
-              <button className="ico" style={{ minWidth: 40, minHeight: 36 }} aria-label={`Twarze osoby ${p.name ?? ''}: przenieś lub odrzuć`} title="Twarze: przenieś błędnie przypisane do innej osoby albo odrzuć" onClick={() => setManage(p)}><Shuffle size={16} /></button>
-              <button className="ico" style={{ minWidth: 40, minHeight: 36 }} aria-label={p.ignored ? 'Przywróć osobę na listę' : 'Pomiń tę osobę'} title={p.ignored ? 'Przywróć' : 'Pomiń (np. przypadkowy przechodzień)'}
+            <div style={{ display: 'flex', gap: 3, justifyContent: 'center', flexWrap: 'wrap', marginTop: 6 }}>
+              <button className="ico" style={{ minWidth: 34, minHeight: 36 }} aria-label={`Nazwij osobę ${p.name ?? ''}`} title="Nadaj imię" onClick={() => setRenaming(p)}><Pencil size={16} /></button>
+              <button className="ico" style={{ minWidth: 34, minHeight: 36 }} aria-label={`Połącz ${p.name ?? 'osobę'} z inną osobą`} title="To ta sama osoba co inna: połącz (z podglądem)" onClick={() => setMerge({ a: p, b: null })}><Users size={16} /></button>
+              <button className="ico" style={{ minWidth: 34, minHeight: 36 }} aria-label={p.ignored ? 'Przywróć osobę na listę' : 'Pomiń tę osobę'} title={p.ignored ? 'Przywróć' : 'Pomiń (np. przypadkowy przechodzień)'}
                 onClick={async () => { await ignorePerson(p.id, !p.ignored); refresh() }}>{p.ignored ? <Eye size={16} /> : <EyeOff size={16} />}</button>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'center', gap: 6, marginTop: 2 }}>
-              <button className="chip" onClick={() => pickCover(p)} aria-label={`Zmień okładkę osoby ${p.name ?? 'Nieznana osoba'}`}><Star size={13} /> Zmień okładkę</button>
-              <button className="chip" onClick={() => removePerson(p)} aria-label={`Usuń osobę ${p.name ?? 'Nieznana osoba'}`} title="Usuń całą grupę (zdjęcia zostają)"><Trash2 size={13} /></button>
+              <button className="ico" style={{ minWidth: 34, minHeight: 36 }} aria-label={`Wybierz okładkę osoby ${p.name ?? 'Nieznana osoba'}`} title="Wybierz twarz na okładkę" onClick={() => pickCover(p)}><Star size={16} /></button>
+              <button className="ico" style={{ minWidth: 34, minHeight: 36 }} aria-label={`Usuń osobę ${p.name ?? 'Nieznana osoba'}`} title="Usuń całą grupę (zdjęcia zostają)" onClick={() => removePerson(p)}><Trash2 size={16} /></button>
             </div>
           </div>
         ))}
@@ -244,10 +239,6 @@ export function People({ say, ask, onOpenPerson, onChanged }: {
       {merge && (
         <MergeDialog people={people} a={merge.a} b={merge.b} say={say} onClose={() => setMerge(null)} onDone={() => { refresh(); onChanged() }} />
       )}
-      {manage && (
-        <FacesManager person={manage} people={people} say={say} onClose={() => setManage(null)} onChanged={() => { refresh(); onChanged() }} />
-      )}
-
       {renaming && (
         <PromptDialog title="Imię osoby" label="Imię lub nazwa" initial={renaming.name ?? ''} confirm="Zapisz"
           hint="Imię zostaje tylko w bazie FIBO na tym komputerze (nie trafia do plików zdjęć)."

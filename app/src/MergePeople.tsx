@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Check, Search, Shuffle, Trash2, Users, X } from './FiboIcons'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { Check, Search, Users, X } from './FiboIcons'
 import { FaceImg } from './FaceImg'
-import { mergePeople, mergeSuggestions, moveFaces, personFaces, rejectFaces, type MergeSuggestion, type Person } from './api'
+import { listPeople, mergePeople, mergeSuggestions, movePersonFaces, personFaces, type MergeSuggestion, type Person } from './api'
 
 const pl = (n: number, one: string, few: string, many: string) =>
   n === 1 ? one : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? few : many
@@ -227,78 +227,38 @@ export function MergeDialog({ people, a, b: initialB, onClose, onDone, say }: {
 }
 
 /**
- * Zarządzanie twarzami jednej osoby: zaznacz twarze, które nie pasują, i przenieś je do innej (albo nowej) osoby, albo odrzuć.
- * Odrzucona twarz nie należy do nikogo i automatyczne grupowanie nie przypisze jej ponownie.
+ * Przenoszenie twarzy z widoku zdjęć danej osoby: wskazane zdjęcia mają inną osobę niż ta, w której widoku jesteśmy.
+ * Program podpowiada najbardziej podobne osoby, znane na początku listy.
  */
-export function FacesManager({ person, people, onClose, onChanged, say }: {
-  person: Person; people: Person[]; onClose: () => void; onChanged: () => void; say: (m: string, kind?: 'ok' | 'err') => void
+export function MoveFacesDialog({ personId, personName, photoIds, onClose, onDone, say }: {
+  personId: number; personName: string; photoIds: number[]; onClose: () => void; onDone: (moved: number[]) => void; say: (m: string, kind?: 'ok' | 'err') => void
 }) {
-  const [faces, setFaces] = useState<number[]>([])
-  const [sel, setSel] = useState<Set<number>>(new Set())
-  const [moving, setMoving] = useState(false)
+  const [people, setPeople] = useState<Person[]>([])
   const [sugg, setSugg] = useState<Map<number, MergeSuggestion>>(new Map())
   const [busy, setBusy] = useState(false)
-
-  const load = useCallback(async () => {
-    try { setFaces(await personFaces(person.id)) } catch (e) { say(`Błąd: ${e}`, 'err') }
-  }, [person.id, say])
-  useEffect(() => { load() }, [load])
   useEffect(() => {
     let dead = false
-    mergeSuggestions(person.id).then((l) => { if (!dead) setSugg(new Map(l.map((s) => [s.other, s]))) }).catch(() => {})
+    listPeople().then((l) => { if (!dead) setPeople(l) }).catch((e) => say(`Błąd: ${e}`, 'err'))
+    mergeSuggestions(personId).then((l) => { if (!dead) setSugg(new Map(l.map((x) => [x.other, x]))) }).catch(() => {})
     return () => { dead = true }
-  }, [person.id])
+  }, [personId, say])
 
-  const toggle = (f: number) => setSel((s) => { const n = new Set(s); if (n.has(f)) n.delete(f); else n.add(f); return n })
-  const after = async (msg: string) => {
-    say(msg, 'ok'); setSel(new Set()); setMoving(false); onChanged()
-    const left = await personFaces(person.id).catch(() => [] as number[])
-    if (!left.length) onClose(); else setFaces(left)
-  }
-  const doMove = async (to: number | null, label: string) => {
+  const go = async (to: number | null, label: string) => {
     setBusy(true)
-    try { const n = sel.size; await moveFaces([...sel], to); await after(`Przeniesiono ${n} ${pl(n, 'twarz', 'twarze', 'twarzy')} do: ${label}`) }
-    catch (e) { say(`${e}`, 'err') } finally { setBusy(false) }
+    try {
+      await movePersonFaces(personId, photoIds, to)
+      say(`Przeniesiono twarz z „${personName}” do: ${label}`, 'ok')
+      onDone(photoIds); onClose()
+    } catch (e) { say(`${e}`, 'err') } finally { setBusy(false) }
   }
-  const doReject = async () => {
-    setBusy(true)
-    try { const n = sel.size; await rejectFaces([...sel]); await after(`Odrzucono ${n} ${pl(n, 'twarz', 'twarze', 'twarzy')}: nie należą już do nikogo (przywrócisz je w zakładce Osoby)`) }
-    catch (e) { say(`${e}`, 'err') } finally { setBusy(false) }
-  }
-
   return (
-    <Modal title={`Twarze: ${nm(person)}`} onClose={onClose} width={680}>
-      {!moving ? (
-        <>
-          <p style={{ margin: '0 0 8px', color: 'var(--muted)', fontSize: 13.5 }}>
-            Zaznacz twarze, które nie należą do tej osoby. Możesz je przenieść do innej osoby albo odrzucić (np. przechodzień, fałszywe wykrycie).
-          </p>
-          <div className="chips" style={{ marginBottom: 8 }}>
-            <button className="chip" onClick={() => setSel(new Set(faces))}>Zaznacz wszystkie ({faces.length})</button>
-            <button className="chip" disabled={!sel.size} onClick={() => setSel(new Set())}>Odznacz</button>
-            <span style={{ alignSelf: 'center', fontSize: 13, color: 'var(--muted)' }}>Zaznaczono: {sel.size}</span>
-          </div>
-          <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(76px, 1fr))', maxHeight: '46vh', overflowY: 'auto' }}>
-            {faces.map((f) => (
-              <button key={f} className="bare" aria-pressed={sel.has(f)} aria-label="Twarz: zaznacz lub odznacz" onClick={() => toggle(f)}
-                style={{ position: 'relative', width: 76, height: 76, borderRadius: 10, overflow: 'hidden', boxShadow: sel.has(f) ? '0 0 0 3px var(--accent)' : 'var(--elev-1)', opacity: sel.size && !sel.has(f) ? 0.7 : 1 }}>
-                <FaceImg id={f} size={76} />
-                {sel.has(f) && <span aria-hidden style={{ position: 'absolute', right: 3, top: 3, width: 20, height: 20, borderRadius: '50%', background: 'var(--accent)', color: '#fff', display: 'grid', placeItems: 'center' }}><Check size={13} strokeWidth={3} /></span>}
-              </button>
-            ))}
-          </div>
-          <div style={{ display: 'flex', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
-            <button className="primary" style={{ width: 'auto', padding: '0 18px' }} disabled={!sel.size || busy} onClick={() => setMoving(true)}><Shuffle size={16} /> Przenieś do innej osoby…</button>
-            <button className="chip" disabled={!sel.size || busy} onClick={doReject} title="Twarz nie będzie należeć do nikogo"><Trash2 size={15} /> To nie ta osoba: odrzuć</button>
-          </div>
-        </>
-      ) : (
-        <>
-          <p style={{ margin: '0 0 8px', fontSize: 14 }}>Dokąd przenieść {sel.size} {pl(sel.size, 'twarz', 'twarze', 'twarzy')}?</p>
-          <PersonPicker people={people} exclude={[person.id]} sugg={sugg} onPick={(p) => doMove(p.id, nm(p))} onNew={() => doMove(null, 'nowa osoba')} />
-          <button className="chip" style={{ marginTop: 10 }} onClick={() => setMoving(false)}>Wróć</button>
-        </>
-      )}
+    <Modal title="Przenieś do innej osoby" onClose={onClose} width={520}>
+      <p style={{ margin: '0 0 8px', color: 'var(--muted)', fontSize: 13.5 }}>
+        Na {photoIds.length === 1 ? 'tym zdjęciu' : `tych ${photoIds.length} zdjęciach`} twarz „{personName}” nie pasuje. Wskaż, kim jest naprawdę. Pomyłkę można poprawić tą samą drogą.
+      </p>
+      <div aria-busy={busy}>
+        <PersonPicker people={people} exclude={[personId]} sugg={sugg} onPick={(p) => go(p.id, nm(p))} onNew={() => go(null, 'nowa osoba')} />
+      </div>
     </Modal>
   )
 }

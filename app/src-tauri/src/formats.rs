@@ -9,7 +9,7 @@
 //!   pełny podgląd z pełnego obrazu albo wywołanej matrycy,
 //! - SVG rysuje okno aplikacji.
 
-use std::{fs, io::BufReader, path::Path};
+use std::{fs, io::BufReader, path::Path, sync::atomic::{AtomicBool, Ordering}};
 
 use image::{DynamicImage, ImageReader, RgbImage, RgbaImage};
 
@@ -36,6 +36,23 @@ pub fn ext_of(path: &Path) -> String {
 
 fn any(list: &[&str], e: &str) -> bool {
     list.contains(&e)
+}
+
+/// Ustawienie „nie dodawaj plików GIF i PNG przy skanowaniu” (w Picasie domyślnie włączone, bo takie pliki to zwykle grafiki ze stron).
+/// Dotyczy tylko skanowania folderów i importu: zdjęcia już dodane do biblioteki zostają.
+static SKIP_GIF_PNG: AtomicBool = AtomicBool::new(false);
+
+pub fn set_skip_gif_png(on: bool) {
+    SKIP_GIF_PNG.store(on, Ordering::Relaxed);
+}
+
+pub fn skip_gif_png() -> bool {
+    SKIP_GIF_PNG.load(Ordering::Relaxed)
+}
+
+/// Czy skaner ma dodać ten plik do biblioteki (rozpoznany format i zgodny z ustawieniem GIF/PNG).
+pub fn should_scan(path: &Path) -> bool {
+    is_supported(path) && !(skip_gif_png() && matches!(ext_of(path).as_str(), "gif" | "png" | "apng"))
 }
 
 /// Czy FIBO rozpoznaje ten plik jako zdjęcie (na podstawie rozszerzenia).

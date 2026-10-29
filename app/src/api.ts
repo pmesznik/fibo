@@ -124,6 +124,14 @@ export const saveCollage = (id: number, bytes: ArrayBuffer, name: string) =>
 export const putThumbnail = (id: number, bytes: ArrayBuffer, width: number, height: number) =>
   invoke('put_thumbnail', bytes, { headers: { id: String(id), width: String(width), height: String(height) } })
 
+export type RotateReport = { done: number; skipped: number; errors: string[] }
+/** Obrót o 90° bez utraty jakości (zmiana znacznika orientacji w JPEG; inne formaty są pomijane). */
+export const rotatePhotos = (ids: number[], clockwise: boolean) => invoke<RotateReport>('rotate_photos', { ids, clockwise })
+export const getSkipGifPng = () => invoke<boolean>('get_skip_gif_png')
+export const setSkipGifPng = (skip: boolean) => invoke('set_skip_gif_png', { skip })
+/** Dyski wyglądające na kartę pamięci aparatu (zawierają folder DCIM), jeszcze nieobserwowane przez FIBO. */
+export const detectCards = () => invoke<string[]>('detect_cards')
+
 export const readImage = (id: number) => invoke<ArrayBuffer>('read_image', { id })
 
 /** Miniatura jako Blob (bajty przez IPC); wywołujący tworzy i zwalnia adres blob:. */
@@ -154,6 +162,10 @@ export const mergePeople = (from: number, into: number, name: string | null = nu
 /** Podpowiedź łączenia: `id` i `other` to osoby, `score` podobieństwo (0-1), `conflict` = występują razem na jednym zdjęciu. */
 export type MergeSuggestion = { id: number; other: number; score: number; conflict: boolean }
 export const mergeSuggestions = (id: number | null) => invoke<MergeSuggestion[]>('merge_suggestions', { id })
+/** „To nie ta osoba”: twarze osoby na wskazanych zdjęciach przestają do niej należeć (i nie wrócą przy grupowaniu). */
+export const rejectPersonInPhotos = (person: number, photos: number[]) => invoke<number>('reject_person_in_photos', { person, photos })
+/** Przenosi twarze osoby na wskazanych zdjęciach do innej osoby albo (to = null) do nowej. */
+export const movePersonFaces = (person: number, photos: number[], to: number | null) => invoke<number>('move_person_faces', { person, photos, to })
 export const moveFaces = (ids: number[], to: number | null) => invoke<number>('move_faces', { ids, to })
 export const rejectFaces = (ids: number[]) => invoke<number>('reject_faces', { ids })
 export const deletePerson = (id: number) => invoke<number>('delete_person', { id })

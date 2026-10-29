@@ -1032,6 +1032,41 @@ pub fn delete_person_core(conn: &Connection, id: i64) -> Result<usize, String> {
     Ok(n)
 }
 
+/// Numery twarzy danej osoby na wskazanych zdjęciach (do poprawiania z widoku zdjęć osoby).
+fn faces_of_person_in_photos(conn: &Connection, person: i64, photos: &[i64]) -> Result<Vec<i64>, String> {
+    let json = serde_json::to_string(photos).map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare("SELECT id FROM faces WHERE person_id = ?1 AND photo_id IN (SELECT value FROM json_each(?2))").map_err(|e| e.to_string())?;
+    let ids: Vec<i64> = stmt.query_map(params![person, json], |r| r.get(0)).map_err(|e| e.to_string())?.filter_map(Result::ok).collect();
+    if ids.is_empty() {
+        return Err("Na tych zdjęciach nie ma twarzy tej osoby".into());
+    }
+    Ok(ids)
+}
+
+/// „To nie ta osoba”: twarze osoby na wskazanych zdjęciach przestają jej należeć i nie wrócą do żadnej osoby przy grupowaniu.
+pub fn reject_person_in_photos_core(conn: &Connection, person: i64, photos: &[i64]) -> Result<usize, String> {
+    let ids = faces_of_person_in_photos(conn, person, photos)?;
+    reject_faces_core(conn, &ids)
+}
+
+/// Przenosi twarze osoby na wskazanych zdjęciach do innej osoby (`to`) albo do nowej osoby (`to` = None).
+pub fn move_person_faces_core(conn: &Connection, person: i64, photos: &[i64], to: Option<i64>) -> Result<i64, String> {
+    let ids = faces_of_person_in_photos(conn, person, photos)?;
+    move_faces_core(conn, &ids, to)
+}
+
+#[tauri::command]
+pub fn reject_person_in_photos(state: State<'_, AppState>, person: i64, photos: Vec<i64>) -> Result<usize, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    reject_person_in_photos_core(&conn, person, &photos)
+}
+
+#[tauri::command]
+pub fn move_person_faces(state: State<'_, AppState>, person: i64, photos: Vec<i64>, to: Option<i64>) -> Result<i64, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    move_person_faces_core(&conn, person, &photos, to)
+}
+
 #[tauri::command]
 pub fn move_faces(state: State<'_, AppState>, ids: Vec<i64>, to: Option<i64>) -> Result<i64, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
@@ -1471,5 +1506,27 @@ mod tests {
         assert!(day_of("2024-07-02").unwrap() == day_of("2024-07-01").unwrap() + 1);
         assert_eq!(day_of("nie data"), None);
         assert_eq!(day_of("2024-13-40"), None);
+    }
+
+    #[test]
+    fn faces_can_be_corrected_from_the_persons_photo_view() {
+        let c = db();
+        c.execute_batch("INSERT INTO photos (id) VALUES (1), (2), (3);
+            INSERT INTO people (id, name) VALUES (1, 'Anna'), (2, 'Ola');
+            INSERT INTO faces (id, photo_id, person_id, x, y, w, h, score, emb) VALUES
+              (10, 1, 1, 0,0,1,1, 1, x''), (11, 2, 1, 0,0,1,1, 1, x''), (12, 3, 1, 0,0,1,1, 1, x''), (13, 3, 2, 0,0,1,1, 1, x'');").unwrap();
+        // Zdjęcie 2 nie pasuje do Anny: „To nie ta osoba”.
+        assert_eq!(reject_person_in_photos_core(&c, 1, &[2]).unwrap(), 1);
+        let (p, r): (Option<i64>, i64) = c.query_row("SELECT person_id, rejected FROM faces WHERE id = 11", [], |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
+        assert_eq!((p, r), (None, 1));
+        // Zdjęcie 1: to była Ola.
+        assert_eq!(move_person_faces_core(&c, 1, &[1], Some(2)).unwrap(), 2);
+        // Na zdjęciu 3 Ola już jest, więc twarz Anny nie może do niej trafić.
+        assert!(move_person_faces_core(&c, 1, &[3], Some(2)).is_err());
+        // Zdjęcie, na którym osoby nie ma, daje czytelny błąd.
+        assert!(reject_person_in_photos_core(&c, 1, &[2]).is_err());
+        // Do nowej osoby.
+        let new = move_person_faces_core(&c, 1, &[3], None).unwrap();
+        assert!(new > 2);
     }
 }
