@@ -22,6 +22,8 @@ export function PersonFacesView({ personId, name, onOpen, onPhotoGone, onChanged
 }) {
   const [cards, setCards] = useState<FaceCard[] | null>(null)
   const [sure, setSure] = useState(false)
+  /** Stosy twarzy do potwierdzenia, które użytkownik rozwinął (numer stosu). */
+  const [open, setOpen] = useState<Set<number>>(new Set())
 
   const load = useCallback(async () => {
     try { setCards(await personFaceCards(personId)) } catch (e) { say(`Błąd: ${e}`, 'err'); setCards([]) }
@@ -39,6 +41,20 @@ export function PersonFacesView({ personId, name, onOpen, onPhotoGone, onChanged
       say(`To nie „${name}”: twarz wróciła do nierozpoznanych i może trafić do innej osoby`, 'ok')
     } catch (e) { say(`Błąd: ${e}`, 'err') }
   }
+  /** Potwierdzenie albo odrzucenie całego stosu podobnych twarzy jednym kliknięciem. */
+  const confirmStack = async (members: FaceCard[]) => {
+    const ids = members.map((c) => c.face)
+    try { await confirmFaces(ids); setCards((l) => l?.map((x) => (ids.includes(x.face) ? { ...x, unsure: false } : x)) ?? l); onChanged(); say(`Potwierdzono stos: ${ids.length} ${pl(ids.length, 'twarz', 'twarze', 'twarzy')}`, 'ok') } catch (e) { say(`Błąd: ${e}`, 'err') }
+  }
+  const rejectStack = async (members: FaceCard[]) => {
+    const ids = members.map((c) => c.face)
+    try {
+      await rejectFaces(ids)
+      setCards((l) => l?.filter((x) => !ids.includes(x.face)) ?? l)
+      members.forEach((c) => onPhotoGone(c.photo)); onChanged()
+      say(`To nie „${name}”: ${ids.length} ${pl(ids.length, 'twarz wróciła', 'twarze wróciły', 'twarzy wróciło')} do nierozpoznanych`, 'ok')
+    } catch (e) { say(`Błąd: ${e}`, 'err') }
+  }
   const confirmAll = async () => {
     if (!sure) { setSure(true); return }
     const ids = (cards ?? []).filter((c) => c.unsure).map((c) => c.face)
@@ -51,6 +67,37 @@ export function PersonFacesView({ personId, name, onOpen, onPhotoGone, onChanged
   const done = cards.filter((c) => !c.unsure)
   if (!cards.length) return <div className="empty" style={{ height: '40vh' }}>Ta osoba nie ma już żadnych twarzy.</div>
 
+  /** Stosy: twarze do potwierdzenia o tym samym numerze stosu. Stos z jedną twarzą to zwykły kafelek. */
+  const stacks = new Map<number, FaceCard[]>()
+  for (const c of unsure) { const l = stacks.get(c.stack); if (l) l.push(c); else stacks.set(c.stack, [c]) }
+  const stackTile = (key: number, members: FaceCard[]) => {
+    if (members.length < 2) return tile(members[0])
+    if (open.has(key)) {
+      return (
+        <div key={`s${key}`} style={{ display: 'flex', flexWrap: 'wrap', gap: 14, padding: 8, borderRadius: 'var(--r-card)', outline: '2px dashed #f28b1c', outlineOffset: -2 }}>
+          {members.map(tile)}
+          <button className="chip" style={{ alignSelf: 'center' }} onClick={() => setOpen((o) => { const n = new Set(o); n.delete(key); return n })}>Zwiń stos</button>
+        </div>
+      )
+    }
+    return (
+      <div key={`s${key}`} style={{ width: TILE }}>
+        <div style={{ position: 'relative', width: TILE, height: TILE }}>
+          <span aria-hidden style={{ position: 'absolute', inset: 0, transform: 'translate(8px, -8px)', borderRadius: 'var(--r-card)', background: 'var(--tonal)', boxShadow: 'var(--elev-1)' }} />
+          <span aria-hidden style={{ position: 'absolute', inset: 0, transform: 'translate(4px, -4px)', borderRadius: 'var(--r-card)', background: 'var(--tonal)', boxShadow: 'var(--elev-1)' }} />
+          <button className="bare" style={{ position: 'absolute', inset: 0, borderRadius: 'var(--r-card)', overflow: 'hidden', boxShadow: 'var(--elev-1)' }} aria-label={`Stos ${members.length} podobnych twarzy do potwierdzenia: rozwiń`} title="Podobne twarze z kilku zdjęć: kliknij, żeby rozwinąć stos"
+            onClick={() => setOpen((o) => new Set(o).add(key))}>
+            <FaceImg id={members[0].face} size={TILE} />
+          </button>
+          <span style={{ position: 'absolute', right: 6, bottom: 6, background: '#f28b1c', color: '#fff', borderRadius: 999, padding: '1px 9px', font: '700 13px system-ui' }}>×{members.length}</span>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: 5 }}>
+          <button className="fc-btn fc-yes" aria-label={`Potwierdź cały stos: to ${name} (${members.length} twarzy)`} title="To ta osoba: cały stos" onClick={() => confirmStack(members)}><Check size={14} strokeWidth={3} /></button>
+          <button className="fc-btn fc-no" aria-label={`To nie ${name}: odepnij cały stos (${members.length} twarzy)`} title="To nie ta osoba: cały stos" onClick={() => rejectStack(members)}><X size={14} strokeWidth={3} /></button>
+        </div>
+      </div>
+    )
+  }
   const tile = (c: FaceCard) => (
     <div key={c.face} className="group" style={{ width: TILE }}>
       <div style={{ position: 'relative', width: TILE, height: TILE, background: 'var(--tonal)', boxShadow: 'var(--elev-1)', borderRadius: 'var(--r-card)', overflow: 'hidden' }}>
@@ -84,9 +131,9 @@ export function PersonFacesView({ personId, name, onOpen, onPhotoGone, onChanged
             <button className="chip" onClick={confirmAll} onBlur={() => setSure(false)}>{sure ? `Na pewno? To wszystkie ${name}` : 'Potwierdź wszystkie'}</button>
           </h2>
           <p style={{ margin: '0 0 12px', color: 'var(--muted)', fontSize: 13 }}>
-            Program nie jest pewien, czy te twarze to „{name}”. Zatwierdź te, które pasują, a pozostałe odepnij.
+            Program nie jest pewien, czy te twarze to „{name}”. Zatwierdź te, które pasują, a pozostałe odepnij. Podobne twarze z kilku zdjęć są ułożone w stosy z liczbą ×N: stos potwierdzasz lub odpinasz jednym kliknięciem albo rozwijasz.
           </p>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14 }}>{unsure.map(tile)}</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14 }}>{[...stacks.entries()].map(([k, m]) => stackTile(k, m))}</div>
         </section>
       )}
       <section>

@@ -225,7 +225,7 @@ export type FacesStatus = { enabled: boolean; models_ok: boolean; running: boole
 export type FacesProgress = { done: number; total: number; faces: number; finished: boolean; grouping?: boolean; stopped?: boolean; skipped?: number; error: string | null }
 export type Person = { id: number; name: string | null; count: number; photos: number; cover: number | null; ignored: boolean; unsure: number }
 /** Twarz w widoku osoby: `unsure` = program nie jest pewien przypisania (czeka na potwierdzenie). */
-export type FaceCard = { face: number; photo: number; unsure: boolean }
+export type FaceCard = { face: number; photo: number; unsure: boolean; stack: number }
 export const personFaceCards = (id: number) => invoke<FaceCard[]>('person_face_cards', { id })
 export const confirmFaces = (ids: number[]) => invoke<number>('confirm_faces', { ids })
 export const facesStatus = () => invoke<FacesStatus>('faces_status')

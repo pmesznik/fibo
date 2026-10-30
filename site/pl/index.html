@@ -12,7 +12,7 @@
 <link rel="alternate" hreflang="en" href="../en/">
 <link rel="stylesheet" href="../assets/site.css">
 </head>
-<body data-lang="pl" data-repo="pmesznik/fibo" data-version="0.4.45">
+<body data-lang="pl" data-repo="pmesznik/fibo" data-version="0.4.46">
 <a class="skip" href="#docs">Dokumentacja</a>
 <header class="top">
   <div class="wrap bar">
@@ -227,6 +227,7 @@
         <li><strong>Imiona zostają w bazie FIBO</strong> i nie trafiają do plików zdjęć ani XMP.</li>
         <li>Przy osobie możesz <em>nadać imię</em>, <em>wybrać okładkę</em> (twarz pokazywaną na liście: przycisk <em>Zmień okładkę</em> przy osobie albo <em>Okładka</em> przy znaczku osoby w podglądzie zdjęcia), <em>połączyć</em> ją z inną (gdy ta sama osoba trafiła do dwóch grup): przeciągnij jedną osobę na drugą i kliknij <em>Zatwierdź</em> albo <em>pominąć</em>. Kliknięcie osoby pokazuje jej zdjęcia.</li>
         <li><strong>Dokładność i szybkość.</strong> Zdjęcia są analizowane na kilku wątkach naraz, a twarze szukane w większej rozdzielczości, więc znajdują się także małe twarze w tle (około 40% więcej niż wcześniej na zdjęciach testowych). Wektor twarzy jest uśredniany z jej odbiciem lustrzanym, a każda twarz dostaje ocenę jakości (ostrość, rozmiar, ustawienie głowy). Słabe twarze nie zakładają osób, tylko dołączają do pewnych albo zostają bez grupy.</li>
+        <li><strong>Stosy twarzy do potwierdzenia.</strong> W widoku osoby podobne twarze z kilku zdjęć (np. seria ujęć) są ułożone w stos z liczbą ×N. Stos potwierdzasz albo odpinasz jednym kliknięciem, albo rozwijasz i oceniasz twarze osobno. Do stosu trafiają tylko bardzo podobne twarze z różnych zdjęć. Wstrzymane rozpoznawanie twarzy i indeksowanie po treści wznowisz przyciskiem <em>Wznów</em> prosto w okienku postępu.</li>
         <li><strong>Twarze, których program nie znalazł.</strong> W podglądzie zdjęcia przycisk <em>Dodaj twarz</em> pozwala zaznaczyć twarz ramką i wskazać osobę (istniejącą albo nową). Dotyczy tylko tego jednego zdjęcia, nie uruchamia analizy biblioteki. Taka twarz jest traktowana jak poprawiona ręcznie: grupowanie jej nie rusza, a ponowna analiza jej nie usuwa.</li>
         <li><strong>Precyzja grupowania.</strong> Dwie twarze z jednego zdjęcia nigdy nie trafiają do jednej osoby (rozdziela to np. rodzeństwo na wspólnych zdjęciach). Grupowanie jest hierarchiczne, więc nie zależy od kolejności zdjęć. Osoby z imieniem i twarze poprawione ręcznie są zakotwiczone: automatyczne grupowanie ich nie rusza, a nowe pasujące twarze mogą do nich dołączać. Przyciski <em>Pogrupuj od nowa</em> i <em>Przeanalizuj ponownie</em> w zakładce Osoby odświeżają wynik bez utraty imion.</li>
         <li><strong>Usuń dane twarzy</strong> kasuje osoby, wektory i wycinki twarzy oraz wyłącza funkcję. Zdjęcia nie są ruszane.</li>

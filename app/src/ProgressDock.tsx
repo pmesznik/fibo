@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { listen } from '@tauri-apps/api/event'
 import { CalendarDays, Search, Check, Copy, Download, Images, Pause, RefreshCw, RotateCw, Save, Users, Wand2, X } from './FiboIcons'
-import { facesStop, inTauri, type FacesProgress } from './api'
+import { clipStart, clipStop, facesStart, facesStop, inTauri, type FacesProgress } from './api'
 
 type Kind = 'scan' | 'faces' | 'dups' | 'backup' | 'colors' | 'rotate' | 'export' | 'gallery' | 'pdf' | 'gif' | 'import' | 'check' | 'refresh' | 'sidecar' | 'paste' | 'calendar' | 'clip' | 'raw' | 'organize'
 type Job = {
@@ -103,7 +103,11 @@ function SpeedChart({ values, id }: { values: number[]; id: string }) {
   )
 }
 
-function Card({ job, min, compact, onMin, onStop }: { job: Job; min: boolean; compact: boolean; onMin: () => void; onStop?: () => void }) {
+/** Zadania, które można wstrzymać i wznowić prosto z okienka postępu: rozpoznawanie twarzy i indeksowanie zdjęć po treści. */
+const pausable = (j: Job) => j.kind === 'faces' || j.kind === 'clip'
+const resumeJob = (k: Kind) => { (k === 'clip' ? clipStart() : facesStart()).catch(() => {}) }
+
+function Card({ job, min, compact, onMin, onStop, onResume }: { job: Job; min: boolean; compact: boolean; onMin: () => void; onStop?: () => void; onResume?: () => void }) {
   const halted = job.finished && job.stopped
   const { title, unit, Icon } = META[job.kind]
   const pct = job.total > 0 ? Math.min(100, (job.done / job.total) * 100) : 0
@@ -140,6 +144,7 @@ function Card({ job, min, compact, onMin, onStop }: { job: Job; min: boolean; co
             <div className="pd-sum">
               {halted ? `Wstrzymano po ${dur((job.doneAt ?? Date.now()) - job.start)}. To, co policzono, zostało zapisane. Uruchom ponownie, żeby wznowić od tego miejsca.` : job.error ? job.error : `Zrobione w ${dur((job.doneAt ?? Date.now()) - job.start)}`}
               {job.kind === 'faces' && !job.error && !halted && ` · znaleziono ${fmt(job.faces)} ${pl(job.faces, 'twarz', 'twarze', 'twarzy')}`}
+              {halted && onResume && <button className="wide pd-stop" style={{ marginTop: 8 }} onClick={onResume}><RefreshCw size={15} /> Wznów</button>}
               {job.skipped > 0 && ` Pominięto ${fmt(job.skipped)} ${pl(job.skipped, 'zdjęcie', 'zdjęcia', 'zdjęć')}, bo plik był niedostępny (np. odłączony dysk). Ich twarze zostają, a następna analiza spróbuje ponownie.`}
             </div>
           ) : (
@@ -217,6 +222,7 @@ export function ProgressDock() {
         touch('scan', done, total)
         if (done >= total) finish('scan')
       }),
+      listen<{ stopped: boolean; error: string | null }>('clip-done', (e) => finish('clip', { error: e.payload.error, stopped: !e.payload.error && !!e.payload.stopped })),
       listen<FacesProgress>('faces-progress', (e) => {
         const p = e.payload
         if (p.total === 0 && !p.finished) return
@@ -228,12 +234,17 @@ export function ProgressDock() {
     return () => { window.removeEventListener('fibo-job', onWindowJob); subs.forEach((s) => s.then((f) => f())); window.clearInterval(t); Object.values(timers.current).forEach((x) => window.clearTimeout(x)) }
   }, [])
 
+  const stopJob = (k: Kind) => {
+    setJobs((all) => (all[k] ? { ...all, [k]: { ...all[k]!, stopping: true } } : all))
+    ;(k === 'clip' ? clipStop() : facesStop()).catch(() => {})
+  }
+
   // Małe zadania (kilka zdjęć) nie migają oknem: pokazujemy je od 30 pozycji albo gdy trwają dłużej niż 1,5 s.
   const shown = (Object.keys(META) as Kind[]).map((k) => jobs[k]).filter((j): j is Job => !!j && (j.total >= 30 || Date.now() - j.start > 1500))
   if (!shown.length) return null
   return (
     <div className="pd-dock">
-      {shown.map((j) => <Card key={j.kind} job={j} min={min} compact={shown.length > 1} onMin={() => setMin((m) => !m)} onStop={j.kind === 'faces' && !j.finished ? () => { setJobs((all) => (all.faces ? { ...all, faces: { ...all.faces, stopping: true } } : all)); facesStop().catch(() => {}) } : undefined} />)}
+      {shown.map((j) => <Card key={j.kind} job={j} min={min} compact={shown.length > 1} onMin={() => setMin((m) => !m)} onResume={pausable(j) && j.finished && j.stopped ? () => { resumeJob(j.kind) } : undefined} onStop={pausable(j) && !j.finished ? () => { stopJob(j.kind) } : undefined} />)}
     </div>
   )
 }

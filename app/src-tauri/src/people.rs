@@ -1115,6 +1115,31 @@ pub struct FaceCard {
     face: i64,
     photo: i64,
     unsure: bool,
+    /** Stos twarzy do potwierdzenia: numer pierwszej twarzy stosu (twarz bez stosu ma stos równy własnemu numerowi). */
+    stack: i64,
+}
+
+/// Od jakiego podobieństwa dwie twarze do potwierdzenia trafiają na jeden stos (wysokie, bo stos ma wyglądać jak jedna twarz z serii zdjęć).
+const STACK_SIM: f32 = 0.65;
+
+/// Układa twarze (numer, zdjęcie, wektor) w stosy: do stosu wchodzi twarz podobna do wszystkich jego twarzy (powiązanie pełne) i z innego zdjęcia.
+/// Zwraca dla każdej twarzy numer pierwszej twarzy jej stosu.
+fn stack_faces(items: &[(i64, i64, Vec<f32>)], min_sim: f32) -> Vec<i64> {
+    let mut stacks: Vec<Vec<usize>> = Vec::new();
+    let mut out = vec![0i64; items.len()];
+    for (i, (_, photo, emb)) in items.iter().enumerate() {
+        let home = stacks.iter().position(|s| s.iter().all(|&j| items[j].1 != *photo && cosine(emb, &items[j].2) >= min_sim));
+        match home {
+            Some(k) => stacks[k].push(i),
+            None => stacks.push(vec![i]),
+        }
+    }
+    for s in &stacks {
+        for &i in s {
+            out[i] = items[s[0]].0;
+        }
+    }
+    out
 }
 
 /// Twarze osoby do widoku jak w Picasie: najpierw te do potwierdzenia (od najmniej pewnych), potem potwierdzone.
@@ -1136,10 +1161,26 @@ pub async fn person_face_cards(app: tauri::AppHandle, id: i64) -> Result<Vec<Fac
             )
             .map_err(|e| e.to_string())?;
         let rows = stmt
-            .query_map(params![id, UNSURE_BELOW as f64], |r| Ok(FaceCard { face: r.get(0)?, photo: r.get(1)?, unsure: r.get::<_, i64>(2)? != 0 }))
+            .query_map(params![id, UNSURE_BELOW as f64], |r| Ok(FaceCard { face: r.get(0)?, photo: r.get(1)?, unsure: r.get::<_, i64>(2)? != 0, stack: r.get(0)? }))
             .map_err(|e| e.to_string())?
             .filter_map(Result::ok)
             .collect();
+        let mut rows: Vec<FaceCard> = rows;
+        // Twarze do potwierdzenia o bardzo podobnym wyglądzie (np. seria zdjęć) trafiają na wspólne stosy: potwierdza się je razem.
+        let items: Vec<(i64, i64, Vec<f32>)> = rows
+            .iter()
+            .filter(|c| c.unsure)
+            .filter_map(|c| {
+                let blob: Vec<u8> = conn.query_row("SELECT emb FROM faces WHERE id = ?1", [c.face], |r| r.get(0)).ok()?;
+                Some((c.face, c.photo, open_embedding(&blob).ok()?))
+            })
+            .collect();
+        let stacks = stack_faces(&items, STACK_SIM);
+        for (it, st) in items.iter().zip(stacks) {
+            if let Some(c) = rows.iter_mut().find(|c| c.face == it.0) {
+                c.stack = st;
+            }
+        }
         Ok(rows)
     })
     .await
@@ -1852,6 +1893,24 @@ mod tests {
         assert_eq!(fs::read_dir(crops_dir(&tmp)).unwrap().count(), 3);
         assert_eq!(n("SELECT COUNT(*) FROM faces"), 3);
         assert_eq!(n("SELECT COUNT(*) FROM people"), 1);
+    }
+
+    #[test]
+    fn unsure_faces_stack_only_when_very_similar_and_from_different_photos() {
+        let a = unit(0);
+        let items = vec![
+            (1, 10, a.clone()),
+            (2, 11, near(0, 1, 0.1)),
+            (3, 10, near(0, 1, 0.1)), // to samo zdjęcie co twarz 1: nie wchodzi na jej stos
+            (4, 12, unit(7)),
+            (5, 13, a.clone()),
+        ];
+        let s = stack_faces(&items, 0.65);
+        assert_eq!(s[0], 1);
+        assert_eq!(s[1], 1, "podobna twarz z innego zdjęcia na jednym stosie");
+        assert_ne!(s[2], 1, "dwie twarze z jednego zdjęcia nie tworzą stosu");
+        assert_eq!(s[3], 4, "inna twarz sama");
+        assert_eq!(s[4], 1);
     }
 
     #[cfg(windows)]
