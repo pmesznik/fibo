@@ -183,12 +183,14 @@ export function Collage({ photos, onClose, onSaved, say }: {
           if (bmp !== full) full.close()
           out.push({ bmp, name: p.name })
         } catch { /* pomijamy uszkodzone pliki */ }
-        if (dead) return
+        if (dead) { out.forEach((i) => i.bmp.close()); return }
       }
       setItems(out); setLoading(false)
     })()
     return () => { dead = true }
   }, [used])
+  // Wczytane pomniejszone zdjęcia zwalniamy, gdy kolaż się zamyka albo lista się zmienia.
+  useEffect(() => () => { items.forEach((i) => i.bmp.close()) }, [items])
 
   const ratio = FORMATS[format].ratio
   const bg = BACKGROUNDS[bgIdx]

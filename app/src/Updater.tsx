@@ -75,16 +75,30 @@ export function useUpdater() {
   const install = async () => {
     if (!update) return
     setError(null); setDone(0); setTotal(0); setPhase('downloading')
+    // Wtyczka nie pozwala przerwać pobierania, ale zawieszone połączenie nie może zostawić okna na zawsze: po 90 s ciszy pokazujemy błąd.
+    let last = Date.now(), finished = false
+    const watchdog = window.setInterval(() => {
+      if (!finished && Date.now() - last > 90000) {
+        window.clearInterval(watchdog)
+        setError('Pobieranie przestało postępować (sprawdź połączenie z internetem). Możesz zamknąć to okno i spróbować później.')
+        setPhase('error')
+      }
+    }, 5000)
     try {
       await update.downloadAndInstall((e) => {
+        last = Date.now()
         if (e.event === 'Started') setTotal(e.data.contentLength ?? 0)
         else if (e.event === 'Progress') setDone((d) => d + e.data.chunkLength)
-        else if (e.event === 'Finished') setPhase('installing')
+        else if (e.event === 'Finished') { finished = true; setPhase('installing') }
       })
+      finished = true
       setPhase('installing')
       await relaunch()
     } catch (e) {
+      finished = true
       setError(String(e)); setPhase('error')
+    } finally {
+      window.clearInterval(watchdog)
     }
   }
 

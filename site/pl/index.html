@@ -12,7 +12,7 @@
 <link rel="alternate" hreflang="en" href="../en/">
 <link rel="stylesheet" href="../assets/site.css">
 </head>
-<body data-lang="pl" data-repo="pmesznik/fibo" data-version="0.4.28">
+<body data-lang="pl" data-repo="pmesznik/fibo" data-version="0.4.29">
 <a class="skip" href="#docs">Dokumentacja</a>
 <header class="top">
   <div class="wrap bar">
@@ -158,7 +158,7 @@
         <li><strong>Zmień datę…</strong> (menu prawym przyciskiem): ustaw dokładną datę i godzinę albo przesuń daty zaznaczonych zdjęć o dni, godziny i minuty (np. gdy aparat miał zły zegar). Zmiana dotyczy biblioteki FIBO, a plików zdjęć nie zmieniamy.</li>
         <li><strong>Kopiuj i wklej edycję</strong>: w edytorze „Kopiuj edycję” zapamiętuje korekty, efekty i napisy (bez kadrowania i obrotu), a „Wklej edycję” nakłada je na inne zdjęcie. W bibliotece <em>Wklej edycję do zaznaczonych…</em> robi to dla wielu zdjęć naraz i zapisuje wyniki jako kopie obok oryginałów.</li>
         <li><strong>Osoby w podglądzie</strong>: na zdjęciu widać znaczki rozpoznanych osób, a kliknięcie znaczka pokazuje wszystkie zdjęcia tej osoby.</li>
-        <li><strong>Kopia zapasowa biblioteki</strong> (menu): zapisuje dane biblioteki (tagi, oceny, albumy, ulubione, foldery) do pliku .db, a <em>Przywróć z kopii</em> wczytuje je z powrotem. Przed przywróceniem FIBO zapisuje kopię bezpieczeństwa obecnej biblioteki. Same zdjęcia i dane twarzy nie są w kopii.</li>
+        <li><strong>Kopia zapasowa biblioteki</strong> (menu): zapisuje dane biblioteki (tagi, oceny, albumy, ulubione, foldery) do pliku .db, a <em>Przywróć z kopii</em> wczytuje je z powrotem. Przed przywróceniem FIBO zapisuje kopię bezpieczeństwa obecnej biblioteki. Same zdjęcia, osoby i dane twarzy nie są w kopii.</li>
         <li><strong>Sortowanie</strong> zdjęć: od najnowszych, od najstarszych, po nazwie, po ocenie albo po rozmiarze pliku.</li>
         <li><strong>Zakres dat i braki</strong> (menu → Filtry): ogranicz widok do zdjęć z wybranych dat albo pokaż tylko zdjęcia bez tagów, bez lokalizacji lub bez oceny, żeby łatwo uzupełnić dane. Aktywne filtry widać jako znaczki nad zdjęciami.</li>
         <li><strong>Importuj z karty</strong> (menu, szybkie akcje): wskaż kartę pamięci lub folder, a potem folder biblioteki. FIBO kopiuje zdjęcia do podfolderów <em>RRRR/RRRR-MM-DD</em> według daty wykonania (z pliku, a bez niej według daty pliku) i dodaje je do biblioteki. Zdjęcia już zaimportowane są pomijane, nic nie jest nadpisywane, a karta zostaje nietknięta.</li>
@@ -216,7 +216,7 @@
       <p>Zakładka <strong>Osoby</strong> grupuje zdjęcia według osób. Funkcja jest <strong>domyślnie wyłączona</strong>: włączasz ją przyciskiem <em>Włącz rozpoznawanie twarzy</em> po przeczytaniu informacji o prywatności. Analiza działa w tle (można ją wstrzymać i wznowić), a nowe zdjęcia są dopisywane same.</p>
       <ul>
         <li><strong>Nic nie wychodzi z komputera.</strong> Twarze są wykrywane i porównywane lokalnie (modele YuNet i SFace, dołączone do instalatora, bez pobierania w trakcie działania). Moduł nie ma żadnego kodu sieciowego, a testy to sprawdzają.</li>
-        <li><strong>Wektory twarzy są zaszyfrowane</strong> kluczem Twojego konta Windows (DPAPI). Skopiowana baza FIBO ich nie ujawni.</li>
+        <li><strong>Wektory twarzy są zaszyfrowane</strong> kluczem Twojego konta Windows (DPAPI). Skopiowana baza FIBO ich nie ujawni. Małe wycinki twarzy do okna Osoby leżą w folderze danych programu jako zwykłe pliki i znikają po usunięciu danych twarzy.</li>
         <li><strong>Imiona zostają w bazie FIBO</strong> i nie trafiają do plików zdjęć ani XMP.</li>
         <li>Przy osobie możesz <em>nadać imię</em>, <em>wybrać okładkę</em> (twarz pokazywaną na liście: przycisk <em>Zmień okładkę</em> przy osobie albo <em>Okładka</em> przy znaczku osoby w podglądzie zdjęcia), <em>połączyć</em> ją z inną (gdy ta sama osoba trafiła do dwóch grup): przeciągnij jedną osobę na drugą i kliknij <em>Zatwierdź</em> albo <em>pominąć</em>. Kliknięcie osoby pokazuje jej zdjęcia.</li>
         <li><strong>Dokładność i szybkość.</strong> Zdjęcia są analizowane na kilku wątkach naraz, a twarze szukane w większej rozdzielczości, więc znajdują się także małe twarze w tle (około 40% więcej niż wcześniej na zdjęciach testowych). Wektor twarzy jest uśredniany z jej odbiciem lustrzanym, a każda twarz dostaje ocenę jakości (ostrość, rozmiar, ustawienie głowy). Słabe twarze nie zakładają osób, tylko dołączają do pewnych albo zostają bez grupy.</li>
@@ -233,7 +233,7 @@
       <p>Wyniki to grupy zdjęć z wymiarami, rozmiarem, folderem i datą. Przed usuwaniem możesz wskazać <em>który katalog jest ważniejszy</em>: kliknij katalogi w kolejności ważności (u góry widać ich pełne ścieżki, z przyciskiem otwarcia w Eksploratorze). Zdjęcie z ważniejszego katalogu jest wtedy <em>Głównym</em>, a jego kopie z innych katalogów są oznaczone jako <em>Duplikat</em>. Przy 20 lub więcej plikach do Kosza trzeba wpisać słowo USUŃ. Zdjęcie z koroną <em>Najlepsze</em> (największa rozdzielczość, potem największy plik) zostaje, a pozostałe są domyślnie zaznaczone do usunięcia. W każdej grupie musi zostać co najmniej jedno zdjęcie. <strong>Przenieś do Kosza</strong> pyta o zgodę i przenosi pliki do Kosza Windows, skąd można je przywrócić.</p></section>
     <section id="data"><h3 class="sec-title">Dane i prywatność</h3>
       <ul>
-        <li><strong>Zdjęcia nie opuszczają komputera.</strong> FIBO nie ma kont, nie wysyła zdjęć ani statystyk. Jedyne połączenie z internetem to pobieranie kafelków mapy po otwarciu zakładki Mapa (i ewentualne pobranie WebView2 przy instalacji).</li>
+        <li><strong>Zdjęcia nie opuszczają komputera.</strong> FIBO nie ma kont, nie wysyła zdjęć ani statystyk. Program łączy się z internetem tylko w trzech sytuacjach: po kafelki mapy (po otwarciu zakładki Mapa albo okna wyboru lokalizacji; serwer map widzi wtedy oglądany obszar i Twój adres IP), po informację o nowej wersji z GitHuba (po uruchomieniu i co jakiś czas podczas pracy, bez żadnych danych o Tobie) oraz przy instalacji, gdy trzeba pobrać WebView2.</li>
         <li>Biblioteka (indeks, oceny, tagi, współrzędne) to baza <code>library.db</code> w folderze <code>%APPDATA%\pl.local.menedzerzdjec</code>, a miniatury leżą w jego podfolderze <code>thumbs</code>. Kopię zapasową zrobisz, kopiując ten folder. Folder nazywa się tak ze względów technicznych i nie zmienia się przy aktualizacjach.</li>
         <li>Kopie oryginałów po edycji leżą w folderach <code>.originals</code> obok zdjęć, a tagi, oceny i ulubione dodatkowo w plikach <code>.xmp</code> obok zdjęć (można to wyłączyć w menu).</li>
         <li>Usunięcie programu nie usuwa Twoich zdjęć ani biblioteki.</li>
@@ -282,7 +282,7 @@ npx tauri dev      # tryb deweloperski
 npx tauri build    # instalator w src-tauri/target/release/bundle/nsis</code></pre>
       <p><strong>Nowa wersja:</strong> <code>node scripts/bump-version.mjs 0.2.0</code> ustawia numer wersji w trzech plikach. Po wypchnięciu tagu <code>v0.2.0</code> GitHub Actions buduje instalator i publikuje wydanie z plikiem <code>FIBO_0.2.0_x64-setup.exe</code>. Strona sama pobiera numer najnowszego wydania.</p></section>
     <section id="license"><h3 class="sec-title">Licencja</h3>
-      <p>FIBO jest wolnym oprogramowaniem na licencji <a href="https://github.com/pmesznik/fibo/blob/main/LICENSE">GNU GPL w wersji 2 lub nowszej</a>. Możesz go używać, zmieniać i rozpowszechniać na warunkach tej licencji. Program jest dostarczany bez gwarancji. Mapa korzysta z danych © uczestnicy OpenStreetMap i kafelków OpenFreeMap.</p></section>
+      <p>FIBO jest wolnym oprogramowaniem na licencji <a href="https://github.com/pmesznik/fibo/blob/main/LICENSE">GNU GPL w wersji 2 lub nowszej</a>. Możesz go używać, zmieniać i rozpowszechniać na warunkach tej licencji. Program jest dostarczany bez gwarancji. Mapa korzysta z danych © uczestnicy OpenStreetMap i kafelków OpenFreeMap. Pełna lista składników innych autorów (w tym modeli twarzy) i ich licencji jest w pliku <a href="https://github.com/pmesznik/fibo/blob/main/app/src-tauri/THIRD_PARTY_NOTICES.md">THIRD_PARTY_NOTICES.md</a>, dołączonym też do instalatora.</p></section>
   </div>
 </section>
 </main>

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { FolderOpen, Plus, X } from './FiboIcons'
 import type { Album } from './api'
+import { pl } from './pl'
 
 function Shell({ title, onClose, children, label }: { title: string; onClose: () => void; children: React.ReactNode; label: string }) {
   useEffect(() => {
@@ -68,7 +69,7 @@ export function AlbumPicker({ albums, count, onPick, onCreate, onClose }: {
   return (
     <Shell title="Dodaj do albumu" onClose={onClose} label="Dodaj do albumu">
       <p style={{ margin: '0 0 10px', color: 'var(--muted)', fontSize: 13.5 }}>
-        {count} {count === 1 ? 'zdjęcie' : count < 5 ? 'zdjęcia' : 'zdjęć'}. Zdjęcie może być w wielu albumach, a pliki zostają na swoim miejscu.
+        {count} {pl(count, 'zdjęcie', 'zdjęcia', 'zdjęć')}. Zdjęcie może być w wielu albumach, a pliki zostają na swoim miejscu.
       </p>
       <button className="wide" style={{ marginTop: 0 }} onClick={onCreate}><Plus size={18} /> Nowy album…</button>
       {albums.length === 0 && <p style={{ margin: '12px 2px 0', color: 'var(--muted)', fontSize: 13.5 }}>Nie masz jeszcze albumów. Załóż pierwszy przyciskiem powyżej.</p>}

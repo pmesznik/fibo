@@ -75,7 +75,7 @@ export function ExportDialog({ ids, onClose, say, initialSize, photos }: { ids: 
       if (!dir) return
       setBusy(true)
       const [file, pages] = await exportPdf(ids, dir, layout[0], layout[1], 1800, quality)
-      say(`PDF gotowy (${pages} ${pages === 1 ? 'strona' : 'stron'} A4): ${file}. Otwórz go i wydrukuj albo wyślij dalej`, 'ok')
+      say(`PDF gotowy (${pages} ${pl(pages, 'strona', 'strony', 'stron')} A4): ${file}. Otwórz go i wydrukuj albo wyślij dalej`, 'ok')
     } catch (e) { say(`${e}`, 'err') } finally { setBusy(false) }
   }
   const runGpx = async () => {
@@ -84,7 +84,7 @@ export function ExportDialog({ ids, onClose, say, initialSize, photos }: { ids: 
       if (!dir) return
       setBusy(true)
       const [file, n] = await exportGpx(ids, dir)
-      say(`Zapisano ${n} ${n === 1 ? 'lokalizację' : 'lokalizacji'} do pliku: ${file}`, 'ok')
+      say(`Zapisano ${n} ${pl(n, 'lokalizację', 'lokalizacje', 'lokalizacji')} do pliku: ${file}`, 'ok')
     } catch (e) { say(`${e}`, 'err') } finally { setBusy(false) }
   }
   const runGif = async () => {
@@ -114,7 +114,7 @@ export function ExportDialog({ ids, onClose, say, initialSize, photos }: { ids: 
           {tab === 'copies' && (
           <>
           <p style={{ margin: '0 0 8px', color: 'var(--muted)', fontSize: 13 }}>
-            {ids.length} {ids.length === 1 ? 'zdjęcie' : 'zdjęć'}. Kopie są zapisywane jako JPEG bez danych EXIF (także bez lokalizacji GPS). Oryginały zostają nietknięte, a istniejące pliki nie są nadpisywane.
+            {ids.length} {pl(ids.length, 'zdjęcie', 'zdjęcia', 'zdjęć')}. Kopie są zapisywane jako JPEG bez danych EXIF (także bez lokalizacji GPS). Oryginały zostają nietknięte, a istniejące pliki nie są nadpisywane.
           </p>
           <label>Dłuższy bok</label>
           <div className="chips">
@@ -185,7 +185,7 @@ export function ExportDialog({ ids, onClose, say, initialSize, photos }: { ids: 
                 </div>
                 <div style={{ fontSize: 13, color: 'var(--muted)' }}>
                   <b style={{ color: 'var(--text)' }}>Przegląd przed drukiem</b><br />
-                  {pages} {pages === 1 ? 'strona' : pages < 5 ? 'strony' : 'stron'} A4, po {per} {per === 1 ? 'zdjęciu' : 'zdjęć'} na stronie. Zdjęcia nie są przycinane, tylko dopasowane do pola.
+                  {pages} {pl(pages, 'strona', 'strony', 'stron')} A4, po {per} {pl(per, 'zdjęciu', 'zdjęcia', 'zdjęć')} na stronie. Zdjęcia nie są przycinane, tylko dopasowane do pola.
                 </div>
               </div>
             )

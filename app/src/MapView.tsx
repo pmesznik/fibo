@@ -7,6 +7,7 @@ import { MapPinOff, Pause, Play, RefreshCw, Sun, X } from './FiboIcons'
 import type { Photo } from './api'
 import { Thumb } from './Thumb'
 import { MERCATOR_LAT, drawNight } from './daynight'
+import { pl } from './pl'
 
 // Vite przepakowuje bibliotekę i gubi ścieżkę do workera, więc podajemy ją wprost.
 setWorkerUrl(workerUrl)
@@ -341,7 +342,7 @@ export function MapView({ photos, total, refreshing, onRefresh, onOpen }: {
         <span aria-hidden style={{ color: 'var(--accent)', display: 'inline-flex' }}><Sun size={20} /></span>
         <div style={{ minWidth: 0, flex: '0 0 auto', lineHeight: 1.2 }}>
           <div style={{ fontWeight: 650, fontSize: 13.5 }} aria-live="off">{clockText}</div>
-          <div style={{ color: 'var(--muted)', fontSize: 11.5 }}>{mode === 'live' ? 'teraz, czas lokalny' : offsetLabel(offset)}</div>
+          <div style={{ color: 'var(--muted)', fontSize: 12 }}>{mode === 'live' ? 'teraz, czas lokalny' : offsetLabel(offset)}</div>
         </div>
         <input type="range" min={-RANGE} max={RANGE} step={5} value={Math.round(offset)} aria-label="Godzina na mapie względem teraz"
           onChange={(e) => onSlide(+e.target.value)} style={{ flex: 1, minWidth: 80 }} />
@@ -355,7 +356,7 @@ export function MapView({ photos, total, refreshing, onRefresh, onOpen }: {
       {picked && (
         <aside className="sheet glass" aria-label="Zdjęcia z tego miejsca" style={{ zIndex: 1200 }}>
           <div className="dr-head" style={{ paddingBottom: 0 }}>
-            <span style={{ fontSize: 18 }}>{picked.photos.length} {picked.photos.length === 1 ? 'zdjęcie' : picked.photos.length < 5 ? 'zdjęcia' : 'zdjęć'}</span>
+            <span style={{ fontSize: 18 }}>{picked.photos.length} {pl(picked.photos.length, 'zdjęcie', 'zdjęcia', 'zdjęć')}</span>
             <button className="ico" aria-label="Zamknij panel" onClick={() => setPicked(null)}><X size={22} /></button>
           </div>
           <div style={{ padding: '2px 16px 8px', color: 'var(--muted)', fontSize: 12.5 }}>{picked.lat.toFixed(4)}°, {picked.lon.toFixed(4)}°</div>

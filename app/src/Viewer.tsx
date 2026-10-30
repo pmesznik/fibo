@@ -11,6 +11,7 @@ import { copyEdit, deletePreset, getClip, loadPresets, savePreset, type Preset }
 import { Thumb } from './Thumb'
 import { Chip, Sec, Toast } from './ui'
 import { TagEditor, type TagCount } from './TagEditor'
+import { pl } from './pl'
 import {
   EFFECTS, EMPTY_EDIT, ZERO_ADJUST, isEdited, renderEdit, renderGeometry, MAX_SPOTS, neutralFromSample, MAX_TEXTS, MAX_TEXT_LEN, type TextItem,
   type Adjust, type EditState,
@@ -92,6 +93,10 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
   const photo = photos[index]
 
   const [bitmap, setBitmap] = useState<ImageBitmap | null>(null)
+  // Bitmapa zajmuje dziesiątki MB: poprzednią zwalniamy po zmianie zdjęcia i przy zamknięciu podglądu (z krótkim opóźnieniem, bo rysowanie może jeszcze z niej korzystać).
+  const bmpRef = useRef<ImageBitmap | null>(null)
+  const releaseBitmap = () => { const old = bmpRef.current; bmpRef.current = null; if (old) window.setTimeout(() => old.close(), 600) }
+  useEffect(() => releaseBitmap, [])
   const [loadError, setLoadError] = useState<string | null>(null)
   const [edit, setEdit] = useState<EditState>(EMPTY_EDIT)
   const [undo, setUndo] = useState<EditState[]>([])
@@ -140,11 +145,11 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
   useEffect(() => {
     if (!photo) return
     let dead = false
-    setBitmap(null); setLoadError(null); setEdit(EMPTY_EDIT); setUndo([]); setRedo([]); setRedEyeMode(false); setSelText(null)
+    releaseBitmap(); setBitmap(null); setLoadError(null); setEdit(EMPTY_EDIT); setUndo([]); setRedo([]); setRedEyeMode(false); setSelText(null)
     setZoom(1); setPan({ x: 0, y: 0 }); setCompare(false)
     readImage(photo.id)
       .then((buf) => decodeBitmap(buf, photo.name))
-      .then((b) => { if (!dead) setBitmap(b) })
+      .then((b) => { if (dead) b.close(); else { bmpRef.current = b; setBitmap(b) } })
       .catch((e) => !dead && setLoadError(String(e)))
     hasOriginal(photo.id).then((v) => !dead && setOriginal(v)).catch(() => {})
     return () => { dead = true }
@@ -478,7 +483,7 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
       <div className="glass flex items-center gap-1" style={{ position: 'absolute', left: 'calc(24px + var(--bar-h))', top: 'calc(12px + var(--sat))', height: 'var(--bar-h)', padding: '0 8px 0 16px', borderRadius: 'var(--r-lg)', maxWidth: `calc(100% - ${sheet ? 480 : 140}px)` }}>
         <div className="min-w-0" style={{ marginRight: 8 }}>
           <div className="truncate" style={{ fontWeight: 600, fontSize: 14, lineHeight: 1.2 }}>{photo.name}</div>
-          <div style={{ color: 'var(--muted)', fontSize: 11.5, lineHeight: 1.1 }}>{index + 1} / {photos.length}{dirty ? ' · zmieniono' : ''}</div>
+          <div style={{ color: 'var(--muted)', fontSize: 12, lineHeight: 1.1 }}>{index + 1} / {photos.length}{dirty ? ' · zmieniono' : ''}</div>
         </div>
         <div className="flex">
           {[1, 2, 3, 4, 5].map((n) => (
@@ -641,7 +646,7 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
                   <button id="preset-save" className="chip" disabled={!presetName.trim()} onClick={() => { if (savePreset(presetName, edit)) { setPresets(loadPresets()); setPresetName(''); say('Zestaw zapisany', 'ok') } else say('Najpierw ustaw korekty, efekty lub napis') }}>Zapisz</button>
                 </div>
               </Sec>
-              <Sec id="fx-text" icon={<Pencil size={17} />} title="Tekst na zdjęciu" hint={edit.texts.length ? `${edit.texts.length} ${edit.texts.length === 1 ? 'napis' : 'napisy'}` : 'Bez napisów'} defaultOpen={edit.texts.length > 0}>
+              <Sec id="fx-text" icon={<Pencil size={17} />} title="Tekst na zdjęciu" hint={edit.texts.length ? `${edit.texts.length} ${pl(edit.texts.length, 'napis', 'napisy', 'napisów')}` : 'Bez napisów'} defaultOpen={edit.texts.length > 0}>
                 <label htmlFor="new-text">Nowy napis</label>
                 <div style={{ display: 'flex', gap: 6 }}>
                   <input id="new-text" type="text" maxLength={MAX_TEXT_LEN} value={newText} placeholder="Wpisz tekst" autoComplete="off"

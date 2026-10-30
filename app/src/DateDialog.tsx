@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useEscape } from './ui'
 import { X } from './FiboIcons'
 import { setDate, shiftDates, type Photo } from './api'
+import { pl } from './pl'
 
 /** Zmiana daty zdjęć: ustawienie dokładnej daty albo przesunięcie o dni, godziny i minuty (np. zły zegar aparatu).
  *  Dotyczy biblioteki FIBO, plików zdjęć nie zmieniamy. */
@@ -30,7 +31,7 @@ export function DateDialog({ photos, onClose, onDone, say }: {
     try {
       const ids = photos.map((p) => p.id)
       const n = mode === 'set' ? await setDate(ids, value.replace('T', ' ') + ':00') : await shiftDates(ids, total)
-      say(`Zmieniono datę: ${n} ${n === 1 ? 'zdjęcie' : 'zdjęć'}`, 'ok')
+      say(`Zmieniono datę: ${n} ${pl(n, 'zdjęcie', 'zdjęcia', 'zdjęć')}`, 'ok')
       onDone(); onClose()
     } catch (e) { say(`Błąd: ${e}`, 'err') } finally { setBusy(false) }
   }
@@ -41,7 +42,7 @@ export function DateDialog({ photos, onClose, onDone, say }: {
       <div className="fixed inset-0 z-[1700]" style={{ background: 'rgba(0,0,0,.45)' }} onClick={onClose} />
       <div className="glass fixed left-1/2 top-1/2 z-[1800] flex max-h-[85vh] w-[min(92vw,420px)] -translate-x-1/2 -translate-y-1/2 flex-col" style={{ borderRadius: 'var(--r-lg)' }} role="dialog" aria-label="Zmień datę zdjęć">
         <div className="dr-head" style={{ paddingBottom: 0 }}>
-          <span>Zmień datę: {photos.length} {photos.length === 1 ? 'zdjęcie' : 'zdjęć'}</span>
+          <span>Zmień datę: {photos.length} {pl(photos.length, 'zdjęcie', 'zdjęcia', 'zdjęć')}</span>
           <button className="ico" aria-label="Zamknij" onClick={onClose}><X size={22} /></button>
         </div>
         <div style={{ padding: '4px 16px 16px', overflowY: 'auto' }}>

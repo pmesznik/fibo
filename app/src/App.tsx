@@ -515,7 +515,7 @@ export default function App() {
   const patch = (id: number, change: Partial<Photo>) =>
     setAll((list) => list.map((p) => (p.id === id ? { ...p, ...change } : p)))
   const current = all.find((p) => p.id === selected) ?? null
-  const chosen = useMemo(() => photos.filter((p) => sel.includes(p.id)), [photos, sel])
+  const chosen = useMemo(() => { const set = new Set(sel); return photos.filter((p) => set.has(p.id)) }, [photos, sel])
 
   /** Kliknięcie w zdjęcie: zwykłe zaznacza jedno, Ctrl dokłada, Shift zaznacza zakres. */
   const pick = (id: number, e: { ctrlKey: boolean; metaKey: boolean; shiftKey: boolean }) => {
@@ -892,7 +892,7 @@ export default function App() {
   }
 
   const filtersOn = minStars > 0 || color !== null || !!dateFrom || !!dateTo || missing !== '' || sort !== 'date-desc' || !!folder || activeTags.length > 0
-  const selPhotos = sel.length ? all.filter((p) => sel.includes(p.id)) : []
+  const selPhotos = useMemo(() => (sel.length ? all.filter((p) => selSet.has(p.id)) : []), [all, sel, selSet])
   const subtitle = busy ? `Skanowanie… ${progress}` : `${photos.length} z ${all.length} ${pl(all.length, 'zdjęcia', 'zdjęć', 'zdjęć')}${selPhotos.length ? ` · zaznaczono ${selPhotos.length} (${sizeText(selPhotos)})` : ''}`
 
   return (

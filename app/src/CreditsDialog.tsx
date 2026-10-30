@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useEscape } from './ui'
 import { X } from './FiboIcons'
 import { setCredits, type Photo } from './api'
+import { pl } from './pl'
 
 /** Autor i prawa autorskie wybranych zdjęć. Zapisują się w bibliotece i w plikach XMP obok zdjęć (pliki zdjęć zostają nietknięte). */
 export function CreditsDialog({ photos, onClose, onDone, say }: { photos: Photo[]; onClose: () => void; onDone: () => void; say: (m: string, kind?: 'ok' | 'err') => void }) {
@@ -14,7 +15,7 @@ export function CreditsDialog({ photos, onClose, onDone, say }: { photos: Photo[
     setBusy(true)
     try {
       await setCredits(photos.map((p) => p.id), author, copyright)
-      say(`Zapisano autora i prawa autorskie: ${photos.length} ${photos.length === 1 ? 'zdjęcie' : photos.length < 5 ? 'zdjęcia' : 'zdjęć'}`, 'ok')
+      say(`Zapisano autora i prawa autorskie: ${photos.length} ${pl(photos.length, 'zdjęcie', 'zdjęcia', 'zdjęć')}`, 'ok')
       onDone(); onClose()
     } catch (e) { say(`Błąd: ${e}`, 'err') } finally { setBusy(false) }
   }
@@ -28,7 +29,7 @@ export function CreditsDialog({ photos, onClose, onDone, say }: { photos: Photo[
         </div>
         <div style={{ padding: '0 16px 16px' }}>
           <p style={{ margin: '0 0 6px', color: 'var(--muted)', fontSize: 13 }}>
-            {photos.length} {photos.length === 1 ? 'zdjęcie' : 'zdjęć'}. Dane trafiają do biblioteki FIBO i do plików XMP obok zdjęć (jeśli zapis XMP jest włączony), a same zdjęcia się nie zmieniają.
+            {photos.length} {pl(photos.length, 'zdjęcie', 'zdjęcia', 'zdjęć')}. Dane trafiają do biblioteki FIBO i do plików XMP obok zdjęć (jeśli zapis XMP jest włączony), a same zdjęcia się nie zmieniają.
             {differs && ' Wybrane zdjęcia mają różne wartości: zapis ustawi wszystkim te same.'}
           </p>
           <label htmlFor="cr-author" style={{ marginTop: 6 }}>Autor</label>

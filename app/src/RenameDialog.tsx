@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useEscape } from './ui'
 import { X } from './FiboIcons'
 import { renameBatch, type Photo } from './api'
+import { pl } from './pl'
 
 const dateOf = (p: Photo) => {
   const t = p.taken ?? new Date(p.modified * 1000).toISOString()
@@ -41,7 +42,7 @@ export function RenameDialog({ photos, onClose, onDone, say }: {
       <div className="fixed inset-0 z-[1700]" style={{ background: 'rgba(0,0,0,.45)' }} onClick={onClose} />
       <div className="glass fixed left-1/2 top-1/2 z-[1800] flex max-h-[85vh] w-[min(92vw,440px)] -translate-x-1/2 -translate-y-1/2 flex-col" style={{ borderRadius: 'var(--r-lg)' }} role="dialog" aria-label="Zmień nazwy zdjęć">
         <div className="dr-head" style={{ paddingBottom: 0 }}>
-          <span>Zmień nazwy: {photos.length} {photos.length === 1 ? 'zdjęcie' : 'zdjęć'}</span>
+          <span>Zmień nazwy: {photos.length} {pl(photos.length, 'zdjęcie', 'zdjęcia', 'zdjęć')}</span>
           <button className="ico" aria-label="Zamknij" onClick={onClose}><X size={22} /></button>
         </div>
         <div style={{ padding: '4px 16px 16px', overflowY: 'auto' }}>

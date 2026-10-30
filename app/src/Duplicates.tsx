@@ -240,7 +240,7 @@ export function Duplicates({ all, suspended, onClose, onOpen, onTrashed, say }: 
           <div className="fixed inset-0 z-[10]" style={{ background: 'rgba(0,0,0,.45)' }} onClick={() => setConfirm(false)} />
           <div className="glass fixed left-1/2 top-1/2 z-[11] w-[min(92vw,400px)] -translate-x-1/2 -translate-y-1/2 p-5" style={{ borderRadius: 'var(--r-lg)' }} role="alertdialog" aria-label="Potwierdzenie">
             <h2 style={{ margin: 0, font: '700 20px/1.2 system-ui' }}>Przenieść do Kosza?</h2>
-            <p style={{ color: 'var(--muted)', margin: '6px 0 16px' }}>{markedList.length} {markedList.length === 1 ? 'plik zostanie przeniesiony' : 'plików zostanie przeniesionych'} do Kosza Windows ({mb(markedBytes)}). Możesz je stamtąd przywrócić.</p>
+            <p style={{ color: 'var(--muted)', margin: '6px 0 16px' }}>{markedList.length} {pl(markedList.length, 'plik zostanie przeniesiony', 'pliki zostaną przeniesione', 'plików zostanie przeniesionych')} do Kosza Windows ({mb(markedBytes)}). Możesz je stamtąd przywrócić.</p>
             {markedList.length >= 20 && (
               <>
                 <label htmlFor="dup-word" style={{ marginTop: 0 }}>Aby potwierdzić, wpisz USUŃ</label>

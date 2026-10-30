@@ -5,6 +5,7 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 import { X, MapPin, MapPinOff } from './FiboIcons'
 import { setLocation } from './api'
 import './MapView' // ustawia ścieżkę workera mapy
+import { pl } from './pl'
 
 const STYLE = 'https://tiles.openfreemap.org/styles/liberty'
 
@@ -68,7 +69,7 @@ export function LocationDialog({ ids, initial, onClose, onSaved, say }: {
       <div className="fixed inset-0 z-[1700]" style={{ background: 'rgba(0,0,0,.45)' }} onClick={onClose} />
       <div className="glass fixed left-1/2 top-1/2 z-[1800] flex max-h-[92vh] w-[min(94vw,560px)] -translate-x-1/2 -translate-y-1/2 flex-col" style={{ borderRadius: 'var(--r-lg)' }} role="dialog" aria-label="Ustaw lokalizację zdjęć">
         <div className="dr-head" style={{ paddingBottom: 0 }}>
-          <span>Lokalizacja: {ids.length} {ids.length === 1 ? 'zdjęcie' : 'zdjęć'}</span>
+          <span>Lokalizacja: {ids.length} {pl(ids.length, 'zdjęcie', 'zdjęcia', 'zdjęć')}</span>
           <button className="ico" aria-label="Zamknij" onClick={onClose}><X size={22} /></button>
         </div>
         <div style={{ padding: '4px 16px 16px', overflowY: 'auto' }}>

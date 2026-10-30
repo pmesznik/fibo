@@ -69,6 +69,9 @@ struct Photo {
 
 fn open_db(path: &Path) -> rusqlite::Result<Connection> {
     let conn = Connection::open(path)?;
+    // Tryb WAL: zapisy (np. analiza twarzy) nie blokują odczytów i są wielokrotnie szybsze niż domyślny dziennik. Dla bazy w pamięci pragma jest ignorowana.
+    let _: String = conn.query_row("PRAGMA journal_mode = WAL", [], |r| r.get(0)).unwrap_or_default();
+    conn.execute_batch("PRAGMA synchronous = NORMAL; PRAGMA busy_timeout = 5000;")?;
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS photos (
             id INTEGER PRIMARY KEY,
@@ -642,15 +645,11 @@ fn save_edit(state: State<'_, AppState>, request: tauri::ipc::Request<'_>) -> Re
             n += 1;
         }
     } else {
-        let backup_dir = dir.join(ORIGINALS_DIR);
-        let backup = backup_dir.join(path.file_name().ok_or("brak nazwy")?);
-        if !backup.exists() {
-            fs::create_dir_all(&backup_dir).map_err(|e| e.to_string())?;
-            fs::copy(&path, &backup).map_err(|e| e.to_string())?;
-        }
+        let backup = dir.join(ORIGINALS_DIR).join(path.file_name().ok_or("brak nazwy")?);
+        ensure_original_backup(&path, &backup)?;
         path.clone()
     };
-    fs::write(&target, bytes).map_err(|e| e.to_string())?;
+    write_atomic(&target, bytes)?;
     reindex(&state, &target, taken, camera)
 }
 
@@ -733,7 +732,8 @@ fn restore_original(state: State<'_, AppState>, id: i64) -> Result<i64, String> 
     if !backup.exists() {
         return Err("Brak kopii oryginału".into());
     }
-    fs::copy(&backup, p).map_err(|e| e.to_string())?;
+    let original = fs::read(&backup).map_err(|e| e.to_string())?;
+    write_atomic(p, &original)?;
     reindex(&state, p, taken, camera)
 }
 
@@ -1318,6 +1318,67 @@ fn forget_photo(conn: &Connection, id: i64) -> rusqlite::Result<()> {
     Ok(())
 }
 
+/// Zapis pliku przez plik tymczasowy: przerwanie (brak prądu, pełny dysk) zostawia albo starą, albo nową całą zawartość, nigdy ułamek.
+pub(crate) fn write_atomic(target: &Path, bytes: &[u8]) -> Result<(), String> {
+    use std::io::Write;
+    let mut tmp = target.as_os_str().to_os_string();
+    tmp.push(".fibo-tmp");
+    let tmp = PathBuf::from(tmp);
+    let result = (|| -> std::io::Result<()> {
+        let mut f = fs::File::create(&tmp)?;
+        f.write_all(bytes)?;
+        f.sync_all()?;
+        drop(f);
+        fs::rename(&tmp, target)
+    })();
+    result.map_err(|e| {
+        let _ = fs::remove_file(&tmp);
+        e.to_string()
+    })
+}
+
+/// Kopia oryginału przed pierwszą zmianą zdjęcia. Powstaje przez plik tymczasowy i jest sprawdzana (rozmiar), więc przerwane kopiowanie
+/// nie zostawia uciętej „kopii”, której późniejsze przywracanie zniszczyłoby zdjęcie. Pusty plik kopii (ślad po dawnym błędzie) jest robiony od nowa.
+pub(crate) fn ensure_original_backup(src: &Path, backup: &Path) -> Result<(), String> {
+    if fs::metadata(backup).map(|m| m.len() > 0).unwrap_or(false) {
+        return Ok(());
+    }
+    if let Some(dir) = backup.parent() {
+        fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
+    let mut tmp = backup.as_os_str().to_os_string();
+    tmp.push(".fibo-tmp");
+    let tmp = PathBuf::from(tmp);
+    let result = (|| -> Result<(), String> {
+        let n = fs::copy(src, &tmp).map_err(|e| e.to_string())?;
+        if n != fs::metadata(src).map_err(|e| e.to_string())?.len() {
+            return Err("Kopia oryginału jest niepełna (brak miejsca na dysku?). Zdjęcie nie zostało zmienione".into());
+        }
+        fs::rename(&tmp, backup).map_err(|e| e.to_string())
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(&tmp);
+    }
+    result
+}
+
+/// Usuwa z katalogu miniatur pliki zdjęć, które zniknęły z biblioteki (nazwa miniatury to „numer_data.jpg”). Jedno przejście katalogu dla wszystkich.
+fn sweep_thumbs(thumbs: &Path, gone: &std::collections::HashSet<i64>) {
+    if gone.is_empty() {
+        return;
+    }
+    let Ok(dir) = fs::read_dir(thumbs) else { return };
+    for e in dir.flatten() {
+        let name = e.file_name();
+        let name = name.to_string_lossy();
+        if let Some(id) = name.split('_').next().and_then(|n| n.parse::<i64>().ok()) {
+            if name.ends_with(".jpg") && gone.contains(&id) {
+                let _ = fs::remove_file(e.path());
+            }
+        }
+    }
+}
+
 #[derive(Serialize, Default, Debug)]
 struct RescanReport {
     added: usize,
@@ -1347,17 +1408,26 @@ fn rescan_with_stats(state: &AppState, stats: &dyn Fn(usize, usize)) -> Result<R
         rep.added += scan_blocking_stats(state, root, &|_| {}, stats)?;
     }
     let rows = all_photo_ids(state)?;
-    let conn = state.db.lock().map_err(|e| e.to_string())?;
-    for (id, path) in rows {
-        let p = Path::new(&path);
-        let gone = matches!(fs::metadata(p), Err(e) if e.kind() == std::io::ErrorKind::NotFound);
-        if gone && p.parent().map(|d| d.is_dir()).unwrap_or(false) {
-            forget_photo(&conn, id).map_err(|e| e.to_string())?;
-            rep.removed += 1;
+    // Sprawdzanie plików (dysk może spać albo być siecią) odbywa się bez blokady bazy.
+    let missing: Vec<i64> = rows
+        .iter()
+        .filter(|(_, path)| {
+            let p = Path::new(path);
+            matches!(fs::metadata(p), Err(e) if e.kind() == std::io::ErrorKind::NotFound) && p.parent().map(|d| d.is_dir()).unwrap_or(false)
+        })
+        .map(|(id, _)| *id)
+        .collect();
+    if !missing.is_empty() {
+        let conn = state.db.lock().map_err(|e| e.to_string())?;
+        let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+        for id in &missing {
+            forget_photo(&tx, *id).map_err(|e| e.to_string())?;
         }
-    }
-    if rep.removed > 0 {
-        conn.execute("DELETE FROM tags WHERE id NOT IN (SELECT tag_id FROM photo_tags)", []).map_err(|e| e.to_string())?;
+        tx.execute("DELETE FROM tags WHERE id NOT IN (SELECT tag_id FROM photo_tags)", []).map_err(|e| e.to_string())?;
+        tx.commit().map_err(|e| e.to_string())?;
+        rep.removed = missing.len();
+        drop(conn);
+        sweep_thumbs(&state.thumbs, &missing.iter().copied().collect());
     }
     Ok(rep)
 }
@@ -2339,26 +2409,43 @@ fn hidden_count(state: State<'_, AppState>) -> Result<i64, String> {
     conn.query_row("SELECT COUNT(*) FROM photos WHERE hidden = 1", [], |r| r.get(0)).map_err(|e| e.to_string())
 }
 
-/// Przywraca do biblioteki wszystkie ukryte zdjęcia, których pliki nadal istnieją (reszta jest zapominana).
+/// Przywraca do biblioteki wszystkie ukryte zdjęcia, których pliki nadal istnieją. Zapominane są tylko te, których pliku nie ma w istniejącym folderze;
+/// zdjęcia z odłączonego dysku albo niedostępnej sieci zostają ukryte, z tagami, albumami i ocenami.
 #[tauri::command]
-fn restore_hidden(state: State<'_, AppState>) -> Result<usize, String> {
-    let rows: Vec<(i64, String)> = {
-        let conn = state.db.lock().map_err(|e| e.to_string())?;
-        let mut stmt = conn.prepare("SELECT id, path FROM photos WHERE hidden = 1").map_err(|e| e.to_string())?;
-        let v = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?))).map_err(|e| e.to_string())?.filter_map(Result::ok).collect();
-        v
-    };
-    let conn = state.db.lock().map_err(|e| e.to_string())?;
-    let mut n = 0;
-    for (id, path) in rows {
-        if Path::new(&path).is_file() {
-            conn.execute("UPDATE photos SET hidden = 0 WHERE id = ?1", [id]).map_err(|e| e.to_string())?;
-            n += 1;
-        } else {
-            forget_photo(&conn, id).map_err(|e| e.to_string())?;
+async fn restore_hidden(app: tauri::AppHandle) -> Result<usize, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let rows: Vec<(i64, String)> = {
+            let conn = state.db.lock().map_err(|e| e.to_string())?;
+            let mut stmt = conn.prepare("SELECT id, path FROM photos WHERE hidden = 1").map_err(|e| e.to_string())?;
+            let v = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?))).map_err(|e| e.to_string())?.filter_map(Result::ok).collect();
+            v
+        };
+        // Pliki sprawdzamy bez blokady bazy.
+        let (mut back, mut forget) = (Vec::new(), Vec::new());
+        for (id, path) in rows {
+            let p = Path::new(&path);
+            if p.is_file() {
+                back.push(id);
+            } else if matches!(fs::metadata(p), Err(e) if e.kind() == std::io::ErrorKind::NotFound) && p.parent().map(|d| d.is_dir()).unwrap_or(false) {
+                forget.push(id);
+            }
         }
-    }
-    Ok(n)
+        let conn = state.db.lock().map_err(|e| e.to_string())?;
+        let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+        for id in &back {
+            tx.execute("UPDATE photos SET hidden = 0 WHERE id = ?1", [id]).map_err(|e| e.to_string())?;
+        }
+        for id in &forget {
+            forget_photo(&tx, *id).map_err(|e| e.to_string())?;
+        }
+        tx.commit().map_err(|e| e.to_string())?;
+        drop(conn);
+        sweep_thumbs(&state.thumbs, &forget.iter().copied().collect());
+        Ok(back.len())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Przenosi pliki do Kosza Windows (można je stamtąd przywrócić) i usuwa je z biblioteki.
@@ -2391,6 +2478,7 @@ fn trash_photos_core(state: &AppState, ids: Vec<i64>, confirm: Option<String>, d
         }
     }
     let mut n = 0;
+    let mut forgotten: std::collections::HashSet<i64> = std::collections::HashSet::new();
     for (id, path, exists) in targets {
         if exists {
             del(&path).map_err(|e| format!("{path}: {e}"))?;
@@ -2402,10 +2490,13 @@ fn trash_photos_core(state: &AppState, ids: Vec<i64>, confirm: Option<String>, d
         }
         let conn = state.db.lock().map_err(|e| e.to_string())?;
         forget_photo(&conn, id).map_err(|e| e.to_string())?;
+        forgotten.insert(id);
         n += 1;
     }
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM tags WHERE id NOT IN (SELECT tag_id FROM photo_tags)", []).map_err(|e| e.to_string())?;
+    drop(conn);
+    sweep_thumbs(&state.thumbs, &forgotten);
     Ok(n)
 }
 
@@ -2501,6 +2592,44 @@ fn set_favorite(state: State<'_, AppState>, id: i64, favorite: bool) -> Result<(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn original_backup_is_complete_and_edits_are_atomic() {
+        let dir = std::env::temp_dir().join("mz-atomic-test");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let photo = dir.join("a.jpg");
+        fs::write(&photo, b"oryginal").unwrap();
+        let backup = dir.join(ORIGINALS_DIR).join("a.jpg");
+        ensure_original_backup(&photo, &backup).unwrap();
+        assert_eq!(fs::read(&backup).unwrap(), b"oryginal");
+        // Edycja nie rusza kopii oryginału.
+        write_atomic(&photo, b"po edycji").unwrap();
+        ensure_original_backup(&photo, &backup).unwrap();
+        assert_eq!(fs::read(&backup).unwrap(), b"oryginal");
+        assert_eq!(fs::read(&photo).unwrap(), b"po edycji");
+        // Pusty plik kopii (ślad po dawnym błędzie) jest robiony od nowa z aktualnego zdjęcia.
+        fs::write(&backup, b"").unwrap();
+        ensure_original_backup(&photo, &backup).unwrap();
+        assert_eq!(fs::read(&backup).unwrap(), b"po edycji");
+        // Po zapisie nie zostają pliki tymczasowe.
+        assert!(fs::read_dir(&dir).unwrap().flatten().all(|e| !e.file_name().to_string_lossy().ends_with(".fibo-tmp")));
+        assert!(write_atomic(&dir.join("brak-folderu").join("x.jpg"), b"x").is_err());
+    }
+
+    #[test]
+    fn sweep_removes_only_thumbnails_of_forgotten_photos() {
+        let dir = std::env::temp_dir().join("mz-sweep-test");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        for n in ["5_100.jpg", "5_200.jpg", "50_100.jpg", "6_1.jpg"] {
+            fs::write(dir.join(n), b"x").unwrap();
+        }
+        sweep_thumbs(&dir, &[5i64, 6].into_iter().collect());
+        let mut left: Vec<String> = fs::read_dir(&dir).unwrap().flatten().map(|e| e.file_name().to_string_lossy().to_string()).collect();
+        left.sort();
+        assert_eq!(left, vec!["50_100.jpg".to_string()], "numer 50 nie jest numerem 5");
+    }
 
     #[test]
     fn duplicate_hashes() {

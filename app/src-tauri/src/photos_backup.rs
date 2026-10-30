@@ -19,24 +19,44 @@ fn mtime_secs(m: &std::fs::Metadata) -> i64 {
     m.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs() as i64).unwrap_or(0)
 }
 
-/// Ścieżka względna zdjęcia w kopii: „nazwa obserwowanego folderu/podfoldery/plik”. Zdjęcie spoza obserwowanych folderów
-/// ląduje w „Inne/…” (bez litery dysku), więc nic nie wychodzi poza folder docelowy.
+/// Litera dysku (albo nazwa udziału sieciowego) ścieżki, bez dwukropka; None dla ścieżek względnych.
+fn drive_of(p: &Path) -> Option<String> {
+    match p.components().next() {
+        Some(Component::Prefix(pre)) => Some(pre.as_os_str().to_string_lossy().replace([':', '\\', '?', '/'], "")),
+        _ => None,
+    }
+}
+
+/// Ścieżka względna zdjęcia w kopii: „nazwa obserwowanego folderu/podfoldery/plik”. Gdy dwa obserwowane foldery mają tę samą nazwę
+/// (np. D:\Zdjecia i E:\Zdjecia), do nazwy dochodzi litera dysku, żeby ich pliki się nie nadpisywały. Zdjęcie spoza obserwowanych folderów
+/// ląduje w „Inne/litera dysku/…”, więc nic nie wychodzi poza folder docelowy.
 fn relative_target(photo: &Path, roots: &[PathBuf]) -> PathBuf {
     let best = roots.iter().filter(|r| photo.starts_with(r)).max_by_key(|r| r.components().count());
-    let (head, rest) = match best {
-        Some(r) => (
-            r.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "Zdjecia".into()),
-            photo.strip_prefix(r).unwrap_or(photo).to_path_buf(),
-        ),
-        None => ("Inne".to_string(), photo.to_path_buf()),
+    let name_of = |r: &PathBuf| r.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "Zdjecia".into());
+    let (mut head, rest) = match best {
+        Some(r) => {
+            let mut name = name_of(r);
+            if roots.iter().any(|o| o != r && name_of(o) == name) {
+                if let Some(d) = drive_of(r) {
+                    name = format!("{name} ({d})");
+                }
+            }
+            (PathBuf::from(name), photo.strip_prefix(r).unwrap_or(photo).to_path_buf())
+        }
+        None => {
+            let mut h = PathBuf::from("Inne");
+            if let Some(d) = drive_of(photo) {
+                h.push(d);
+            }
+            (h, photo.to_path_buf())
+        }
     };
-    let mut out = PathBuf::from(head);
     for c in rest.components() {
         if let Component::Normal(s) = c {
-            out.push(s);
+            head.push(s);
         }
     }
-    out
+    head
 }
 
 /// Kopiuje podane pliki do `dest`. `progress(zrobione, razem)` wywoływane po każdym pliku.
@@ -116,6 +136,22 @@ pub async fn backup_photos(app: tauri::AppHandle, dest: String) -> Result<Backup
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn same_named_roots_and_outside_photos_do_not_collide() {
+        let roots = vec![PathBuf::from(r"D:\Zdjecia"), PathBuf::from(r"E:\Zdjecia"), PathBuf::from(r"D:\Inne")];
+        let a = relative_target(Path::new(r"D:\Zdjecia\2020\a.jpg"), &roots);
+        let b = relative_target(Path::new(r"E:\Zdjecia\2020\a.jpg"), &roots);
+        assert_ne!(a, b, "ta sama nazwa folderu na dwóch dyskach");
+        assert!(a.to_string_lossy().contains("Zdjecia (D)") && b.to_string_lossy().contains("Zdjecia (E)"));
+        // Folder o unikalnej nazwie zostaje bez zmian.
+        assert_eq!(relative_target(Path::new(r"D:\Inne\x\a.jpg"), &roots), PathBuf::from("Inne").join("x").join("a.jpg"));
+        // Zdjęcia spoza obserwowanych folderów z dwóch dysków też się nie zlewają.
+        let c = relative_target(Path::new(r"D:\Luzem\a.jpg"), &[]);
+        let d = relative_target(Path::new(r"E:\Luzem\a.jpg"), &[]);
+        assert_ne!(c, d);
+        assert!(c.starts_with("Inne") && !c.to_string_lossy().contains(':'));
+    }
 
     #[test]
     fn copies_new_and_changed_files_and_never_deletes() {

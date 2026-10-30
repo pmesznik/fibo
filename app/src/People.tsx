@@ -61,7 +61,8 @@ export function People({ say, ask, onOpenPerson, onChanged }: {
   }, [refresh, say])
 
   const enable = async () => {
-    try { await setFacesEnabled(true); await facesStart(); await refresh() } catch (e) { say(`Błąd: ${e}`, 'err') }
+    try { await setFacesEnabled(true); await facesStart() } catch (e) { say(`Błąd: ${e}`, 'err') }
+    await refresh()
   }
   const toggleRun = async () => {
     try {
@@ -124,7 +125,10 @@ export function People({ say, ask, onOpenPerson, onChanged }: {
   }
 
   const shown = people.filter((p) => showIgnored || !p.ignored)
-  const pct = st.photos ? Math.min(100, Math.round((st.scanned / st.photos) * 100)) : 100
+  const pending = st.photos - st.scanned
+  // Zaokrąglenie nie może pokazać 100%, dopóki coś czeka na analizę.
+  const pct = st.photos ? Math.min(pending > 0 ? 99 : 100, Math.round((st.scanned / st.photos) * 100)) : 100
+  const fmt = (n: number) => n.toLocaleString('pl-PL')
   return (
     <div>
       <div style={{ marginBottom: 14 }}>
@@ -133,7 +137,7 @@ export function People({ say, ask, onOpenPerson, onChanged }: {
         <div className="glass" style={{ borderRadius: 'var(--r-lg)', padding: '10px 14px', marginTop: 10, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <div style={{ flex: '1 1 220px', minWidth: 0 }}>
             <div style={{ fontSize: 13.5 }}>
-              {prog?.grouping ? 'Grupuję twarze w osoby…' : st.running ? 'Analizuję zdjęcia na tym komputerze…' : pct >= 100 ? 'Wszystkie zdjęcia przeanalizowane' : 'Analiza wstrzymana'} ({st.scanned} z {st.photos})
+              {prog?.grouping ? 'Grupuję twarze w osoby…' : st.running ? 'Analizuję zdjęcia na tym komputerze…' : pending <= 0 ? 'Wszystkie zdjęcia przeanalizowane' : st.scanned === 0 ? 'Analiza jeszcze nie ruszyła' : `${fmt(pending)} ${pl(pending, 'zdjęcie czeka', 'zdjęcia czekają', 'zdjęć czeka')} na analizę`} ({st.scanned} z {st.photos})
             </div>
             <div role="progressbar" aria-label="Postęp analizy twarzy" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}
               style={{ height: 6, borderRadius: 3, background: 'var(--tonal)', marginTop: 6, overflow: 'hidden' }}>
@@ -141,7 +145,7 @@ export function People({ say, ask, onOpenPerson, onChanged }: {
             </div>
             {prog && !prog.finished && <div style={{ color: 'var(--muted)', fontSize: 12, marginTop: 4 }}>Przetworzono w tej sesji: {prog.done} z {prog.total}</div>}
           </div>
-          {(st.running || pct < 100) && (
+          {(st.running || pending > 0) && (
             <button className="chip" onClick={toggleRun}>{st.running ? <><Pause size={15} /> Wstrzymaj</> : <><Play size={15} /> Wznów</>}</button>
           )}
           {!st.running && <button className="chip" onClick={regroup} title="Grupuje twarze w osoby od nowa (szybko). Imiona i ręczne poprawki zostają.">Pogrupuj od nowa</button>}
@@ -208,7 +212,7 @@ export function People({ say, ask, onOpenPerson, onChanged }: {
               <button className="ico" style={{ minWidth: 34, minHeight: 36 }} aria-label={`Nazwij osobę ${p.name ?? ''}`} title="Nadaj imię" onClick={() => setRenaming(p)}><Pencil size={16} /></button>
               <button className="ico" style={{ minWidth: 34, minHeight: 36 }} aria-label={`Połącz ${p.name ?? 'osobę'} z inną osobą`} title="To ta sama osoba co inna: połącz (z podglądem)" onClick={() => setMerge({ a: p, b: null })}><Users size={16} /></button>
               <button className="ico" style={{ minWidth: 34, minHeight: 36 }} aria-label={p.ignored ? 'Przywróć osobę na listę' : 'Pomiń tę osobę'} title={p.ignored ? 'Przywróć' : 'Pomiń (np. przypadkowy przechodzień)'}
-                onClick={async () => { await ignorePerson(p.id, !p.ignored); refresh() }}>{p.ignored ? <Eye size={16} /> : <EyeOff size={16} />}</button>
+                onClick={async () => { try { await ignorePerson(p.id, !p.ignored) } catch (e) { say(`Błąd: ${e}`, 'err') } refresh() }}>{p.ignored ? <Eye size={16} /> : <EyeOff size={16} />}</button>
               <button className="ico" style={{ minWidth: 34, minHeight: 36 }} aria-label={`Wybierz okładkę osoby ${p.name ?? 'Nieznana osoba'}`} title="Wybierz twarz na okładkę" onClick={() => pickCover(p)}><Star size={16} /></button>
               <button className="ico" style={{ minWidth: 34, minHeight: 36 }} aria-label={`Usuń osobę ${p.name ?? 'Nieznana osoba'}`} title="Usuń całą grupę (zdjęcia zostają)" onClick={() => removePerson(p)}><Trash2 size={16} /></button>
             </div>

@@ -172,17 +172,8 @@ fn rotate_one(state: &AppState, id: i64, cw: bool) -> Result<bool, String> {
     // Kopia oryginału (tylko za pierwszym razem), a potem zapis przez plik tymczasowy, żeby przerwanie nie uszkodziło zdjęcia.
     let dir = p.parent().ok_or("brak folderu")?;
     let name = p.file_name().ok_or("brak nazwy")?;
-    let backup = dir.join(crate::ORIGINALS_DIR).join(name);
-    if !backup.exists() {
-        std::fs::create_dir_all(dir.join(crate::ORIGINALS_DIR)).map_err(|e| e.to_string())?;
-        std::fs::copy(p, &backup).map_err(|e| e.to_string())?;
-    }
-    let tmp = p.with_extension("fibo-tmp");
-    std::fs::write(&tmp, patched).map_err(|e| e.to_string())?;
-    std::fs::rename(&tmp, p).map_err(|e| {
-        let _ = std::fs::remove_file(&tmp);
-        e.to_string()
-    })?;
+    crate::ensure_original_backup(p, &dir.join(crate::ORIGINALS_DIR).join(name))?;
+    crate::write_atomic(p, &patched)?;
     crate::reindex(state, p, taken, camera)?;
     Ok(true)
 }

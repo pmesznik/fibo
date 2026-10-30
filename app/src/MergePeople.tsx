@@ -39,8 +39,8 @@ function Avatar({ p, size }: { p: Person; size: number }) {
 
 function Known({ p }: { p: Person }) {
   return p.name
-    ? <span className="chip on" style={{ minHeight: 0, padding: '1px 8px', fontSize: 11.5, cursor: 'default' }}><Check size={11} /> znana</span>
-    : <span className="chip" style={{ minHeight: 0, padding: '1px 8px', fontSize: 11.5, cursor: 'default' }}>bez imienia</span>
+    ? <span className="chip on" style={{ minHeight: 0, padding: '1px 8px', fontSize: 12, cursor: 'default' }}><Check size={11} /> znana</span>
+    : <span className="chip" style={{ minHeight: 0, padding: '1px 8px', fontSize: 12, cursor: 'default' }}>bez imienia</span>
 }
 
 /** Wybór osoby z listy: najpierw najbardziej podobne (znane osoby wyróżnione), potem wszystkie; można szukać po imieniu. */

@@ -119,7 +119,7 @@ test('modele: sumy SHA256 w skrypcie pobierania i w kodzie są takie same, a mod
 
 test('modele są dołączone do instalatora jako zasoby, a CSP nie zyskała nowych adresów', () => {
   const conf = JSON.parse(read('src-tauri/tauri.conf.json'))
-  assert.deepEqual(conf.bundle.resources, ['models/yunet.onnx', 'models/sface.onnx'])
+  assert.deepEqual(conf.bundle.resources, ['models/yunet.onnx', 'models/sface.onnx', 'THIRD_PARTY_NOTICES.md'])
   const connect = conf.app.security.csp.match(/connect-src ([^;]+)/)[1].split(/\s+/)
   assert.deepEqual(connect, ['\'self\'', 'ipc:', 'http://ipc.localhost', 'https://tiles.openfreemap.org'])
 })

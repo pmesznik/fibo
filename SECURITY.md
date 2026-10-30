@@ -7,8 +7,9 @@ i poproś o kontakt). Najnowsza wydana wersja jest jedyną wspieraną.
 
 ## Jak FIBO chroni dane użytkownika
 - **Wszystko lokalnie.** Zdjęcia, biblioteka, tagi i oceny zostają na komputerze. Jedyny ruch sieciowy to kafelki mapy
-  (`tiles.openfreemap.org`, tylko po otwarciu zakładki Mapa), sprawdzanie aktualizacji (`github.com`) i ewentualne
-  pobranie WebView2 przy instalacji.
+  (`tiles.openfreemap.org`, po otwarciu zakładki Mapa albo okna „Lokalizacja”; adres kafelka zdradza serwerowi oglądany
+  obszar, a połączenie jego adres IP), sprawdzanie aktualizacji (`github.com`, po uruchomieniu i co jakiś czas podczas pracy)
+  i ewentualne pobranie WebView2 przy instalacji.
 - **Polityka CSP** w oknie programu: skrypty tylko własne, połączenia tylko do IPC aplikacji i serwera map,
   brak ramek, obiektów i formularzy.
 - **Brak protokołu zasobów (`asset:`):** miniatury i wycinki twarzy trafiają do okna jako bajty przez IPC, więc okno nie ma dostępu do plików na dysku.
@@ -16,8 +17,14 @@ i poproś o kontakt). Najnowsza wydana wersja jest jedyną wspieraną.
 - **Aktualizacje podpisane** kluczem autora (minisign). Program instaluje wyłącznie aktualizację z poprawnym podpisem,
   pobraną po HTTPS z wydań tego repozytorium. Klucz prywatny jest tylko u autora i jako sekret GitHub Actions,
   dostępny wyłącznie w kroku podpisującym gotowy instalator (kod zależności budowania go nie widzi).
-- **Pliki użytkownika:** zdjęcia nie są modyfikowane (edycja ma kopię w `.originals`, a metadane trafiają do
-  osobnych plików `.xmp`). Cudzych plików XMP FIBO nie nadpisuje. Usuwanie plików idzie do Kosza Windows.
+- **Pliki użytkownika:** przed pierwszą zmianą zdjęcia (edycja, obrót) powstaje sprawdzona kopia w `.originals`,
+  a zapis idzie przez plik tymczasowy, więc przerwanie nie uszkodzi zdjęcia. Metadane trafiają do osobnych plików `.xmp`,
+  cudzych plików XMP FIBO nie nadpisuje. Usuwanie plików idzie do Kosza Windows, a miniatury usuniętych zdjęć są kasowane z folderu danych.
+- **Kopia zdjęć na dysk** nie usuwa niczego, ale zmienione zdjęcie zastępuje starszą kopię tego samego pliku. Foldery o tej samej nazwie
+  z różnych dysków trafiają do osobnych folderów (z literą dysku w nazwie).
+- **Kopia biblioteki** (plik .db) zawiera tagi, oceny, albumy, ścieżki i opisy zdjęć, a nie zawiera osób ani danych twarzy.
+  Kopia bezpieczeństwa, którą program robi przed przywróceniem, leży w folderze danych programu, zawiera też osoby i jest tylko jedna (najnowsza).
+- **Eksport galerii HTML** zawiera pomniejszone zdjęcia bez EXIF (bez współrzędnych), a także nazwy plików, opisy i daty zdjęć.
 - **Nazwy plików** przy zmianie nazwy są walidowane: znaki niedozwolone w Windows, nazwy urządzeń
   (CON, NUL, COM1-9, LPT1-9, także z indeksem górnym), znaki sterujące i niewidoczne znaki zmiany kierunku tekstu.
   Przenoszenie i kopiowanie nigdy nie nadpisuje istniejącego pliku.
@@ -30,7 +37,7 @@ i poproś o kontakt). Najnowsza wydana wersja jest jedyną wspieraną.
 - **Rozpoznawanie twarzy (opcjonalne, domyślnie wyłączone):** działa wyłącznie lokalnie. Modele (YuNet, SFace) są dołączone
   do instalatora, a przy budowaniu sprawdzana jest ich suma SHA256 (przypięta w kodzie). Moduły twarzy nie zawierają
   kodu sieciowego, a ich zależności nie ciągną bibliotek sieciowych (testy sprawdzają kod i `Cargo.lock`).
-  Wektory twarzy są w bazie zaszyfrowane kluczem konta Windows (DPAPI), imiona nie trafiają do zdjęć ani XMP, nic nie
+  Wektory twarzy są w bazie zaszyfrowane kluczem konta Windows (DPAPI), a małe wycinki twarzy (128 px, do okna Osoby) leżą jako zwykłe pliki w folderze danych programu i znikają po usunięciu danych twarzy, imiona nie trafiają do zdjęć ani XMP, nic nie
   jest logowane, a jedno polecenie usuwa wszystkie dane twarzy. Wycinki twarzy (miniatury) leżą w folderze danych
   aplikacji obok miniatur zdjęć i są usuwane razem z danymi twarzy.
 

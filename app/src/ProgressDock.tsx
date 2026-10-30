@@ -112,7 +112,7 @@ function Card({ job, min, compact, onMin, onStop }: { job: Job; min: boolean; co
   const status = job.finished ? (halted ? 'Wstrzymano' : job.error ? 'Przerwano' : 'Gotowe') : job.stopping ? 'Wstrzymuję…' : job.grouping ? 'Grupowanie osób…' : staged ? job.label : null
 
   return (
-    <div className={`glass pd-card${compact ? ' pd-compact' : ''}${halted || job.stopping ? ' pd-halt' : ''}`} role="status" aria-live="polite" aria-label={`${title}: ${Math.round(pct)}%`}>
+    <div className={`glass pd-card${compact ? ' pd-compact' : ''}${halted || job.stopping ? ' pd-halt' : ''}`} role="group" aria-label={title}>
       <div className="pd-head">
         <span className="pd-ico" style={{ color: halted || job.stopping ? '#e0900f' : job.finished && !job.error ? 'var(--ok, #2e9d5b)' : 'var(--accent)' }}>{halted || job.stopping ? <Pause size={18} /> : job.finished && !job.error ? <Check size={18} /> : <Icon size={18} />}</span>
         <span className="pd-title">{title}</span>

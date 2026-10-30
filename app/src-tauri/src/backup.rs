@@ -11,7 +11,7 @@ use tauri::State;
 use crate::AppState;
 
 /// Tabele biblioteki przenoszone w kopii (kolejność ma znaczenie tylko dla czytelności, nie ma kluczy obcych).
-// Dane twarzy nie są w kopii: po przywróceniu numery zdjęć się zmieniają, a analiza twarzy i tak liczy się lokalnie od nowa.
+// Dane twarzy nie są w kopii dla użytkownika (FACE_TABLES): po przywróceniu numery zdjęć się zmieniają, a analiza twarzy i tak liczy się lokalnie od nowa.
 const TABLES: [&str; 6] = ["photos", "tags", "photo_tags", "roots", "albums", "album_photos"];
 // Tabele dodane później: starsze kopie ich nie mają, wtedy zostają bez zmian.
 const OPTIONAL: [&str; 2] = ["props", "smart_albums"];
@@ -31,13 +31,35 @@ fn unique_file(dir: &Path, base: &str) -> PathBuf {
     (1..).map(|n| dir.join(format!("{base}_{n}.db"))).find(|p| !p.exists()).unwrap_or(first)
 }
 
-/// Zapisuje spójną kopię bazy w podanym folderze (VACUUM INTO). Nigdy nie nadpisuje istniejącego pliku.
+/// Tabele z danymi twarzy: nie trafiają do kopii dla użytkownika (są w nich imiona osób, położenie twarzy i zaszyfrowane wektory).
+const FACE_TABLES: [&str; 4] = ["faces", "people", "face_scan", "face_not"];
+
+/// Zapisuje spójną kopię bazy w podanym folderze (VACUUM INTO) bez danych twarzy. Nigdy nie nadpisuje istniejącego pliku.
 pub fn backup_core(conn: &Connection, dest_dir: &Path) -> Result<PathBuf, String> {
+    backup_named(conn, dest_dir, "fibo-biblioteka", false)
+}
+
+/// Kopia z wybraną nazwą. `with_faces` zostawia dane twarzy: tylko dla kopii bezpieczeństwa w folderze danych programu, która ma pozwolić cofnąć przywrócenie.
+pub fn backup_named(conn: &Connection, dest_dir: &Path, base: &str, with_faces: bool) -> Result<PathBuf, String> {
     if !dest_dir.is_dir() {
         return Err("Folder docelowy nie istnieje".into());
     }
-    let target = unique_file(dest_dir, &format!("fibo-biblioteka_{}", stamp()));
+    let target = unique_file(dest_dir, &format!("{base}_{}", stamp()));
     conn.execute("VACUUM INTO ?1", [target.to_string_lossy().to_string()]).map_err(|e| e.to_string())?;
+    if !with_faces {
+        let result = (|| -> Result<(), String> {
+            let copy = Connection::open(&target).map_err(|e| e.to_string())?;
+            for t in FACE_TABLES {
+                copy.execute(&format!("DROP TABLE IF EXISTS {t}"), []).map_err(|e| e.to_string())?;
+            }
+            // Po usunięciu tabel plik wciąż zawiera ich strony, dopóki baza nie zostanie przepakowana.
+            copy.execute_batch("VACUUM").map_err(|e| e.to_string())
+        })();
+        if let Err(e) = result {
+            let _ = std::fs::remove_file(&target);
+            return Err(format!("Nie udało się usunąć danych twarzy z kopii: {e}"));
+        }
+    }
     Ok(target)
 }
 
@@ -63,7 +85,14 @@ pub fn restore_core(conn: &mut Connection, file: &Path, safety_dir: &Path) -> Re
     if !file.is_file() {
         return Err("Wskazany plik nie istnieje".into());
     }
-    let safety = backup_core(conn, safety_dir)?;
+    // Kopia bezpieczeństwa leży w folderze danych programu i zawiera też osoby, żeby przywrócenie dało się w pełni cofnąć. Trzymamy tylko najnowszą.
+    let previous: Vec<PathBuf> = std::fs::read_dir(safety_dir)
+        .map(|d| d.flatten().map(|e| e.path()).filter(|p| p.file_name().map(|n| n.to_string_lossy().starts_with("fibo-przed-przywroceniem_")).unwrap_or(false)).collect())
+        .unwrap_or_default();
+    let safety = backup_named(conn, safety_dir, "fibo-przed-przywroceniem", true)?;
+    for old in previous {
+        let _ = std::fs::remove_file(old);
+    }
     let path = file.to_string_lossy().to_string();
     conn.execute("ATTACH DATABASE ?1 AS kopia", [&path]).map_err(|e| e.to_string())?;
     let result = (|| -> Result<usize, String> {
@@ -167,6 +196,36 @@ mod tests {
         assert!(restore_core(&mut c, &out.join("brak.db"), &safety).is_err());
         assert!(backup_core(&c, &out.join("brak")).is_err());
     }
+
+    #[test]
+    fn user_backup_has_no_face_data_but_safety_copy_keeps_it() {
+        let mut c = lib();
+        let out = std::env::temp_dir().join("mz-backup-test-faces-out");
+        let safety = std::env::temp_dir().join("mz-backup-test-faces-safety");
+        for d in [&out, &safety] {
+            let _ = std::fs::remove_dir_all(d);
+            std::fs::create_dir_all(d).unwrap();
+        }
+        c.execute("INSERT INTO photos (id, path, folder, name, size, modified) VALUES (1, 'f/1.jpg', 'f', '1.jpg', 1, 1)", []).unwrap();
+        c.execute("INSERT INTO people (id, name) VALUES (1, 'Jan Kowalski')", []).unwrap();
+        c.execute("INSERT INTO faces (photo_id, person_id, x, y, w, h, score, emb) VALUES (1, 1, 0, 0, 1, 1, 1, x'0102')", []).unwrap();
+        c.execute("INSERT INTO face_not (face_id, person_id) VALUES (1, 1)", []).unwrap();
+        let file = backup_core(&c, &out).unwrap();
+        let copy = Connection::open(&file).unwrap();
+        for t in FACE_TABLES {
+            let n: i64 = copy.query_row("SELECT COUNT(*) FROM sqlite_master WHERE name = ?1", [t], |r| r.get(0)).unwrap();
+            assert_eq!(n, 0, "tabela {t} nie może być w kopii");
+        }
+        let bytes = std::fs::read(&file).unwrap();
+        assert!(!bytes.windows(12).any(|w| w == b"Jan Kowalski"), "imię nie zostaje w wolnych stronach pliku");
+        assert_eq!(copy.query_row::<i64, _, _>("SELECT COUNT(*) FROM photos", [], |r| r.get(0)).unwrap(), 1);
+        // Kopia bezpieczeństwa zachowuje osoby i jest tylko jedna.
+        restore_core(&mut c, &file, &safety).unwrap();
+        restore_core(&mut c, &file, &safety).unwrap();
+        let files: Vec<_> = std::fs::read_dir(&safety).unwrap().flatten().collect();
+        assert_eq!(files.len(), 1, "stara kopia bezpieczeństwa jest zastępowana");
+    }
+
 
     #[test]
     fn restores_backup_made_before_a_column_was_added() {
