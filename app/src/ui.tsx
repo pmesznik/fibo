@@ -47,7 +47,7 @@ export function Toast({ text, kind }: { text: string | null; kind?: 'ok' | 'err'
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
 const focusables = (root: HTMLElement) => [...root.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((el) => el.getClientRects().length > 0)
 /** Najwyższe okno dialogowe: okna renderowane później leżą w drzewie niżej, więc to ostatni element z rolą dialog. */
-const topDialog = () => { const all = document.querySelectorAll<HTMLElement>('[role="dialog"]'); return all[all.length - 1] ?? null }
+const topDialog = () => { const all = document.querySelectorAll<HTMLElement>('[role=dialog]'); return all[all.length - 1] ?? null }
 
 /**
  * Wspólna obsługa okna dialogowego: Escape zamyka, fokus trafia do okna (jeśli nic w nim jeszcze nie ma fokusu), Tab krąży tylko po jego elementach,
