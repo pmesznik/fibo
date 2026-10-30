@@ -34,7 +34,7 @@ export function Thumb({ photo, fit = 'cover' }: { photo: Photo; fit?: 'cover' | 
     }, { rootMargin: '300px' })
     io.observe(el)
     return () => { cancelled = true; io.disconnect(); if (url) URL.revokeObjectURL(url) }
-  }, [photo.id, photo.modified])
+  }, [photo.id, photo.modified, photo.rev])
 
   const hue = Math.abs(photo.id * 37) % 360
   return (

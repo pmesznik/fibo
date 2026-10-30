@@ -32,6 +32,10 @@ export type Photo = {
   video?: boolean
   /** Czas trwania filmu w sekundach. */
   duration?: number | null
+  /** Zdjęcie ma zapisaną edycję nieniszczącą. */
+  edited?: boolean
+  /** Licznik odświeżeń miniatury (tylko w oknie programu): rośnie po zapisie lub usunięciu edycji. */
+  rev?: number
 }
 
 /** Adres odtwarzania filmu z biblioteki: protokół programu zwraca bajty tylko dla filmów z biblioteki i tylko po numerze. */
@@ -178,6 +182,15 @@ export const RAW_NEUTRAL: RawParams = { exposure: 0, temp: 0, tint: 0, highlight
 export const isRawName = (name: string) => /\.(3fr|ari|arw|bay|cap|cr2|cr3|crw|dcr|dcs|dng|erf|fff|gpr|iiq|k25|kdc|mdc|mef|mos|mrw|nef|nrw|orf|pef|ptx|raf|raw|rw2|rwl|sr2|srf|srw|x3f)$/i.test(name)
 /** Wywołuje zdjęcie RAW z własną ekspozycją i balansem bieli; zwraca JPEG jako źródło dla edytora. */
 export const developRaw = (id: number, params: RawParams) => invoke<ArrayBuffer>('develop_raw', { id, params })
+
+export type EditRecord = { recipe: string; updated: number }
+export type EditVersion = { id: number; created: number }
+export const getEdit = (id: number) => invoke<EditRecord | null>('get_edit', { id })
+export const saveEditRecipe = (id: number, recipe: string) => invoke<number>('save_edit_recipe', { id, recipe })
+export const putEditThumbnail = (id: number, bytes: ArrayBuffer) => invoke('put_edit_thumbnail', bytes, { headers: { id: String(id) } })
+export const deleteEdit = (id: number) => invoke('delete_edit', { id })
+export const listEditHistory = (id: number) => invoke<EditVersion[]>('list_edit_history', { id })
+export const getEditVersion = (id: number, version: number) => invoke<string>('get_edit_version', { id, version })
 
 export const readImage = (id: number) => invoke<ArrayBuffer>('read_image', { id })
 

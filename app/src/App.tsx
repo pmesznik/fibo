@@ -967,8 +967,9 @@ export default function App() {
             <Copy size={12} /> {sb.open ? 'Zwiń' : sb.kind === 'pair' ? 'RAW+JPEG' : `×${sb.count}`}
           </span>
         )}
-        {(flagOf(p) !== 0 || labelOf(p) !== 0) && (
+        {(flagOf(p) !== 0 || labelOf(p) !== 0 || p.edited) && (
           <span className="absolute bottom-2 right-2 flex items-center gap-1" aria-hidden>
+            {p.edited && <span title="Zdjęcie ma zapisaną edycję (oryginał bez zmian)" style={{ display: 'grid', placeItems: 'center', width: 20, height: 20, borderRadius: 6, background: 'rgba(0,0,0,.62)', color: '#fff' }}><Pencil size={12} /></span>}
             {labelOf(p) !== 0 && <span style={{ width: 15, height: 15, borderRadius: '50%', background: LABELS[labelOf(p) - 1].css, border: '1.5px solid #fff', boxShadow: '0 1px 3px rgba(0,0,0,.5)' }} />}
             {flagOf(p) === 1 && <span style={{ display: 'grid', placeItems: 'center', width: 20, height: 20, borderRadius: 6, background: '#30a46c', color: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,.5)' }}><Check size={13} strokeWidth={3} /></span>}
             {flagOf(p) === -1 && <span style={{ display: 'grid', placeItems: 'center', width: 20, height: 20, borderRadius: 6, background: '#e5484d', color: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,.5)' }}><X size={13} strokeWidth={3} /></span>}

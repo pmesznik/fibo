@@ -24,6 +24,9 @@ i poproś o kontakt). Najnowsza wydana wersja jest jedyną wspieraną.
 - **Pliki użytkownika:** przed pierwszą zmianą zdjęcia (edycja, obrót) powstaje sprawdzona kopia w `.originals`,
   a zapis idzie przez plik tymczasowy, więc przerwanie nie uszkodzi zdjęcia. Metadane trafiają do osobnych plików `.xmp`,
   cudzych plików XMP FIBO nie nadpisuje. Usuwanie plików idzie do Kosza Windows, a miniatury usuniętych zdjęć są kasowane z folderu danych.
+- **Edycja nieniszcząca** zapisuje tylko przepis edycji (tekst JSON do 256 KB: korekty, efekty, napisy, ustawienia RAW) w bazie i, gdy zapis metadanych jest
+  włączony, w pliku `<zdjęcie>.fibo.json` obok zdjęcia (poza zablokowanymi folderami). Plik zdjęcia pozostaje nietknięty. Przepis jest tylko sprawdzany
+  jako JSON, a nie wykonywany. Pliki `.fibo.json` innych autorów są wczytywane tylko przy znaczniku `fibo_edit` i limicie rozmiaru.
 - **Kopia zdjęć na dysk** nie usuwa niczego, ale zmienione zdjęcie zastępuje starszą kopię tego samego pliku. Foldery o tej samej nazwie
   z różnych dysków trafiają do osobnych folderów (z literą dysku w nazwie).
 - **Kopia biblioteki** (plik .db) zawiera tagi, oceny, albumy, ścieżki i opisy zdjęć, a nie zawiera osób ani danych twarzy.

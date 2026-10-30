@@ -184,7 +184,7 @@ Szukanie i porządkowanie:
 - [ ] **Organizator plików**: przenoszenie zdjęć do folderów według daty, ze sprawdzeniem i cofaniem. P3 T M
 
 Edycja:
-- [ ] **Edycja nieniszcząca**: zapis historii zmian obok zdjęcia (XMP) z możliwością cofnięcia po latach. P2 T L
+- [x] **Edycja nieniszcząca**: zapis historii zmian obok zdjęcia (XMP) z możliwością cofnięcia po latach. P2 T L
 - [ ] **Krzywe, HSL, histogram na żywo**, dehaze, klarowność. P3 T M
 - [ ] **Maski lokalne** (pędzel, gradient liniowy i radialny) z osobnymi korektami. P3 T L
 - [ ] **Usuwanie obiektów** (wypełnianie tła), automatyczne prostowanie horyzontu. P4 T L

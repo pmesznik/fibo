@@ -22,6 +22,7 @@ mod rawdev;
 mod rotate;
 mod check;
 mod cluster;
+mod edits;
 mod faces;
 mod gallery;
 mod locks;
@@ -76,6 +77,8 @@ struct Photo {
     video: bool,
     /// Czas trwania filmu w sekundach.
     duration: Option<f64>,
+    /// Zdjęcie ma zapisaną edycję nieniszczącą.
+    edited: bool,
 }
 
 fn open_db(path: &Path) -> rusqlite::Result<Connection> {
@@ -139,6 +142,7 @@ fn open_db(path: &Path) -> rusqlite::Result<Connection> {
     let _ = conn.execute("ALTER TABLE album_photos ADD COLUMN pos INTEGER", []);
     people::init_schema(&conn)?;
     clip::init_schema(&conn)?;
+    edits::init_schema(&conn)?;
     locks::init_schema(&conn)?;
     // Albumy inteligentne: nazwa i zapisane filtry (JSON); zawartość liczy się na bieżąco z biblioteki.
     conn.execute_batch("CREATE TABLE IF NOT EXISTS smart_albums (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE COLLATE NOCASE, filters TEXT NOT NULL);")?;
@@ -336,6 +340,10 @@ fn flush(state: &AppState, rows: &mut Vec<Row>) -> Result<(), String> {
                 let id: i64 = tx.query_row("SELECT id FROM photos WHERE path = ?1", [&r.path], |x| x.get(0)).map_err(|e| e.to_string())?;
                 apply_sidecar(&tx, id, sc).map_err(|e| e.to_string())?;
             }
+            // Edycja nieniszcząca zapisana obok zdjęcia (np. po odtworzeniu biblioteki).
+            if let Ok(id) = tx.query_row("SELECT id FROM photos WHERE path = ?1", [&r.path], |x| x.get::<_, i64>(0)) {
+                edits::import_sidecar(&tx, id, Path::new(&r.path));
+            }
         }
     }
     tx.commit().map_err(|e| e.to_string())
@@ -472,7 +480,8 @@ fn list_photos(state: State<'_, AppState>) -> Result<Vec<Photo>, String> {
             "SELECT id, path, name, size, modified, taken, width, height, camera, rating, favorite,
                     (SELECT group_concat(t.name, char(31)) FROM photo_tags pt JOIN tags t ON t.id = pt.tag_id
                      WHERE pt.photo_id = photos.id), lat, lon,
-                    (SELECT group_concat(album_id) FROM album_photos WHERE photo_id = photos.id), caption, exif_text, author, copyright, color, flag, label, video, duration
+                    (SELECT group_concat(album_id) FROM album_photos WHERE photo_id = photos.id), caption, exif_text, author, copyright, color, flag, label, video, duration,
+                    EXISTS(SELECT 1 FROM edits e WHERE e.photo_id = photos.id)
              FROM photos WHERE hidden = 0 ORDER BY COALESCE(taken, datetime(modified,'unixepoch')) DESC",
         )
         .map_err(|e| e.to_string())?;
@@ -509,6 +518,7 @@ fn list_photos(state: State<'_, AppState>) -> Result<Vec<Photo>, String> {
                 label: r.get(21)?,
                 video: r.get::<_, i64>(22)? != 0,
                 duration: r.get(23)?,
+                edited: r.get::<_, i64>(24)? != 0,
             })
         })
         .map_err(|e| e.to_string())?
@@ -1391,6 +1401,8 @@ fn remove_root(state: State<'_, AppState>, path: String) -> Result<(), String> {
 fn forget_photo(conn: &Connection, id: i64) -> rusqlite::Result<()> {
     people::forget_faces(conn, id);
     conn.execute("DELETE FROM clip_vec WHERE photo_id = ?1", [id])?;
+    conn.execute("DELETE FROM edits WHERE photo_id = ?1", [id])?;
+    conn.execute("DELETE FROM edit_history WHERE photo_id = ?1", [id])?;
     conn.execute("DELETE FROM photo_tags WHERE photo_id = ?1", [id])?;
     conn.execute("DELETE FROM album_photos WHERE photo_id = ?1", [id])?;
     conn.execute("DELETE FROM photos WHERE id = ?1", [id])?;
@@ -3699,7 +3711,7 @@ fn main() {
             app.manage(AppState { db: Mutex::new(db), thumbs, sidecar: AtomicBool::new(sidecar) });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![list_roots, remove_root, rescan_roots, list_albums, create_album, rename_album, set_album_hidden, put_thumbnail, set_credits, color::index_colors, get_skip_gif_png, set_skip_gif_png, detect_cards, rotate::rotate_photos, list_album_order, set_album_order, open_photo_external, delete_album, add_to_album, remove_from_album, rename_photo, move_photos, get_sidecar_enabled, set_sidecar_enabled, export_sidecars, import_sidecars, scan_folder, refresh_library, find_duplicates, trash_photos, export_photos, set_location, rename_batch, import_photos, gallery::export_gallery, gallery::export_gpx, gallery::export_gif, pdf::export_pdf, check::check_files, list_smart, save_smart, delete_smart, gallery::rename_folder, locks::list_locked, locks::set_folder_locked, set_date, shift_dates, set_caption, photo_exif, list_props, set_props, people::photo_people, people::reassign_person_faces, backup::backup_library, photos_backup::backup_photos, backup::restore_library, hide_photos, hidden_count, restore_hidden, people::faces_status, people::set_faces_enabled, people::faces_start, people::faces_stop, people::faces_regroup, people::faces_reanalyze, people::faces_delete_all, people::list_people, people::person_photos, people::person_faces, people::set_person_cover, people::rename_person, people::merge_people, people::merge_suggestions, people::person_face_cards, people::photo_face_stats, calendar::save_calendar_pdf, people::confirm_faces, people::move_faces, people::reject_person_in_photos, people::move_person_faces, people::reject_faces, people::delete_person, people::restore_rejected_faces, people::ignore_person, list_photos, thumbnail, thumbnail_data, people::face_crop, set_rating, set_flag, set_label, rawdev::develop_raw, clip::clip_status, clip::clip_start, clip::clip_stop, clip::clip_search, set_favorite, add_tag, remove_tag, delete_tag, save_edit, save_collage, read_image, read_audio, has_original, restore_original])
+        .invoke_handler(tauri::generate_handler![list_roots, remove_root, rescan_roots, list_albums, create_album, rename_album, set_album_hidden, put_thumbnail, set_credits, color::index_colors, get_skip_gif_png, set_skip_gif_png, detect_cards, rotate::rotate_photos, list_album_order, set_album_order, open_photo_external, delete_album, add_to_album, remove_from_album, rename_photo, move_photos, get_sidecar_enabled, set_sidecar_enabled, export_sidecars, import_sidecars, scan_folder, refresh_library, find_duplicates, trash_photos, export_photos, set_location, rename_batch, import_photos, gallery::export_gallery, gallery::export_gpx, gallery::export_gif, pdf::export_pdf, check::check_files, list_smart, save_smart, delete_smart, gallery::rename_folder, locks::list_locked, locks::set_folder_locked, set_date, shift_dates, set_caption, photo_exif, list_props, set_props, people::photo_people, people::reassign_person_faces, backup::backup_library, photos_backup::backup_photos, backup::restore_library, hide_photos, hidden_count, restore_hidden, people::faces_status, people::set_faces_enabled, people::faces_start, people::faces_stop, people::faces_regroup, people::faces_reanalyze, people::faces_delete_all, people::list_people, people::person_photos, people::person_faces, people::set_person_cover, people::rename_person, people::merge_people, people::merge_suggestions, people::person_face_cards, people::photo_face_stats, calendar::save_calendar_pdf, people::confirm_faces, people::move_faces, people::reject_person_in_photos, people::move_person_faces, people::reject_faces, people::delete_person, people::restore_rejected_faces, people::ignore_person, list_photos, thumbnail, thumbnail_data, people::face_crop, edits::get_edit, edits::save_edit_recipe, edits::put_edit_thumbnail, edits::delete_edit, edits::list_edit_history, edits::get_edit_version, set_rating, set_flag, set_label, rawdev::develop_raw, clip::clip_status, clip::clip_start, clip::clip_stop, clip::clip_search, set_favorite, add_tag, remove_tag, delete_tag, save_edit, save_collage, read_image, read_audio, has_original, restore_original])
         .run(tauri::generate_context!())
         .expect("błąd uruchomienia aplikacji");
 

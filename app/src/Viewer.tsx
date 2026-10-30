@@ -5,7 +5,7 @@ import {
   ZoomIn, ZoomOut, Compare, Sliders, Sparkles, Info, Tag, Crop as CropIcon, Trash2, Sun, Palette, Aperture, Pencil, Zap, Plus,
 } from './FiboIcons'
 import { decodeBitmap } from './imageDecode'
-import { pickFile, readAudio, hasOriginal, photoPeople, readImage, restoreOriginal, saveEdit, setCaption, setPersonCover, photoExif, listPeople, reassignPersonFaces, type Person, setFavorite, setRating, setFlag, setLabel, videoUrl, developRaw, isRawName, RAW_NEUTRAL, type RawParams, type Photo, type PhotoPerson } from './api'
+import { pickFile, readAudio, hasOriginal, photoPeople, readImage, restoreOriginal, saveEdit, setCaption, setPersonCover, photoExif, listPeople, reassignPersonFaces, type Person, setFavorite, setRating, setFlag, setLabel, videoUrl, developRaw, isRawName, RAW_NEUTRAL, getEdit, saveEditRecipe, putEditThumbnail, deleteEdit, listEditHistory, getEditVersion, type EditVersion, type RawParams, type Photo, type PhotoPerson } from './api'
 import { FaceImg } from './People'
 import { copyEdit, deletePreset, getClip, loadPresets, savePreset, type Preset } from './editor/batch'
 import { Thumb } from './Thumb'
@@ -150,20 +150,26 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
   const [pendingNav, setPendingNav] = useState<number | null>(null)
   const [saving, setSaving] = useState(false)
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const dirty = isEdited(edit)
+  /** Ostatnio zapisany albo wczytany przepis edycji nieniszczącej (tekst JSON) i lista wersji z historii. */
+  const [savedRecipe, setSavedRecipe] = useState<string | null>(null)
+  const [hist, setHist] = useState<EditVersion[] | null>(null)
+  const recipeJson = () => JSON.stringify({ v: 1, edit, raw: rawApplied ? rawP : null })
+  const changed = isEdited(edit) || rawApplied
+  const dirty = changed && recipeJson() !== savedRecipe
 
   // Wczytanie zdjęcia do edycji.
   useEffect(() => {
     if (!photo) return
     let dead = false
-    setRawP(RAW_NEUTRAL); setRawApplied(false)
+    setRawP(RAW_NEUTRAL); setRawApplied(false); setSavedRecipe(null); setHist(null)
+    const recipeP = photo.edited ? getEdit(photo.id).catch(() => null) : Promise.resolve(null)
     releaseBitmap(); setBitmap(null); setLoadError(null); setEdit(EMPTY_EDIT); setUndo([]); setRedo([]); setRedEyeMode(false); setSelText(null)
     setZoom(1); setPan({ x: 0, y: 0 }); setCompare(false)
     // Film odtwarza okno aplikacji, więc nie ma obrazu do wczytania ani edycji.
     if (photo.video) { setOriginal(false); return () => { dead = true } }
     readImage(photo.id)
       .then((buf) => decodeBitmap(buf, photo.name))
-      .then((b) => { if (dead) b.close(); else { bmpRef.current = b; setBitmap(b) } })
+      .then((b) => { if (dead) { b.close(); return }; bmpRef.current = b; setBitmap(b); recipeP.then((rec) => { if (!dead && rec) applyRecipe(rec.recipe, true) }) })
       .catch((e) => !dead && setLoadError(String(e)))
     hasOriginal(photo.id).then((v) => !dead && setOriginal(v)).catch(() => {})
     return () => { dead = true }
@@ -404,15 +410,70 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
     change((s) => ({ ...s, redeye: [...s.redeye, { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height, r: 0.025 }] }))
   }
 
+  /** Wczytuje zapisany przepis edycji do edytora. Ze starszych wersji brakujące pola dostają wartości domyślne. `fresh` = świeżo otwarte zdjęcie (przepis jest „zapisany”). */
+  const applyRecipe = (json: string, fresh = false) => {
+    try {
+      const r = JSON.parse(json) as { edit?: Partial<EditState>; raw?: RawParams | null }
+      const e = r.edit ?? {}
+      const next: EditState = {
+        ...EMPTY_EDIT, ...e,
+        geo: { ...EMPTY_EDIT.geo, ...(e.geo ?? {}) }, adj: { ...ZERO_ADJUST, ...(e.adj ?? {}) },
+        fx: Array.isArray(e.fx) ? e.fx : [], redeye: Array.isArray(e.redeye) ? e.redeye : [], texts: Array.isArray(e.texts) ? e.texts : [], spots: Array.isArray(e.spots) ? e.spots : [],
+        neutral: e.neutral ?? null,
+      }
+      setEdit(next); setUndo([]); setRedo([])
+      const raw = r.raw && photo && isRawName(photo.name) ? { ...RAW_NEUTRAL, ...r.raw } : null
+      if (raw) { setRawP(raw); developNow(raw, true) }
+      if (fresh) setSavedRecipe(JSON.stringify({ v: 1, edit: next, raw }))
+    } catch { say('Nie udało się wczytać zapisanej edycji', 'err') }
+  }
+  /** Zapis edycji nieniszczący: przepis trafia do bazy, historii i pliku obok zdjęcia, a oryginał zostaje nietknięty. */
+  const saveRecipe = async () => {
+    if (!bitmap || !photo) return
+    setSaving(true)
+    try {
+      const json = recipeJson()
+      await saveEditRecipe(photo.id, json)
+      // Miniatura z edycją, żeby biblioteka pokazywała zdjęcie tak, jak wygląda po edycji.
+      const out = renderEdit(bitmap, edit, 360)
+      const blob = await new Promise<Blob | null>((res) => out.toBlob(res, 'image/jpeg', 0.85))
+      if (blob) await putEditThumbnail(photo.id, await blob.arrayBuffer()).catch(() => {})
+      setSavedRecipe(json); setHist(null)
+      onPatch(photo.id, { edited: true, rev: (photo.rev ?? 0) + 1 })
+      say('Zapisano edycję. Oryginał jest nietknięty, a edycję można zmienić, cofnąć albo przywrócić z historii', 'ok')
+      if (pendingNav !== null) { pendingNav === -1 ? onClose() : setId(pendingNav); setPendingNav(null) }
+    } catch (e) { say(`Błąd zapisu edycji: ${e}`, 'err') } finally { setSaving(false) }
+  }
+  /** Usuwa zapisaną edycję (zdjęcie wraca do oryginału); historia zostaje, więc edycję można jeszcze przywrócić. */
+  const removeRecipe = async () => {
+    if (!photo) return
+    try {
+      await deleteEdit(photo.id)
+      setEdit(EMPTY_EDIT); setUndo([]); setRedo([]); setSavedRecipe(null); setHist(null)
+      if (rawApplied) await backToCamera()
+      onPatch(photo.id, { edited: false, rev: (photo.rev ?? 0) + 1 })
+      say('Usunięto zapisaną edycję. Zdjęcie wróciło do oryginału, a wersje zostały w historii', 'ok')
+    } catch (e) { say(`Błąd: ${e}`, 'err') }
+  }
+  const openHistory = async () => {
+    if (!photo) return
+    if (hist) { setHist(null); return }
+    try { setHist(await listEditHistory(photo.id)) } catch (e) { say(`Błąd: ${e}`, 'err') }
+  }
+  const loadVersion = async (v: EditVersion) => {
+    if (!photo) return
+    try { applyRecipe(await getEditVersion(photo.id, v.id)); say('Wczytano wersję z historii. Zapisz edycję, żeby ją zachować', 'ok') } catch (e) { say(`Błąd: ${e}`, 'err') }
+  }
+
   /** Wywołuje RAW z ustawieniami z suwaków i podstawia wynik jako źródło edycji (inne poprawki zostają na wierzchu). */
-  const developNow = async (params: RawParams) => {
+  const developNow = async (params: RawParams, quiet = false) => {
     if (!photo || rawBusy) return
     setRawBusy(true)
     try {
       const buf = await developRaw(photo.id, params)
       const b = await decodeBitmap(buf, 'raw.jpg')
       releaseBitmap(); bmpRef.current = b; setBitmap(b); setRawApplied(true)
-      say('Wywołano zdjęcie RAW. Zapis tworzy nową kopię JPG obok pliku RAW', 'ok')
+      if (!quiet) say('Wywołano zdjęcie RAW. Zapis tworzy nową kopię JPG obok pliku RAW', 'ok')
     } catch (e) { say(`Nie udało się wywołać RAW: ${e}`, 'err') } finally { setRawBusy(false) }
   }
   /** Wraca do podglądu zapisanego przez aparat w pliku. */
@@ -827,12 +888,31 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
         </div>
 
         <div className="sheet-foot">
-          <button className="primary" disabled={!dirty || saving} onClick={() => save('overwrite')}><span className="inline-flex items-center gap-2"><Save size={17} /> {saving ? 'Zapisywanie…' : 'Zapisz zmiany'}</span></button>
-          <button className="wide" disabled={!dirty || saving} onClick={() => save('copy')}><CopyPlus size={17} /> Zapisz jako kopię</button>
+          <button className="primary" disabled={!dirty || saving} onClick={saveRecipe} title="Zapisuje edycję jako przepis: plik zdjęcia się nie zmienia">
+            <span className="inline-flex items-center gap-2"><Save size={17} /> {saving ? 'Zapisywanie…' : 'Zapisz edycję (oryginał bez zmian)'}</span>
+          </button>
+          <button className="wide" disabled={!changed || saving} onClick={() => save('overwrite')}><Save size={17} /> Zapisz zmiany w pliku</button>
+          <button className="wide" disabled={!changed || saving} onClick={() => save('copy')}><CopyPlus size={17} /> Zapisz jako kopię</button>
           <div className="flex gap-2" style={{ marginTop: 6 }}>
             <button className="text flex-1" disabled={!original} onClick={restore}><span className="inline-flex items-center gap-1"><History size={15} /> Oryginał</span></button>
-            <button className="danger flex-1" disabled={!dirty} onClick={() => { snap(); setEdit(EMPTY_EDIT); setRedEyeMode(false) }}><span className="inline-flex items-center gap-1"><Trash2 size={15} /> Odrzuć zmiany</span></button>
+            <button className="danger flex-1" disabled={!changed} onClick={() => { snap(); setEdit(EMPTY_EDIT); setRedEyeMode(false); if (rawApplied) backToCamera() }}><span className="inline-flex items-center gap-1"><Trash2 size={15} /> Odrzuć zmiany</span></button>
           </div>
+          {(photo.edited || savedRecipe !== null) && (
+            <div className="flex gap-2" style={{ marginTop: 6 }}>
+              <button className="text flex-1" onClick={openHistory} aria-expanded={hist !== null}><span className="inline-flex items-center gap-1"><History size={15} /> Historia edycji</span></button>
+              <button className="danger flex-1" onClick={removeRecipe} title="Zdjęcie wraca do oryginału; wersje zostają w historii"><span className="inline-flex items-center gap-1"><Trash2 size={15} /> Usuń edycję</span></button>
+            </div>
+          )}
+          {hist && (
+            <div style={{ marginTop: 6, maxHeight: 150, overflowY: 'auto', display: 'grid', gap: 4 }}>
+              {hist.length === 0 && <div style={{ color: 'var(--muted)', fontSize: 13 }}>Brak zapisanych wersji.</div>}
+              {hist.map((h, i) => (
+                <button key={h.id} className="chip" style={{ justifyContent: 'space-between' }} onClick={() => loadVersion(h)}>
+                  <span>{new Date(h.created * 1000).toLocaleString('pl-PL', { dateStyle: 'medium', timeStyle: 'short' })}{i === 0 ? ' (ostatnia)' : ''}</span><span>Wczytaj</span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </aside>
 
