@@ -85,7 +85,7 @@ pub async fn index_colors(app: tauri::AppHandle) -> Result<ColorReport, String> 
         let state = app.state::<AppState>();
         let todo: Vec<(i64, i64)> = {
             let conn = state.db.lock().map_err(|e| e.to_string())?;
-            let mut stmt = conn.prepare("SELECT id, modified FROM photos WHERE color IS NULL AND hidden = 0").map_err(|e| e.to_string())?;
+            let mut stmt = conn.prepare("SELECT id, modified FROM photos WHERE color IS NULL AND hidden = 0 AND video = 0").map_err(|e| e.to_string())?;
             let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?))).map_err(|e| e.to_string())?.filter_map(Result::ok).collect();
             rows
         };

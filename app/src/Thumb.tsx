@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { inTauri, putThumbnail, readImage, thumbnailBlob, type Photo } from './api'
-import { makeThumbBlob } from './imageDecode'
+import { inTauri, putThumbnail, readImage, thumbnailBlob, videoUrl, type Photo } from './api'
+import { makeThumbBlob, makeVideoThumbBlob } from './imageDecode'
+
+/** Filmy, których miniatury nie udało się zrobić (np. nieobsługiwany kodek): nie próbujemy ich ponownie przy każdym przewinięciu. */
+const failedVideoThumbs = new Set<number>()
 
 /** Miniatura ładowana dopiero, gdy kafel pojawi się na ekranie. */
 export function Thumb({ photo, fit = 'cover' }: { photo: Photo; fit?: 'cover' | 'contain' }) {
@@ -20,12 +23,13 @@ export function Thumb({ photo, fit = 'cover' }: { photo: Photo; fit?: 'cover' | 
       const show = (b: Blob) => { if (cancelled) return; url = URL.createObjectURL(b); setSrc(url) }
       thumbnailBlob(photo.id).then(show).catch(async () => {
         // Program nie ma dekodera dla AVIF i SVG: miniaturę robi okno aplikacji i zapisuje ją w pamięci podręcznej, żeby nie robić jej za każdym razem.
-        if (!/\.(avif|svg)$/i.test(photo.name)) return
+        if (!photo.video && !/\.(avif|svg)$/i.test(photo.name)) return
+        if (photo.video && failedVideoThumbs.has(photo.id)) return
         try {
-          const made = await makeThumbBlob(await readImage(photo.id), photo.name)
+          const made = photo.video ? await makeVideoThumbBlob(videoUrl(photo.id)) : await makeThumbBlob(await readImage(photo.id), photo.name)
           show(made.blob)
           putThumbnail(photo.id, await made.blob.arrayBuffer(), made.width, made.height).catch(() => {})
-        } catch { /* zostaje kolorowy zastępnik */ }
+        } catch { if (photo.video) failedVideoThumbs.add(photo.id) /* zostaje kolorowy zastępnik */ }
       })
     }, { rootMargin: '300px' })
     io.observe(el)

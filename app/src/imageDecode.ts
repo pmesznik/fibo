@@ -40,3 +40,41 @@ export async function makeThumbBlob(buf: ArrayBuffer, name: string, side = 360):
   const blob = await new Promise<Blob>((ok, fail) => c.toBlob((b) => (b ? ok(b) : fail(new Error('Nie udało się zapisać miniatury'))), 'image/jpeg', 0.85))
   return { blob, width, height }
 }
+
+// Miniatury filmów robimy po dwie naraz: każdy odtwarzacz zajmuje pamięć i dekoder.
+let videoSlots = 0
+const videoQueue: (() => void)[] = []
+const takeSlot = () => new Promise<void>((ok) => { if (videoSlots < 2) { videoSlots++; ok() } else videoQueue.push(() => { videoSlots++; ok() }) })
+const freeSlot = () => { videoSlots--; videoQueue.shift()?.() }
+
+/** Miniatura JPEG z klatki filmu (około 10 procent długości, nie więcej niż sekunda), zrobiona przez odtwarzacz okna aplikacji. */
+export async function makeVideoThumbBlob(url: string, side = 360): Promise<{ blob: Blob; width: number; height: number }> {
+  await takeSlot()
+  const v = document.createElement('video')
+  try {
+    v.muted = true; v.preload = 'auto'; v.crossOrigin = 'anonymous'; v.playsInline = true
+    const ready = (ev: 'loadeddata' | 'seeked') => new Promise<void>((ok, fail) => {
+      const t = window.setTimeout(() => fail(new Error('Film nie odpowiada')), 12000)
+      v.addEventListener(ev, () => { window.clearTimeout(t); ok() }, { once: true })
+      v.addEventListener('error', () => { window.clearTimeout(t); fail(new Error('Okno aplikacji nie umie odtworzyć tego filmu (nieobsługiwany kodek)')) }, { once: true })
+    })
+    const loaded = ready('loadeddata')
+    v.src = url
+    await loaded
+    const target = Math.min(1, (v.duration || 0) * 0.1)
+    if (target > 0.05) { const seeked = ready('seeked'); v.currentTime = target; await seeked }
+    const w = v.videoWidth, h = v.videoHeight
+    if (!w || !h) throw new Error('Film nie ma obrazu')
+    const k = Math.min(1, side / Math.max(w, h))
+    const c = document.createElement('canvas')
+    c.width = Math.max(1, Math.round(w * k)); c.height = Math.max(1, Math.round(h * k))
+    const ctx = c.getContext('2d')
+    if (!ctx) throw new Error('Brak obsługi canvas')
+    ctx.drawImage(v, 0, 0, c.width, c.height)
+    const blob = await new Promise<Blob>((ok, fail) => c.toBlob((b) => (b ? ok(b) : fail(new Error('Nie udało się zapisać miniatury'))), 'image/jpeg', 0.85))
+    return { blob, width: w, height: h }
+  } finally {
+    v.removeAttribute('src'); v.load()
+    freeSlot()
+  }
+}

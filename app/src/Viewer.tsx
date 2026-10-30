@@ -5,7 +5,7 @@ import {
   ZoomIn, ZoomOut, Compare, Sliders, Sparkles, Info, Tag, Crop as CropIcon, Trash2, Sun, Palette, Aperture, Pencil, Zap, Plus,
 } from './FiboIcons'
 import { decodeBitmap } from './imageDecode'
-import { pickFile, readAudio, hasOriginal, photoPeople, readImage, restoreOriginal, saveEdit, setCaption, setPersonCover, photoExif, listPeople, reassignPersonFaces, type Person, setFavorite, setRating, setFlag, setLabel, type Photo, type PhotoPerson } from './api'
+import { pickFile, readAudio, hasOriginal, photoPeople, readImage, restoreOriginal, saveEdit, setCaption, setPersonCover, photoExif, listPeople, reassignPersonFaces, type Person, setFavorite, setRating, setFlag, setLabel, videoUrl, type Photo, type PhotoPerson } from './api'
 import { FaceImg } from './People'
 import { copyEdit, deletePreset, getClip, loadPresets, savePreset, type Preset } from './editor/batch'
 import { Thumb } from './Thumb'
@@ -148,6 +148,8 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
     let dead = false
     releaseBitmap(); setBitmap(null); setLoadError(null); setEdit(EMPTY_EDIT); setUndo([]); setRedo([]); setRedEyeMode(false); setSelText(null)
     setZoom(1); setPan({ x: 0, y: 0 }); setCompare(false)
+    // Film odtwarza okno aplikacji, więc nie ma obrazu do wczytania ani edycji.
+    if (photo.video) { setOriginal(false); return () => { dead = true } }
     readImage(photo.id)
       .then((buf) => decodeBitmap(buf, photo.name))
       .then((b) => { if (dead) b.close(); else { bmpRef.current = b; setBitmap(b) } })
@@ -346,14 +348,14 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
         else if (document.fullscreenElement) document.exitFullscreen()
         else requestClose()
       }
-      else if (e.key === ' ' && t?.tagName !== 'BUTTON') { e.preventDefault(); setPlaying((p) => !p) }
+      else if (e.key === ' ' && t?.tagName !== 'BUTTON' && t?.tagName !== 'VIDEO' && !photo?.video) { e.preventDefault(); setPlaying((p) => !p) }
       else if (/^[0-5]$/.test(e.key)) rate(+e.key)
       else if (e.key.toLowerCase() === 'f') toggleFav()
       else if (e.key.toLowerCase() === 'p') markFlag(1)
       else if (e.key.toLowerCase() === 'x') markFlag(-1)
       else if (e.key.toLowerCase() === 'u') markFlag(0)
       else if (/^[6-9]$/.test(e.key)) markLabel(+e.key - 5)
-      else if (e.key.toLowerCase() === 'e') setSheet((v) => !v)
+      else if (e.key.toLowerCase() === 'e' && !photo?.video) setSheet((v) => !v)
       else if (e.key === '+' || e.key === '=') zoomAt(1.4)
       else if (e.key === '-' || e.key === '_') zoomAt(1 / 1.4)
       else if (e.key.toLowerCase() === 'z') toggleActualSize()
@@ -400,7 +402,12 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
       <div className="absolute inset-0 flex items-center justify-center overflow-hidden" onWheel={onWheel}
         style={{ padding: 'calc(76px + var(--sat)) ' + (sheet ? '394px' : '16px') + ' calc(104px + var(--sab)) 16px', transition: 'padding .3s var(--ease)', background: 'color-mix(in srgb, var(--bg) 60%, #000)' }}>
         {loadError && <div className="empty">Nie można otworzyć zdjęcia: {loadError}</div>}
-        {!bitmap && !loadError && <div className="empty">Wczytywanie…</div>}
+        {photo.video && (
+          <video key={photo.id} src={videoUrl(photo.id)} controls autoPlay playsInline aria-label={photo.name}
+            onError={() => say('Okno aplikacji nie umie odtworzyć tego filmu (nieobsługiwany kodek, np. H.265 bez rozszerzenia systemu). Otwórz go w innym odtwarzaczu.', 'err')}
+            style={{ maxWidth: '100%', maxHeight: '100%', borderRadius: 'var(--r-md)', boxShadow: '0 10px 40px rgba(0,0,0,.4)', background: '#000' }} />
+        )}
+        {!photo.video && !bitmap && !loadError && <div className="empty">Wczytywanie…</div>}
         <canvas
           ref={canvasRef}
           onClick={onCanvasClick}
@@ -410,7 +417,7 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
           onPointerUp={onPanEnd}
           onPointerCancel={onPanEnd}
           aria-label={photo.name}
-          className={bitmap ? '' : 'hidden'}
+          className={bitmap && !photo.video ? '' : 'hidden'}
           style={{
             maxWidth: '100%', maxHeight: '100%', borderRadius: 'var(--r-md)', boxShadow: '0 10px 40px rgba(0,0,0,.4)',
             cursor: redEyeMode || neutralMode || retouchMode ? 'crosshair' : zoom > 1 ? 'grab' : 'zoom-in', touchAction: 'none',
@@ -522,10 +529,10 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
         <button className="ico" aria-label="Pełny ekran" onClick={fullscreen}><Maximize size={19} /></button>
       </div>
 
-      <button className="fab glass" style={{ zIndex: 1600, background: sheet ? 'var(--accent)' : undefined, color: sheet ? '#fff' : undefined }}
+      {!photo.video && <button className="fab glass" style={{ zIndex: 1600, background: sheet ? 'var(--accent)' : undefined, color: sheet ? '#fff' : undefined }}
         aria-label="Edycja zdjęcia" aria-expanded={sheet} title="Edycja (E)" onClick={() => setSheet((v) => !v)}>
         {sheet ? <X size={20} /> : <Wand2 size={20} />}
-      </button>
+      </button>}
 
       {/* Panel edycji */}
       <aside className="sheet glass" aria-hidden={!sheet} inert={!sheet}

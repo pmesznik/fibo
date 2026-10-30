@@ -29,7 +29,7 @@ Lista powstała z pamięci o Picasie 3, z przeglądu FIBO i z oficjalnego podrę
 - [x] **Statystyki biblioteki** (liczba zdjęć, rozmiar, zdjęcia na rok, najczęstsze aparaty). P4 T S Gotowe (menu, szybkie akcje).
 - [x] **Blokowanie folderu** przed zmianami z poziomu FIBO (ochrona przed przypadkowym usunięciem). P3 T S Gotowe (menu → Foldery); ochrona działa w programie, nie w systemie plików.
 - [x] **Skróty klawiszowe w bibliotece** (np. 1 do 5 oceny, F ulubione, Del ukrywanie) i ich lista pod F1. P2 T S Gotowe: 0-5, F, ? lub F1 (Del nie dodany, bo usuwanie ma potwierdzenia).
-- [ ] Obsługa **plików wideo** w bibliotece (miniatura, odtwarzanie, filtr). P3 T L
+- [x] Obsługa **plików wideo** w bibliotece (miniatura, odtwarzanie, filtr): MP4, M4V, MOV, WebM i Ogg, o ile okno programu zna kodek (H.264 tak, H.265 zależy od systemu).
 - [x] Obsługa **plików RAW** (CR2, CR3, NEF, ARW, DNG, RAF, ORF, RW2 i inne): miniatura z osadzonego podglądu, pełny podgląd z wywołanej matrycy. Gotowe w wersji 0.4.12 (pliki RAW edytujesz jako kopie).
 
 ## 2. Osoby i miejsca
@@ -130,7 +130,7 @@ Biblioteka i foldery:
 Widoki i wyszukiwanie:
 - [x] **Oś czasu („Timeline”)**: przesuwanie suwakiem po całej bibliotece (miesiące i lata z miniaturami), dziś są tylko skoki do roku. P2 T M Gotowe jako suwak nad zdjęciami (skok do miesiąca lub roku).
 - [x] **Szukanie obejmuje opisy, nazwy albumów, miejsce i dane EXIF aparatu** (dziś: nazwa pliku, aparat, tagi). P1 T S Gotowe: opisy, albumy, foldery, aparat, tagi (bez pól EXIF takich jak ISO i obiektyw, zob. wyszukiwanie po danych aparatu).
-- [ ] **Przycisk „Filmy”** (tylko wideo) i **suwak daty** do szybkiego zawężania wyników. P3 T S
+- [x] **Przycisk „Filmy”** (tylko wideo) i **suwak daty** do szybkiego zawężania wyników. P3 T S
 - [x] **Filmstrip w edytorze** (pasek miniatur zdjęć z albumu u góry, zamiast samych strzałek). P3 T S Już był: pasek miniatur w podglądzie.
 
 Edytor, szczegóły z podręcznika:
@@ -196,7 +196,7 @@ Edycja:
 
 Pliki i formaty:
 - [x] **Rozpoznawanie wielu rodzajów plików**: HEIC/HEIF, AVIF, JPEG XL, RAW (CR2, CR3, NEF, ARW, DNG, RAF, ORF, RW2 i inne), PSD, TIFF, TGA, PNM, DDS, HDR, QOI, OpenEXR, ICO, SVG. Pliki w tych formatach edytujemy tylko jako kopie.
-- [ ] **Wideo**: miniatury, odtwarzanie, filtr „Filmy”, wycinanie fragmentu. P2 T L
+- [x] **Wideo**: miniatury, odtwarzanie, filtr „Filmy”. Wycinanie fragmentu jeszcze nie. P2 T L
 - [ ] **Zdjęcia ruchome** (Live Photos, krótkie klipy przy zdjęciu). P4 T L
 - [ ] **Natychmiastowe wykrywanie nowych plików** (obserwator folderów zamiast sprawdzania co kilka minut). P3 T M
 - [ ] **Zarządzanie pamięcią podręczną miniatur** (rozmiar, czyszczenie). P3 T S

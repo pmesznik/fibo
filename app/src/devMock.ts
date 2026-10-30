@@ -80,6 +80,9 @@ const photos = Array.from({ length: PHOTO_N }, (_, i) => {
     color: i % 12,
   }
 })
+// Przykładowe filmy (bez odtwarzania: w podglądzie przeglądarkowym nie ma protokołu programu).
+for (const i of [20, 21]) { const p = photos[i] as unknown as { video: boolean; duration: number; name: string; path: string }; p.video = true; p.duration = i === 20 ? 42 : 3725; p.name = `MOV_${i}.mp4`; p.path = `C:\\Zdjecia\\${FOLDERS[0]}\\MOV_${i}.mp4` }
+
 // Przykładowe stosy do podglądu: para RAW + JPEG i seria trzech zdjęć (te same: folder, aparat i czas z sekundą różnicy).
 for (const [i, name, taken] of [[10, "IMG_5000.ARW", "2026-01-05 09:00:00"], [11, "IMG_5000.jpg", "2026-01-05 09:00:00"], [12, "IMG_5101.jpg", "2026-01-05 09:10:00"], [13, "IMG_5102.jpg", "2026-01-05 09:10:01"], [14, "IMG_5103.jpg", "2026-01-05 09:10:02"]] as [number, string, string][]) {
   const p = photos[i]

@@ -33,6 +33,7 @@ import { Justified, VirtualGrid } from './Justified'
 import { Chip, Sec, Toast, useEscape } from './ui'
 import { dayKey, dayLabel, memoriesFor, yearsAgo, type Memory } from './memories'
 import { LABELS, flagOf, labelOf, nextMark, passesFlag } from './marks'
+import { durationLabel } from './api'
 import { CompareView } from './CompareView'
 import { collapseStacks, findStacks, stackCount } from './stacks'
 import {
@@ -113,6 +114,8 @@ export default function App() {
   const toggleStack = (leader: number) => setOpenStacks((s) => { const n = new Set(s); if (!n.delete(leader)) n.add(leader); return n })
   const [flagFilter, setFlagFilter] = useState<'' | 'pick' | 'reject' | 'keep'>('')
   const [labelFilter, setLabelFilter] = useState<number | null>(null)
+  /** Rodzaj plików: wszystko, same zdjęcia albo same filmy. */
+  const [kindFilter, setKindFilter] = useState<'' | 'photo' | 'video'>('')
   const [color, setColor] = useState<number | null>(null)
   // Filtry dodatkowe: zakres dat (RRRR-MM-DD) oraz zdjęcia, którym czegoś brakuje (porządkowanie biblioteki).
   const [dateFrom, setDateFrom] = useState('')
@@ -416,6 +419,7 @@ export default function App() {
       (!trayView || tray.includes(p.id)) &&
       (!onlyFav || p.favorite) &&
       p.rating >= minStars &&
+      (kindFilter === '' || (kindFilter === 'video') === !!p.video) &&
       passesFlag(p, flagFilter) &&
       (labelFilter === null || labelOf(p) === labelFilter) &&
       (color === null || p.color === color) &&
@@ -432,7 +436,7 @@ export default function App() {
     else if (sort === 'size') list.sort((a, b) => b.size - a.size)
     else list.sort((a, b) => (sort === 'date-desc' ? whenOf(b).localeCompare(whenOf(a)) : whenOf(a).localeCompare(whenOf(b))))
     return list
-  }, [all, albumNames, propOf, query, folder, albumId, person, trayView, tray, onlyFav, minStars, flagFilter, labelFilter, color, dateFrom, dateTo, missing, sort, activeTags, albumPos])
+  }, [all, albumNames, propOf, query, folder, albumId, person, trayView, tray, onlyFav, minStars, kindFilter, flagFilter, labelFilter, color, dateFrom, dateTo, missing, sort, activeTags, albumPos])
   const stacks = useMemo(() => findStacks(all), [all])
   const stackTotal = useMemo(() => stackCount(stacks), [stacks])
   const collapsed = useMemo(() => (stacksOn && stackTotal > 0 ? collapseStacks(filtered, stacks, openStacks) : null), [stacksOn, stackTotal, filtered, stacks, openStacks])
@@ -555,8 +559,8 @@ export default function App() {
   const setGridMode = (v: boolean) => { setOriginal(v); try { localStorage.setItem('grid-original', v ? '1' : '0') } catch { /* brak pamięci */ } }
   /** Porównanie 2 do 4 zaznaczonych zdjęć obok siebie (klawisz C albo przycisk na pasku zaznaczenia). */
   const startCompare = () => {
-    const n = chosen.filter((p) => p.id >= 0).length
-    if (n < 2) return say('Zaznacz od dwóch do czterech zdjęć, żeby je porównać: Ctrl lub Shift przy kliknięciu.')
+    const n = chosen.filter((p) => p.id >= 0 && !p.video).length
+    if (n < 2) return say('Zaznacz od dwóch do czterech zdjęć (filmów nie porównujemy), żeby je porównać: Ctrl lub Shift przy kliknięciu.')
     if (n > 4) say('Porównuję pierwsze cztery z zaznaczonych zdjęć')
     setCompareOpen(true)
   }
@@ -930,7 +934,7 @@ export default function App() {
         onDragEnd={() => { setDragIds(null); setDropOver(null) }}
         onDragOver={reorderMode && dragIds ? (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move' } : undefined}
         onDrop={reorderMode && dragIds ? (e) => { e.preventDefault(); dropOnPhoto(p.id) } : undefined}
-        aria-label={`${p.name}, ocena ${p.rating}${p.favorite ? ', ulubione' : ''}${sb?.leader ? `, stos ${sb.count} zdjęć` : ''}${flagOf(p) === 1 ? ', wybrane' : flagOf(p) === -1 ? ', odrzucone' : ''}${labelOf(p) ? `, etykieta ${LABELS[labelOf(p) - 1].name}` : ''}`}
+        aria-label={`${p.video ? 'Film ' : ''}${p.name}, ocena ${p.rating}${p.favorite ? ', ulubione' : ''}${sb?.leader ? `, stos ${sb.count} zdjęć` : ''}${flagOf(p) === 1 ? ', wybrane' : flagOf(p) === -1 ? ', odrzucone' : ''}${labelOf(p) ? `, etykieta ${LABELS[labelOf(p) - 1].name}` : ''}`}
         aria-pressed={on}
         className={`bare group relative overflow-hidden text-left ${ratio43 ? 'aspect-[4/3]' : 'h-full w-full'}`}
         style={{ borderRadius: 'var(--r-card)', boxShadow: on ? '0 0 0 3px var(--accent)' : sb?.open ? '0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent)' : 'var(--elev-1)', opacity: flagOf(p) === -1 && !on ? 0.5 : 1, contentVisibility: 'auto', containIntrinsicSize: `${size}px ${Math.round(size * 0.75)}px` }}
@@ -941,6 +945,11 @@ export default function App() {
             {Array.from({ length: p.rating }).map((_, k) => <Star key={k} size={13} fill="currentColor" />)}
           </span>
         </div>
+        {p.video && (
+          <span aria-hidden className="absolute flex items-center gap-1" style={{ left: multi ? 38 : 8, top: 8, padding: '2px 8px 2px 6px', borderRadius: 99, background: 'rgba(0,0,0,.62)', color: '#fff', fontSize: 12, fontWeight: 650 }}>
+            <Play size={12} fill="currentColor" /> {durationLabel(p.duration) || 'Film'}
+          </span>
+        )}
         {sb?.leader && (
           <span role="button" tabIndex={0} aria-label={sb.open ? `Zwiń stos ${sb.count} zdjęć` : `Rozwiń stos ${sb.count} zdjęć`} title={sb.kind === 'pair' ? 'RAW + JPEG: kliknij, żeby pokazać oba pliki' : 'Seria zdjęć: kliknij, żeby pokazać wszystkie'}
             className="absolute left-2 bottom-2 flex items-center gap-1"
@@ -969,7 +978,7 @@ export default function App() {
     )
   }
 
-  const filtersOn = minStars > 0 || flagFilter !== '' || labelFilter !== null || color !== null || !!dateFrom || !!dateTo || missing !== '' || sort !== 'date-desc' || !!folder || activeTags.length > 0
+  const filtersOn = minStars > 0 || kindFilter !== '' || flagFilter !== '' || labelFilter !== null || color !== null || !!dateFrom || !!dateTo || missing !== '' || sort !== 'date-desc' || !!folder || activeTags.length > 0
   const selPhotos = useMemo(() => (sel.length ? all.filter((p) => selSet.has(p.id)) : []), [all, sel, selSet])
   const subtitle = busy ? `Skanowanie… ${progress}` : `${photos.length} z ${all.length} ${pl(all.length, 'zdjęcia', 'zdjęć', 'zdjęć')}${selPhotos.length ? ` · zaznaczono ${selPhotos.length} (${sizeText(selPhotos)})` : ''}`
 
@@ -1049,6 +1058,12 @@ export default function App() {
                     {n === 0 ? 'Wszystkie' : <>{n} <Star size={12} fill="currentColor" /></>}
                   </Chip>
                 ))}
+              </div>
+              <label>Rodzaj plików</label>
+              <div className="chips">
+                <Chip on={kindFilter === ''} onClick={() => setKindFilter('')} label="Zdjęcia i filmy">Wszystko</Chip>
+                <Chip on={kindFilter === 'photo'} onClick={() => setKindFilter('photo')} label="Tylko zdjęcia">Zdjęcia</Chip>
+                <Chip on={kindFilter === 'video'} onClick={() => setKindFilter('video')} label="Tylko filmy">Filmy</Chip>
               </div>
               <label>Flaga selekcji</label>
               <div className="chips">
@@ -1269,7 +1284,7 @@ export default function App() {
                   {years.map((y) => <Chip key={y} onClick={() => jumpToYear(y)}>{y}</Chip>)}
                 </div>
               )}
-              {(query || folder || albumId !== null || person || trayView || minStars > 0 || flagFilter !== '' || labelFilter !== null || color !== null || dateFrom || dateTo || missing || activeTags.length > 0) && (
+              {(query || folder || albumId !== null || person || trayView || minStars > 0 || kindFilter !== '' || flagFilter !== '' || labelFilter !== null || color !== null || dateFrom || dateTo || missing || activeTags.length > 0) && (
                 <div className="chips" style={{ marginTop: 10 }}>
                   {activeTags.map((t) => <Chip key={t} on onClick={() => toggleTagFilter(t)} label={`Usuń filtr tagu ${t}`}><Tag size={13} /> {t} <X size={13} /></Chip>)}
                   {query && <Chip on onClick={() => setQuery('')} label="Usuń szukanie"><SearchIcon size={13} /> {query} <X size={13} /></Chip>}
@@ -1285,6 +1300,7 @@ export default function App() {
                   {(dateFrom || dateTo) && <Chip on onClick={() => { setDateFrom(''); setDateTo('') }} label="Usuń filtr dat"><CalendarDays size={13} /> {dateFrom || '…'} – {dateTo || '…'} <X size={13} /></Chip>}
                   {missing && <Chip on onClick={() => setMissing('')} label="Usuń filtr braków">{missing === 'tags' ? 'Bez tagów' : missing === 'geo' ? 'Bez lokalizacji' : 'Bez oceny'} <X size={13} /></Chip>}
                   {color !== null && <Chip on onClick={() => setColor(null)} label="Usuń filtr koloru"><span aria-hidden style={{ width: 12, height: 12, borderRadius: '50%', background: COLORS[color].css, border: '1px solid var(--glass-line)', display: 'inline-block' }} /> {COLORS[color].name} <X size={13} /></Chip>}
+                  {kindFilter && <Chip on onClick={() => setKindFilter('')} label="Usuń filtr rodzaju">{kindFilter === 'video' ? 'Filmy' : 'Zdjęcia'} <X size={13} /></Chip>}
                   {flagFilter && <Chip on onClick={() => setFlagFilter('')} label="Usuń filtr flagi">{flagFilter === 'pick' ? 'Wybrane' : flagFilter === 'reject' ? 'Odrzucone' : 'Bez odrzuconych'} <X size={13} /></Chip>}
                   {labelFilter !== null && <Chip on onClick={() => setLabelFilter(null)} label="Usuń filtr etykiety"><span aria-hidden style={{ width: 12, height: 12, borderRadius: '50%', background: LABELS[labelFilter - 1].css, display: 'inline-block' }} /> {LABELS[labelFilter - 1].name} <X size={13} /></Chip>}
                   {minStars > 0 && <Chip on onClick={() => setMinStars(0)} label="Usuń filtr oceny">≥ {minStars} <Star size={12} fill="currentColor" /> <X size={13} /></Chip>}
@@ -1477,13 +1493,13 @@ export default function App() {
         </div>
       )}
 
-      {compareOpen && chosen.filter((p) => p.id >= 0).length > 1 && (
-        <CompareView photos={chosen.filter((p) => p.id >= 0).slice(0, 4)} onClose={() => setCompareOpen(false)} onPatch={patch} say={say} />
+      {compareOpen && chosen.filter((p) => p.id >= 0 && !p.video).length > 1 && (
+        <CompareView photos={chosen.filter((p) => p.id >= 0 && !p.video).slice(0, 4)} onClose={() => setCompareOpen(false)} onPatch={patch} say={say} />
       )}
 
-      {collage && chosen.length > 1 && (
+      {collage && chosen.filter((p) => !p.video).length > 1 && (
         <Collage
-          photos={chosen}
+          photos={chosen.filter((p) => !p.video)}
           onClose={() => setCollage(false)}
           onSaved={async (newId) => { await reload(); setSelected(newId) }}
           say={say}
@@ -1706,7 +1722,7 @@ export default function App() {
         <MoveFacesDialog personId={person.id} personName={person.name} photoIds={moveFaces} say={say} onClose={() => setMoveFaces(null)}
           onDone={(ids) => { dropFromPerson(ids); setSel([]) }} />
       )}
-      {calOpen && <CalendarMaker photos={all} say={say} onClose={() => setCalOpen(false)} />}
+      {calOpen && <CalendarMaker photos={all.filter((p) => !p.video)} say={say} onClose={() => setCalOpen(false)} />}
       {creditIds && creditIds.length > 0 && <CreditsDialog photos={all.filter((p) => creditIds.includes(p.id))} say={say} onClose={() => setCreditIds(null)} onDone={reload} />}
       {cardOffer && (
         <div className="glass fixed left-3 z-[1550] flex flex-wrap items-center gap-3 p-3" style={{ bottom: 'calc(12px + var(--sab))', borderRadius: 'var(--r-lg)', maxWidth: 'min(92vw, 460px)' }} role="status">

@@ -69,6 +69,22 @@ describe('Polityka CSP', () => {
   })
 })
 
+describe('Odtwarzanie filmów', () => {
+  const csp = String(conf.app.security.csp)
+  const media = (csp.match(/media-src ([^;]+)/)?.[1] ?? '').split(/\s+/)
+  test('media-src dopuszcza tylko własne zasoby, blob i protokół filmów programu', () => {
+    const allowed = new Set(["'self'", 'blob:', 'http://fibo-video.localhost'])
+    for (const v of media) assert.ok(allowed.has(v), `media-src: nieoczekiwane źródło ${v}`)
+  })
+  test('protokół filmów zwraca tylko filmy z biblioteki po numerze, ze sprawdzeniem rozszerzenia i zakresem bajtów', () => {
+    const v = readTracked('app/src-tauri/src/video.rs')
+    assert.match(v, /FROM photos WHERE id = \?1 AND video = 1 AND hidden = 0/)
+    assert.match(v, /is_video\(p\)/)
+    assert.match(v, /fn parse_range/)
+    assert.ok(!/Command::new|reqwest|TcpStream|unsafe\s*\{/.test(v))
+  })
+})
+
 describe('Protokół zasobów i uprawnienia', () => {
   test('protokół asset jest wyłączony: miniatury i wycinki twarzy idą przez IPC jako bajty', () => {
     assert.equal(conf.app.security.assetProtocol, undefined)

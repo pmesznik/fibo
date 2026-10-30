@@ -680,7 +680,7 @@ fn index_blocking(app: &tauri::AppHandle) -> Result<Progress, String> {
         let mut stmt = conn
             .prepare(
                 "SELECT p.id, p.path, p.modified FROM photos p LEFT JOIN face_scan f ON f.photo_id = p.id
-                 WHERE p.hidden = 0 AND (f.photo_id IS NULL OR f.scanned_mod != p.modified) ORDER BY p.id",
+                 WHERE p.hidden = 0 AND p.video = 0 AND (f.photo_id IS NULL OR f.scanned_mod != p.modified) ORDER BY p.id",
             )
             .map_err(|e| e.to_string())?;
         let v = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).map_err(|e| e.to_string())?.filter_map(Result::ok).collect();
@@ -800,7 +800,7 @@ pub fn faces_status(app: tauri::AppHandle, state: State<'_, AppState>) -> Result
         enabled: enabled(&conn),
         models_ok,
         running: BUSY.load(Ordering::SeqCst),
-        photos: n("SELECT COUNT(*) FROM photos WHERE hidden = 0"),
+        photos: n("SELECT COUNT(*) FROM photos WHERE hidden = 0 AND video = 0"),
         scanned: n("SELECT COUNT(*) FROM face_scan f JOIN photos p ON p.id = f.photo_id WHERE p.hidden = 0 AND f.scanned_mod = p.modified"),
         faces: n("SELECT COUNT(*) FROM faces"),
         people: n("SELECT COUNT(DISTINCT person_id) FROM faces f JOIN people p ON p.id = f.person_id WHERE p.ignored = 0"),

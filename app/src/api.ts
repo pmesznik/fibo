@@ -28,6 +28,21 @@ export type Photo = {
   flag?: number
   /** Etykieta kolorowa: 1 czerwona, 2 żółta, 3 zielona, 4 niebieska, 0 brak. */
   label?: number
+  /** Film (odtwarzany przez okno aplikacji), a nie zdjęcie. */
+  video?: boolean
+  /** Czas trwania filmu w sekundach. */
+  duration?: number | null
+}
+
+/** Adres odtwarzania filmu z biblioteki: protokół programu zwraca bajty tylko dla filmów z biblioteki i tylko po numerze. */
+export const videoUrl = (id: number) => `http://fibo-video.localhost/${id}`
+
+/** Czas trwania jako „0:42” albo „1:05:09”. */
+export function durationLabel(sec: number | null | undefined): string {
+  if (sec == null || !isFinite(sec) || sec < 0) return ''
+  const s = Math.round(sec)
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), r = s % 60
+  return h ? `${h}:${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}` : `${m}:${String(r).padStart(2, '0')}`
 }
 
 export type Album = { id: number; name: string; count: number; hidden: boolean }

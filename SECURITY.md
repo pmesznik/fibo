@@ -13,6 +13,10 @@ i poproś o kontakt). Najnowsza wydana wersja jest jedyną wspieraną.
 - **Polityka CSP** w oknie programu: skrypty tylko własne, połączenia tylko do IPC aplikacji i serwera map,
   brak ramek, obiektów i formularzy.
 - **Brak protokołu zasobów (`asset:`):** miniatury i wycinki twarzy trafiają do okna jako bajty przez IPC, więc okno nie ma dostępu do plików na dysku.
+- **Odtwarzanie filmów** idzie przez własny, wąski protokół `fibo-video` (w Windows `http://fibo-video.localhost/<numer>`): zwraca bajty pliku
+  wyłącznie dla zdjęcia z biblioteki oznaczonego jako film, po numerze, dla znanych rozszerzeń (mp4, m4v, mov, webm, ogv) i w kawałkach do 8 MB
+  (żądania Range). Okno nie dostaje ścieżek ani dostępu do dowolnych plików. Odtwarzanie i miniatury filmów robi dekoder okna (WebView2), program
+  niczego sam nie dekoduje i nie uruchamia zewnętrznych programów.
 - **Minimalne uprawnienia okna:** `core`, okno wyboru folderu, aktualizacje i restart. Brak wtyczek plików, powłoki i HTTP.
 - **Aktualizacje podpisane** kluczem autora (minisign). Program instaluje wyłącznie aktualizację z poprawnym podpisem,
   pobraną po HTTPS z wydań tego repozytorium. Klucz prywatny jest tylko u autora i jako sekret GitHub Actions,

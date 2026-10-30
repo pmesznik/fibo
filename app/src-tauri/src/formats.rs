@@ -29,6 +29,8 @@ pub const RAW: &[&str] = &[
 ];
 /// Formaty, których program nie umie zdekodować (miniaturę robi okno aplikacji).
 const UI_ONLY: &[&str] = &["avif", "svg"];
+/// Filmy, które okno aplikacji potrafi odtworzyć (MP4 i MOV z obrazem H.264, WebM, Ogg). Program ich nie dekoduje: pokazuje je odtwarzacz okna.
+const VIDEO: &[&str] = &["mp4", "m4v", "mov", "webm", "ogv"];
 
 pub fn ext_of(path: &Path) -> String {
     path.extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase()).unwrap_or_default()
@@ -52,13 +54,18 @@ pub fn skip_gif_png() -> bool {
 
 /// Czy skaner ma dodać ten plik do biblioteki (rozpoznany format i zgodny z ustawieniem GIF/PNG).
 pub fn should_scan(path: &Path) -> bool {
-    is_supported(path) && !(skip_gif_png() && matches!(ext_of(path).as_str(), "gif" | "png" | "apng"))
+    (is_supported(path) || is_video(path)) && !(skip_gif_png() && matches!(ext_of(path).as_str(), "gif" | "png" | "apng"))
 }
 
 /// Czy FIBO rozpoznaje ten plik jako zdjęcie (na podstawie rozszerzenia).
 pub fn is_supported(path: &Path) -> bool {
     let e = ext_of(path);
     any(WEB, &e) || any(IMAGE_CRATE, &e) || any(HEIC, &e) || any(JXL, &e) || any(PSD, &e) || any(SVG, &e) || any(RAW, &e)
+}
+
+/// Czy to film (na podstawie rozszerzenia).
+pub fn is_video(path: &Path) -> bool {
+    any(VIDEO, &ext_of(path))
 }
 
 pub fn is_raw(path: &Path) -> bool {
@@ -73,7 +80,7 @@ pub fn passes_through(path: &Path) -> bool {
 
 /// Czy miniaturę musi zrobić okno aplikacji, bo program nie ma dekodera (AVIF, SVG).
 pub fn ui_only(path: &Path) -> bool {
-    any(UI_ONLY, &ext_of(path))
+    any(UI_ONLY, &ext_of(path)) || is_video(path)
 }
 
 /// Czy plik można zapisać z powrotem w tym samym formacie po edycji (JPEG, PNG, WebP). Inne formaty edytujemy tylko jako kopię.

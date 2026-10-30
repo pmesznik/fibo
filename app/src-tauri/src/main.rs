@@ -26,6 +26,7 @@ mod locks;
 mod pdf;
 mod people;
 mod secure;
+mod video;
 mod watermark;
 
 use image::imageops::FilterType;
@@ -69,6 +70,10 @@ struct Photo {
     flag: i64,
     /** Etykieta kolorowa: 1 czerwona, 2 żółta, 3 zielona, 4 niebieska, 0 brak. */
     label: i64,
+    /// Film (odtwarzany przez okno aplikacji), a nie zdjęcie.
+    video: bool,
+    /// Czas trwania filmu w sekundach.
+    duration: Option<f64>,
 }
 
 fn open_db(path: &Path) -> rusqlite::Result<Connection> {
@@ -119,6 +124,9 @@ fn open_db(path: &Path) -> rusqlite::Result<Connection> {
     }
     // Migracja: zdjęcia ukryte w bibliotece (pliki zostają na dysku, skan ich nie dodaje ponownie).
     let _ = conn.execute("ALTER TABLE photos ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0", []);
+    // Migracja: filmy (znacznik i czas trwania w sekundach).
+    let _ = conn.execute("ALTER TABLE photos ADD COLUMN video INTEGER NOT NULL DEFAULT 0", []);
+    let _ = conn.execute("ALTER TABLE photos ADD COLUMN duration REAL", []);
     // Migracja: flagi selekcji (wybierz/odrzuć) i etykiety kolorowe, zapisywane też do XMP.
     for col in ["flag", "label"] {
         let _ = conn.execute(&format!("ALTER TABLE photos ADD COLUMN {col} INTEGER NOT NULL DEFAULT 0"), []);
@@ -147,6 +155,7 @@ fn open_db(path: &Path) -> rusqlite::Result<Connection> {
     Ok(conn)
 }
 
+#[derive(Default)]
 struct ExifInfo {
     taken: Option<String>,
     camera: Option<String>,
@@ -226,7 +235,7 @@ fn read_exif(path: &Path) -> ExifInfo {
 }
 
 fn is_photo(path: &Path) -> bool {
-    formats::is_supported(path)
+    formats::is_supported(path) || formats::is_video(path)
 }
 
 struct Row {
@@ -239,6 +248,8 @@ struct Row {
     dims: (Option<i64>, Option<i64>),
     /// Metadane z pliku XMP obok zdjęcia; wczytywane tylko dla zdjęć, których jeszcze nie ma w bibliotece.
     sidecar: Option<Sidecar>,
+    video: bool,
+    duration: Option<f64>,
 }
 
 /// Folder z kopiami oryginałów obok zdjęć (jak .picasaoriginals w Picasie).
@@ -252,6 +263,23 @@ fn build_row(path: &Path) -> Option<Row> {
         .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0);
+    if formats::is_video(path) {
+        // Film: data, rozmiar obrazu i czas z opisu MP4/MOV; zdjęciowych metadanych (EXIF) nie szukamy.
+        let info = video::read_info(path).unwrap_or_default();
+        let exif = ExifInfo { taken: info.taken.clone(), ..Default::default() };
+        return Some(Row {
+            path: path.to_string_lossy().to_string(),
+            folder: path.parent().map(|p| p.to_string_lossy().to_string()).unwrap_or_default(),
+            name: path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(),
+            size: meta.len() as i64,
+            modified,
+            exif,
+            dims: (info.width.map(i64::from), info.height.map(i64::from)),
+            sidecar: read_sidecar(path),
+            video: true,
+            duration: info.duration,
+        });
+    }
     let mut exif = read_exif(path);
     // Zdjęcia RAW często nie mają danych w formacie, który czyta biblioteka EXIF: data i aparat pochodzą wtedy z dekodera RAW.
     if formats::is_raw(path) && (exif.taken.is_none() || exif.camera.is_none()) {
@@ -277,6 +305,8 @@ fn build_row(path: &Path) -> Option<Row> {
         exif,
         dims: (w, h),
         sidecar: embedded,
+        video: false,
+        duration: None,
     })
 }
 
@@ -290,11 +320,11 @@ fn flush(state: &AppState, rows: &mut Vec<Row>) -> Result<(), String> {
         let existed = tx.query_row("SELECT 1 FROM photos WHERE path = ?1", [&r.path], |_| Ok(())).is_ok();
         // Ocena i ulubione zostają, gdy zdjęcie jest skanowane ponownie.
         tx.execute(
-            "INSERT INTO photos (path, folder, name, size, modified, taken, width, height, camera, lat, lon, exif_text)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
-             ON CONFLICT(path) DO UPDATE SET exif_text=?12, size=?4, modified=?5, taken=CASE WHEN taken_manual = 1 THEN taken ELSE ?6 END, width=?7, height=?8, camera=?9,
+            "INSERT INTO photos (path, folder, name, size, modified, taken, width, height, camera, lat, lon, exif_text, video, duration)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+             ON CONFLICT(path) DO UPDATE SET video=?13, duration=?14, exif_text=?12, size=?4, modified=?5, taken=CASE WHEN taken_manual = 1 THEN taken ELSE ?6 END, width=?7, height=?8, camera=?9,
                  lat=CASE WHEN geo_manual = 1 THEN lat ELSE COALESCE(?10, lat) END, lon=CASE WHEN geo_manual = 1 THEN lon ELSE COALESCE(?11, lon) END",
-            params![r.path, r.folder, r.name, r.size, r.modified, r.exif.taken, r.dims.0, r.dims.1, r.exif.camera, r.exif.lat, r.exif.lon, r.exif.summary],
+            params![r.path, r.folder, r.name, r.size, r.modified, r.exif.taken, r.dims.0, r.dims.1, r.exif.camera, r.exif.lat, r.exif.lon, r.exif.summary, r.video as i64, r.duration],
         )
         .map_err(|e| e.to_string())?;
         // Nowe zdjęcie z plikiem XMP: przywracamy jego tagi, ocenę i ulubione (np. po odtworzeniu biblioteki).
@@ -439,7 +469,7 @@ fn list_photos(state: State<'_, AppState>) -> Result<Vec<Photo>, String> {
             "SELECT id, path, name, size, modified, taken, width, height, camera, rating, favorite,
                     (SELECT group_concat(t.name, char(31)) FROM photo_tags pt JOIN tags t ON t.id = pt.tag_id
                      WHERE pt.photo_id = photos.id), lat, lon,
-                    (SELECT group_concat(album_id) FROM album_photos WHERE photo_id = photos.id), caption, exif_text, author, copyright, color, flag, label
+                    (SELECT group_concat(album_id) FROM album_photos WHERE photo_id = photos.id), caption, exif_text, author, copyright, color, flag, label, video, duration
              FROM photos WHERE hidden = 0 ORDER BY COALESCE(taken, datetime(modified,'unixepoch')) DESC",
         )
         .map_err(|e| e.to_string())?;
@@ -474,6 +504,8 @@ fn list_photos(state: State<'_, AppState>) -> Result<Vec<Photo>, String> {
                 color: r.get(19)?,
                 flag: r.get(20)?,
                 label: r.get(21)?,
+                video: r.get::<_, i64>(22)? != 0,
+                duration: r.get(23)?,
             })
         })
         .map_err(|e| e.to_string())?
@@ -2323,7 +2355,7 @@ fn find_duplicates_blocking(app: &tauri::AppHandle, max_distance: Option<u32>) -
     {
         let conn = state.db.lock().map_err(|e| e.to_string())?;
         let mut stmt = conn
-            .prepare("SELECT id, path, size, modified, fhash, dhash, hashed_mod FROM photos WHERE hidden = 0")
+            .prepare("SELECT id, path, size, modified, fhash, dhash, hashed_mod FROM photos WHERE hidden = 0 AND video = 0")
             .map_err(|e| e.to_string())?;
         let rows = stmt
             .query_map([], |r| {
@@ -3635,6 +3667,8 @@ mod tests {
 
 fn main() {
     tauri::Builder::default()
+        // Odtwarzanie filmów: bajty pliku tylko dla filmów z biblioteki i tylko po numerze (zob. video.rs).
+        .register_uri_scheme_protocol("fibo-video", |ctx, request| video::protocol(ctx.app_handle(), request))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
