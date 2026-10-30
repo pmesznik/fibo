@@ -27,7 +27,7 @@ use crate::AppState;
 
 const SETTING: &str = "faces-enabled";
 const YUNET_SHA256: &str = "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4";
-const AURA_SHA256: &str = "a7933ea5330113b01c9b60351d8f4c33003f145d8470ac5f0e52ee2effe25c60";
+const SFACE_SHA256: &str = "0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79";
 /// Najmniejsza twarz (w pikselach), jaką bierzemy pod uwagę: mniejsze dają niewiarygodne wektory.
 pub(crate) const MIN_FACE_PX: f32 = 32.0;
 /// Próg pewności detektora. Niższy niż dawny 0.8, bo test na prawdziwych zdjęciach pokazał dużo prawdziwych twarzy między 0.6 a 0.8;
@@ -36,7 +36,7 @@ pub(crate) const MIN_SCORE: f32 = 0.7;
 /// Większe zdjęcia są przed analizą zmniejszane (oszczędza pamięć i czas).
 const MAX_SIDE: u32 = 2400;
 /// Wersja potoku analizy: po zmianie algorytmu zdjęcia są analizowane ponownie (imiona i ręczne poprawki zostają).
-const PIPELINE_VERSION: &str = "3";
+const PIPELINE_VERSION: &str = "2";
 /// Powyżej tej liczby twarzy do pogrupowania używamy szybszego grupowania przyrostowego zamiast hierarchicznego O(n²).
 const MAX_HIERARCHICAL: usize = 15000;
 const CROP_SIZE: u32 = 128;
@@ -128,8 +128,8 @@ fn load_engine(app: &tauri::AppHandle) -> Result<Engine, String> {
         }
         Err(format!("Brak modelu {name} w programie"))
     };
-    let (y, s) = (find("yunet.onnx")?, find("aura.onnx")?);
-    if sha256_hex(&y) != YUNET_SHA256 || sha256_hex(&s) != AURA_SHA256 {
+    let (y, s) = (find("yunet.onnx")?, find("sface.onnx")?);
+    if sha256_hex(&y) != YUNET_SHA256 || sha256_hex(&s) != SFACE_SHA256 {
         return Err("Modele rozpoznawania twarzy mają niewłaściwą sumę kontrolną, nie używam ich".into());
     }
     Engine::new(&y, &s)
@@ -345,9 +345,39 @@ fn photo_days(conn: &Connection) -> HashMap<i64, i32> {
     }
 }
 
-/// Warunek SQL na twarze z wektorem obecnego modelu. Szyfrogram nie jest krótszy od danych, więc wektory starego (krótszego) modelu odpadają bez odszyfrowywania.
+/// Szyfrogram wektora jest dłuższy od danych o stały narzut (DPAPI, ok. 230 bajtów), więc długość odróżnia modele bez odszyfrowywania.
+const SEAL_OVERHEAD_MAX: usize = 600;
+
+/// Warunek SQL na twarze z wektorem obecnego modelu (wektory innego modelu odpadają bez odszyfrowywania).
 fn current_model_sql() -> String {
-    format!("length(emb) >= {}", EMB_LEN * 4)
+    format!("length(emb) BETWEEN {} AND {}", EMB_LEN * 4, EMB_LEN * 4 + SEAL_OVERHEAD_MAX)
+}
+
+/// Przygotowuje analizę po zmianie wersji potoku. Wersja „3” pochodzi z krótkiego okresu z modelem AuraFace (wektory 512 liczb):
+/// zdjęcia z twarzami tamtego modelu analizujemy ponownie, a pozostałe wracają do stanu „przeanalizowane”, więc nie liczymy od nowa całej biblioteki.
+/// Starsze lub nieznane wersje oznaczają ponowną analizę wszystkiego.
+fn migrate_pipeline(conn: &Connection, version: Option<&str>) -> Result<(), String> {
+    match version {
+        Some(v) if v == PIPELINE_VERSION => {}
+        Some("3") => {
+            let other = format!("length(emb) > {}", EMB_LEN * 4 + SEAL_OVERHEAD_MAX);
+            conn.execute(&format!("UPDATE face_scan SET scanned_mod = -1 WHERE photo_id IN (SELECT photo_id FROM faces WHERE {other})"), []).map_err(|e| e.to_string())?;
+            conn.execute(
+                &format!(
+                    "UPDATE face_scan SET scanned_mod = (SELECT modified FROM photos WHERE photos.id = face_scan.photo_id)
+                     WHERE scanned_mod = -1 AND photo_id IN (SELECT id FROM photos) AND photo_id NOT IN (SELECT photo_id FROM faces WHERE {other})"
+                ),
+                [],
+            )
+            .map_err(|e| e.to_string())?;
+            // Zdjęcia ze starego modelu zostały oznaczone do ponownej analizy powyżej tylko wtedy, gdy mają twarze innego modelu.
+        }
+        _ => {
+            conn.execute("UPDATE face_scan SET scanned_mod = -1", []).map_err(|e| e.to_string())?;
+        }
+    }
+    conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('faces-version', ?1)", [PIPELINE_VERSION]).map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 /// Dane do grupowania odczytane z bazy. Wektory są jeszcze zaszyfrowane: odszyfrowanie i liczenie idą już bez blokady bazy.
@@ -646,10 +676,7 @@ fn index_blocking(app: &tauri::AppHandle) -> Result<Progress, String> {
         let conn = state.db.lock().map_err(|e| e.to_string())?;
         // Po zmianie wersji potoku wszystkie zdjęcia są analizowane ponownie; osoby i ręczne poprawki przechodzą na nowe twarze w tych samych miejscach zdjęć.
         let version: Option<String> = conn.query_row("SELECT value FROM settings WHERE key = 'faces-version'", [], |r| r.get(0)).ok();
-        if version.as_deref() != Some(PIPELINE_VERSION) {
-            conn.execute("UPDATE face_scan SET scanned_mod = -1", []).map_err(|e| e.to_string())?;
-            conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('faces-version', ?1)", [PIPELINE_VERSION]).map_err(|e| e.to_string())?;
-        }
+        migrate_pipeline(&conn, version.as_deref())?;
         let mut stmt = conn
             .prepare(
                 "SELECT p.id, p.path, p.modified FROM photos p LEFT JOIN face_scan f ON f.photo_id = p.id
@@ -765,7 +792,7 @@ pub struct FacesStatus {
 pub fn faces_status(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<FacesStatus, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     let n = |sql: &str| -> i64 { conn.query_row(sql, [], |r| r.get(0)).unwrap_or(0) };
-    let models_ok = ["yunet.onnx", "aura.onnx"].iter().all(|m| {
+    let models_ok = ["yunet.onnx", "sface.onnx"].iter().all(|m| {
         app.path().resolve(format!("models/{m}"), tauri::path::BaseDirectory::Resource).map(|p| p.exists()).unwrap_or(false)
             || Path::new(env!("CARGO_MANIFEST_DIR")).join("models").join(m).exists()
     });
@@ -1473,7 +1500,7 @@ mod tests {
         let step = (files.len() / n.max(1)).max(1);
         let files: Vec<PathBuf> = files.into_iter().step_by(step).take(n).collect();
         let mdir = Path::new(env!("CARGO_MANIFEST_DIR")).join("models");
-        let (y, sf) = (fs::read(mdir.join("yunet.onnx")).unwrap(), fs::read(mdir.join("aura.onnx")).unwrap());
+        let (y, sf) = (fs::read(mdir.join("yunet.onnx")).unwrap(), fs::read(mdir.join("sface.onnx")).unwrap());
         // (podpis, rozmiar wejścia, próg)
         let variants: [(&str, usize, f32); 5] = [("640 / 0.8 (dotychczasowy)", 640, 0.8), ("960 / 0.8", 960, 0.8), ("1280 / 0.8", 1280, 0.8), ("1280 / 0.7", 1280, 0.7), ("1280 / 0.6", 1280, 0.6)];
         let engines: Vec<Engine> = variants.iter().map(|v| Engine::with_base(&y, &sf, v.1).unwrap()).collect();
@@ -1533,7 +1560,7 @@ mod tests {
         let step = (files.len() / n.max(1)).max(1);
         let files: Vec<PathBuf> = files.into_iter().step_by(step).take(n).collect();
         let mdir = Path::new(env!("CARGO_MANIFEST_DIR")).join("models");
-        let engine = Engine::new(&fs::read(mdir.join("yunet.onnx")).unwrap(), &fs::read(mdir.join("aura.onnx")).unwrap()).unwrap();
+        let engine = Engine::new(&fs::read(mdir.join("yunet.onnx")).unwrap(), &fs::read(mdir.join("sface.onnx")).unwrap()).unwrap();
         let next = AtomicUsize::new(0);
         let results: std::sync::Mutex<Vec<(usize, Vec<NewFace>)>> = std::sync::Mutex::new(Vec::new());
         let workers = worker_count();
@@ -1604,9 +1631,9 @@ mod tests {
     #[test]
     fn model_hashes_match_pinned_constants() {
         let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("models");
-        if let (Ok(y), Ok(s)) = (fs::read(dir.join("yunet.onnx")), fs::read(dir.join("aura.onnx"))) {
+        if let (Ok(y), Ok(s)) = (fs::read(dir.join("yunet.onnx")), fs::read(dir.join("sface.onnx"))) {
             assert_eq!(sha256_hex(&y), YUNET_SHA256);
-            assert_eq!(sha256_hex(&s), AURA_SHA256);
+            assert_eq!(sha256_hex(&s), SFACE_SHA256);
         }
     }
 
@@ -1770,8 +1797,8 @@ mod tests {
     #[test]
     fn old_model_vectors_are_not_compared_and_keep_their_people() {
         let (c, tmp) = lib_with_photos(4);
-        // Osoba z imieniem ma tylko twarz ze starego modelu (128 liczb).
-        let old = seal_embedding(&vec![0.1f32; 128]).unwrap();
+        // Osoba z imieniem ma tylko twarz z innego modelu (inna długość wektora niż obecna).
+        let old = seal_embedding(&vec![0.1f32; EMB_LEN * 4]).unwrap();
         c.execute("INSERT INTO people (id, name) VALUES (1, 'Ala')", []).unwrap();
         c.execute("INSERT INTO faces (id, photo_id, person_id, x, y, w, h, score, emb) VALUES (500, 1, 1, 0, 0, 0.1, 0.1, 1, ?1)", [&old]).unwrap();
         // Nowe twarze zdjęć 2 i 3 tworzą własną osobę, a stara twarz nie wchodzi do grupowania ani do pewności.
@@ -1784,6 +1811,35 @@ mod tests {
         assert_eq!(conf, None);
         let new: Option<i64> = c.query_row("SELECT person_id FROM faces WHERE photo_id = 2", [], |r| r.get(0)).unwrap();
         assert_ne!(new, Some(1), "nowa twarz nie jest porównywana ze starym wektorem");
+    }
+
+    #[test]
+    fn returning_from_aura_keeps_sface_photos_scanned_and_rescans_the_rest() {
+        let (c, tmp) = lib_with_photos(4);
+        c.execute("ALTER TABLE photos ADD COLUMN modified INTEGER", []).unwrap();
+        c.execute("UPDATE photos SET modified = id * 10", []).unwrap();
+        // 1: twarze SFace, 2: twarz AuraFace (512), 3: bez twarzy; wszystkie oznaczone do ponownej analizy przez wersję „3”.
+        store_faces(&c, &tmp, 1, -1, vec![new_face(unit(0), 0.9)]).unwrap();
+        c.execute("INSERT INTO faces (photo_id, x, y, w, h, score, emb) VALUES (2, 0, 0, 0.1, 0.1, 1, ?1)", [seal_embedding(&vec![0.05f32; 512]).unwrap()]).unwrap();
+        for (p, m) in [(2i64, -1i64), (3, -1)] {
+            c.execute("INSERT OR REPLACE INTO face_scan (photo_id, scanned_mod) VALUES (?1, ?2)", params![p, m]).unwrap();
+        }
+        c.execute("INSERT OR REPLACE INTO face_scan (photo_id, scanned_mod) VALUES (4, 40)", []).unwrap();
+        migrate_pipeline(&c, Some("3")).unwrap();
+        let scanned = |p: i64| -> i64 { c.query_row("SELECT scanned_mod FROM face_scan WHERE photo_id = ?1", [p], |r| r.get(0)).unwrap() };
+        assert_eq!(scanned(1), 10, "zdjęcie z twarzą SFace wraca do stanu przeanalizowanego");
+        assert_eq!(scanned(2), -1, "zdjęcie z twarzą AuraFace analizujemy od nowa");
+        assert_eq!(scanned(3), 30, "zdjęcie bez twarzy nie wymaga nowej analizy");
+        assert_eq!(scanned(4), 40);
+        let v: String = c.query_row("SELECT value FROM settings WHERE key = 'faces-version'", [], |r| r.get(0)).unwrap();
+        assert_eq!(v, PIPELINE_VERSION);
+        // Nieznana wersja: wszystko od nowa.
+        migrate_pipeline(&c, None).unwrap();
+        assert_eq!(scanned(4), -1);
+        // Ta sama wersja: nic się nie zmienia.
+        c.execute("UPDATE face_scan SET scanned_mod = 7", []).unwrap();
+        migrate_pipeline(&c, Some(PIPELINE_VERSION)).unwrap();
+        assert_eq!(scanned(4), 7);
     }
 
     #[test]
@@ -2019,93 +2075,21 @@ mod tuning {
         }
     }
 
-    /// Próba naprawy na kopii bazy: ponowna analiza próbki zdjęć prawdziwym modelem. Sprawdza, czy nazwane osoby zostają, a na tych samych
-    /// twarzach porównuje stary i nowy model.
+    /// Raport na kopii bazy: twarze osób z nazwą w obecnym modelu.
     #[test]
     #[ignore]
-    fn repair_trial_on_copy() {
+    fn tune_report() {
         let Ok(path) = std::env::var("FIBO_TUNE_DB") else { return };
-        let n: i64 = std::env::var("FIBO_TRIAL_N").ok().and_then(|v| v.parse().ok()).unwrap_or(300);
-        let conn = Connection::open(&path).unwrap();
-        init_schema(&conn).unwrap();
-        let tmp = std::path::PathBuf::from(&path).with_extension("crops");
-        fs::create_dir_all(crops_dir(&tmp)).unwrap();
-        let mdir = Path::new(env!("CARGO_MANIFEST_DIR")).join("models");
-        let engine = Engine::new(&fs::read(mdir.join("yunet.onnx")).unwrap(), &fs::read(mdir.join("aura.onnx")).unwrap()).unwrap();
-        // Próbka: po równo z każdej nazwanej osoby, stare twarze (tylko one mają co stracić).
-        let mut stmt = conn.prepare("SELECT id FROM people WHERE name IS NOT NULL").unwrap();
-        let named: Vec<i64> = stmt.query_map([], |r| r.get(0)).unwrap().filter_map(Result::ok).collect();
-        drop(stmt);
-        let mut photos: HashSet<i64> = HashSet::new();
-        for p in &named {
-            let mut stmt = conn.prepare("SELECT photo_id FROM faces WHERE person_id = ?1 AND length(emb) < 1500 ORDER BY random() LIMIT ?2").unwrap();
-            photos.extend(stmt.query_map(params![p, n / named.len().max(1) as i64], |r| r.get::<_, i64>(0)).unwrap().filter_map(Result::ok));
-        }
-        let list: Vec<(i64, String, i64)> = photos
-            .iter()
-            .filter_map(|id| conn.query_row("SELECT id, path, modified FROM photos WHERE id = ?1", [id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).ok())
+        let conn = Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap();
+        let mut stmt = conn
+            .prepare(&format!("SELECT f.person_id, f.emb FROM faces f JOIN people p ON p.id = f.person_id WHERE p.name IS NOT NULL AND p.ignored = 0 AND f.rejected = 0 AND {}", current_model_sql().replace("emb", "f.emb")))
+            .unwrap();
+        let rows: Vec<(i64, Vec<f32>)> = stmt
+            .query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, Vec<u8>>(1)?)))
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter_map(|(p, b)| open_embedding(&b).ok().filter(|e| e.len() == EMB_LEN).map(|e| (p, e)))
             .collect();
-        // Stan przed: (zdjęcie, osoba) nazwanych twarzy i stare wektory tych twarzy.
-        let before_people = |c: &Connection| -> HashSet<(i64, i64)> {
-            let mut out = HashSet::new();
-            for (id, _, _) in &list {
-                let mut st = c.prepare("SELECT f.person_id FROM faces f JOIN people p ON p.id = f.person_id WHERE f.photo_id = ?1 AND p.name IS NOT NULL").unwrap();
-                for r in st.query_map([id], |r| r.get::<_, i64>(0)).unwrap().flatten() {
-                    out.insert((*id, r));
-                }
-            }
-            out
-        };
-        let before = before_people(&conn);
-        let mut old_rows: Vec<(i64, Vec<f32>)> = Vec::new();
-        for (photo, person) in &before {
-            let blob: Vec<u8> = conn.query_row("SELECT emb FROM faces WHERE photo_id = ?1 AND person_id = ?2", params![photo, person], |r| r.get(0)).unwrap();
-            old_rows.push((*person, open_embedding(&blob).unwrap()));
-        }
-        // Analiza na wielu wątkach, jak w programie.
-        let start = std::time::Instant::now();
-        let next = AtomicUsize::new(0);
-        let results = std::sync::Mutex::new(Vec::new());
-        std::thread::scope(|sc| {
-            for _ in 0..worker_count() {
-                sc.spawn(|| loop {
-                    let i = next.fetch_add(1, Ordering::SeqCst);
-                    if i >= list.len() { break; }
-                    let r = analyze_photo(&engine, Path::new(&list[i].1));
-                    results.lock().unwrap().push((i, r));
-                });
-            }
-        });
-        let secs = start.elapsed().as_secs_f32();
-        let (mut ok, mut missing, mut broken, mut faces) = (0, 0, 0, 0usize);
-        for (i, r) in results.into_inner().unwrap() {
-            let (id, p, m) = &list[i];
-            match r {
-                Some(v) => { faces += v.len(); store_faces(&conn, &tmp, *id, *m, v).unwrap(); ok += 1; }
-                None if file_reachable(Path::new(p)) => { mark_scanned(&conn, *id, *m).unwrap(); broken += 1; }
-                None => missing += 1,
-            }
-        }
-        eprintln!("zdjec {} (ok {ok}, brak pliku {missing}, uszkodzone {broken}), twarzy {faces}, {secs:.0} s, {:.2} zdjecia/s, {} watkow", list.len(), list.len() as f32 / secs, worker_count());
-        let t = std::time::Instant::now();
-        let input = regroup_load(&conn).unwrap();
-        let load = t.elapsed();
-        let plan = regroup_plan(input, &|| false).unwrap();
-        let calc = t.elapsed() - load;
-        regroup_apply(&conn, &plan).unwrap();
-        eprintln!("grupowanie: odczyt pod blokada {load:?}, liczenie bez blokady {calc:?}, zapis pod blokada {:?}, zmian {}", t.elapsed() - load - calc, plan.changes.len());
-        let after = before_people(&conn);
-        let kept = before.iter().filter(|x| after.contains(x)).count();
-        eprintln!("nazwane twarze na probce: przed {}, zachowane {kept}, nowe {}", before.len(), after.difference(&before).count());
-        // Te same pary (zdjęcie, osoba), nowy model.
-        let mut new_rows: Vec<(i64, Vec<f32>)> = Vec::new();
-        for (photo, person) in &after {
-            let mut st = conn.prepare("SELECT emb FROM faces WHERE photo_id = ?1 AND person_id = ?2 AND length(emb) > 1500").unwrap();
-            for b in st.query_map(params![photo, person], |r| r.get::<_, Vec<u8>>(0)).unwrap().flatten() {
-                new_rows.push((*person, open_embedding(&b).unwrap()));
-            }
-        }
-        report("stary model", &old_rows);
-        report("nowy model", &new_rows);
+        report("obecny model", &rows);
     }
 }

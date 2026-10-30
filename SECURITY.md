@@ -27,7 +27,7 @@ i poproś o kontakt). Najnowsza wydana wersja jest jedyną wspieraną.
 - **Usuwanie zdjęć:** „Usuń z biblioteki” tylko ukrywa zdjęcia (pliki zostają). „Przenieś do Kosza” działa wyłącznie
   na zdjęciach znanych bibliotece, odrzuca foldery, dowiązania i pliki inne niż zdjęcia, nie usuwa całych folderów,
   a od 20 zdjęć (i dla całego folderu) backend wymaga słowa potwierdzenia.
-- **Rozpoznawanie twarzy (opcjonalne, domyślnie wyłączone):** działa wyłącznie lokalnie. Modele (YuNet, AuraFace) są dołączone
+- **Rozpoznawanie twarzy (opcjonalne, domyślnie wyłączone):** działa wyłącznie lokalnie. Modele (YuNet, SFace) są dołączone
   do instalatora, a przy budowaniu sprawdzana jest ich suma SHA256 (przypięta w kodzie). Moduły twarzy nie zawierają
   kodu sieciowego, a ich zależności nie ciągną bibliotek sieciowych (testy sprawdzają kod i `Cargo.lock`).
   Wektory twarzy są w bazie zaszyfrowane kluczem konta Windows (DPAPI), imiona nie trafiają do zdjęć ani XMP, nic nie

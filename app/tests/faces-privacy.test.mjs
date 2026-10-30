@@ -109,7 +109,7 @@ test('zdjęcie usunięte z biblioteki traci też swoje twarze', () => {
 test('modele: sumy SHA256 w skrypcie pobierania i w kodzie są takie same, a model jest sprawdzany przed użyciem', () => {
   const script = read('scripts/fetch-models.mjs')
   const people = src('people.rs')
-  for (const [name, re] of [['YUNET', /yunet\.onnx'.*?sha256: '([0-9a-f]{64})'/], ['AURA', /aura\.onnx'.*?sha256: '([0-9a-f]{64})'/]]) {
+  for (const [name, re] of [['YUNET', /yunet\.onnx'.*?sha256: '([0-9a-f]{64})'/], ['SFACE', /sface\.onnx'.*?sha256: '([0-9a-f]{64})'/]]) {
     const inScript = script.match(re)[1]
     const inRust = people.match(new RegExp(`${name}_SHA256: &str = "([0-9a-f]{64})"`))[1]
     assert.equal(inScript, inRust, `${name}: różne sumy`)
@@ -119,7 +119,7 @@ test('modele: sumy SHA256 w skrypcie pobierania i w kodzie są takie same, a mod
 
 test('modele są dołączone do instalatora jako zasoby, a CSP nie zyskała nowych adresów', () => {
   const conf = JSON.parse(read('src-tauri/tauri.conf.json'))
-  assert.deepEqual(conf.bundle.resources, ['models/yunet.onnx', 'models/aura.onnx'])
+  assert.deepEqual(conf.bundle.resources, ['models/yunet.onnx', 'models/sface.onnx'])
   const connect = conf.app.security.csp.match(/connect-src ([^;]+)/)[1].split(/\s+/)
   assert.deepEqual(connect, ['\'self\'', 'ipc:', 'http://ipc.localhost', 'https://tiles.openfreemap.org'])
 })
@@ -133,7 +133,7 @@ test('pobieranie modeli dzieje się tylko podczas budowania i weryfikuje sumę',
 })
 
 test('prawdziwe pliki modeli (jeśli są) mają przypięte sumy', () => {
-  for (const [file, hash] of [['yunet.onnx', '8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4'], ['aura.onnx', 'a7933ea5330113b01c9b60351d8f4c33003f145d8470ac5f0e52ee2effe25c60']]) {
+  for (const [file, hash] of [['yunet.onnx', '8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4'], ['sface.onnx', '0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79']]) {
     let buf
     try { buf = readFileSync(root + 'src-tauri/models/' + file) } catch { continue }
     assert.equal(createHash('sha256').update(buf).digest('hex'), hash)
