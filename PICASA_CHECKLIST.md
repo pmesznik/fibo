@@ -172,11 +172,11 @@ Szukanie i porządkowanie:
 - [ ] **Szukanie po treści zdjęcia** słowami („plaża”, „pies”, „tort”) lokalnym modelem rozpoznającym obrazy. P2 T L
 - [ ] **Automatyczne tagi** scen i obiektów z tego samego modelu (do zatwierdzenia przez użytkownika). P3 T L
 - [ ] **Szukanie tekstu na zdjęciach** (paragony, tablice, dokumenty) lokalnym OCR. P3 T L
-- [ ] **Wspomnienia i „tego dnia”**: zdjęcia z tego samego dnia w poprzednich latach, na starcie programu. P2 T S
+- [x] **Wspomnienia i „tego dnia”**: zdjęcia z tego samego dnia w poprzednich latach, na starcie programu. P2 T S
 - [ ] **Automatyczne wydarzenia i podróże** z dat i lokalizacji GPS, jako gotowe albumy do zatwierdzenia. P2 T M
 - [ ] **Stosy zdjęć seryjnych** i **RAW + JPEG jako jedno zdjęcie**. P2 T M
 - [ ] **Wybór najlepszego ze zdjęć seryjnych** i wykrywanie zdjęć nieostrych, poruszonych, ciemnych albo z zamkniętymi oczami (do przejrzenia i ukrycia). P3 T L
-- [ ] **Flagi „wybierz / odrzuć” i kolorowe etykiety** zapisywane do XMP, szybkie selekcjonowanie klawiaturą. P2 T S
+- [x] **Flagi „wybierz / odrzuć” i kolorowe etykiety** zapisywane do XMP, szybkie selekcjonowanie klawiaturą. P2 T S
 - [ ] **Porównanie 2 do 4 zdjęć obok siebie** z jednoczesnym powiększaniem. P2 T M
 - [ ] **Widok kalendarza** (miesiące z miniaturami). P3 T M
 - [ ] **Zwierzęta domowe** jako osobna kategoria osób. P4 T L
@@ -192,7 +192,7 @@ Edycja:
 - [ ] **Korekta obiektywu** (dystorsja, winietowanie, aberracja chromatyczna). P4 T L
 - [ ] **Łączenie zdjęć**: panorama, HDR, stos ostrości. P4 T L
 - [ ] **Znak wodny tekstowy** (dziś tylko logo). P3 T S
-- [ ] **Konwersja wsadowa formatów** (np. HEIC lub RAW do JPEG, PNG, WebP) z wyborem jakości. P2 T S
+- [x] **Konwersja wsadowa formatów** (np. HEIC lub RAW do JPEG, PNG, WebP) z wyborem jakości. P2 T S
 
 Pliki i formaty:
 - [x] **Rozpoznawanie wielu rodzajów plików**: HEIC/HEIF, AVIF, JPEG XL, RAW (CR2, CR3, NEF, ARW, DNG, RAF, ORF, RW2 i inne), PSD, TIFF, TGA, PNM, DDS, HDR, QOI, OpenEXR, ICO, SVG. Pliki w tych formatach edytujemy tylko jako kopie.

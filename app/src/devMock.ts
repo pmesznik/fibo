@@ -62,7 +62,8 @@ const photos = Array.from({ length: PHOTO_N }, (_, i) => {
     name: `IMG_${2000 + id}.jpg`,
     size: 2_400_000 + i * 31_000,
     modified: Math.floor(new Date(y, m - 1, 1 + (i % 27)).getTime() / 1000),
-    taken: `${y}-${String(m).padStart(2, '0')}-${String(1 + (i % 27)).padStart(2, '0')} 1${i % 10}:20:00`,
+    // Kilka zdjęć z dzisiejszego dnia roku w poprzednich latach, żeby karta „Tego dnia” była widoczna w podglądzie.
+    taken: i < 7 ? `${new Date().getFullYear() - 1 - (i % 3)}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')} 1${i % 10}:20:00` : `${y}-${String(m).padStart(2, '0')}-${String(1 + (i % 27)).padStart(2, '0')} 1${i % 10}:20:00`,
     width: landscape ? 4000 : 3000,
     height: landscape ? 3000 : 4000,
     camera: i % 3 ? 'Canon EOS R6' : 'iPhone 15',

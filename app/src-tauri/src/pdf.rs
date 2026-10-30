@@ -19,64 +19,102 @@ struct Img {
     h: u32,
 }
 
-/// Składa dokument PDF z gotowych obrazów JPEG rozłożonych w siatce `cols` x `rows` na stronach A4.
-pub fn build_pdf(images: &[Img], cols: u32, rows: u32) -> Vec<u8> {
-    let per_page = (cols * rows) as usize;
-    let cell_w = (PAGE_W - 2.0 * MARGIN - (cols - 1) as f32 * GAP) / cols as f32;
-    let cell_h = (PAGE_H - 2.0 * MARGIN - (rows - 1) as f32 * GAP) / rows as f32;
-    // Obiekty numerowane od 1: 1 katalog, 2 lista stron, potem obrazy, potem pary (treść strony, strona).
-    let mut objs: Vec<Vec<u8>> = vec![Vec::new(), Vec::new()];
-    let mut image_ids = Vec::new();
-    for im in images {
-        let mut o = format!(
+/// Zapis PDF strumieniowo: obiekty trafiają od razu do pliku, a w pamięci zostają tylko ich położenia. Dzięki temu PDF z setek dużych zdjęć
+/// nie wymaga kilku kopii wszystkich zdjęć w pamięci naraz.
+struct PdfOut<W: std::io::Write> {
+    w: W,
+    pos: u64,
+    /// Położenie obiektu o numerze `i + 1`.
+    offsets: Vec<u64>,
+}
+
+impl<W: std::io::Write> PdfOut<W> {
+    fn new(mut w: W) -> std::io::Result<Self> {
+        let header = b"%PDF-1.4\n%\xE2\xE3\xCF\xD3\n";
+        w.write_all(header)?;
+        Ok(PdfOut { w, pos: header.len() as u64, offsets: Vec::new() })
+    }
+
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<()> {
+        self.w.write_all(bytes)?;
+        self.pos += bytes.len() as u64;
+        Ok(())
+    }
+
+    /// Zapisuje obiekt o numerze `num` (numery nie muszą iść po kolei).
+    fn put(&mut self, num: usize, parts: &[&[u8]]) -> std::io::Result<()> {
+        if self.offsets.len() < num {
+            self.offsets.resize(num, 0);
+        }
+        self.offsets[num - 1] = self.pos;
+        self.write(format!("{num} 0 obj\n").as_bytes())?;
+        for p in parts {
+            self.write(p)?;
+        }
+        self.write(b"\nendobj\n")
+    }
+
+    /// Obraz JPEG jako obiekt.
+    fn image(&mut self, num: usize, im: &Img) -> std::io::Result<()> {
+        let head = format!(
             "<< /Type /XObject /Subtype /Image /Width {} /Height {} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length {} >>\nstream\n",
             im.w, im.h, im.jpeg.len()
-        )
-        .into_bytes();
-        o.extend_from_slice(&im.jpeg);
-        o.extend_from_slice(b"\nendstream");
-        objs.push(o);
-        image_ids.push(objs.len());
+        );
+        self.put(num, &[head.as_bytes(), &im.jpeg, b"\nendstream"])
     }
-    let mut page_ids = Vec::new();
-    for chunk in images.chunks(per_page).enumerate() {
-        let (pi, group) = chunk;
-        let mut content = String::new();
-        let mut xobjs = String::new();
-        for (k, im) in group.iter().enumerate() {
-            let idx = pi * per_page + k;
-            let (c, r) = ((k as u32 % cols) as f32, (k as u32 / cols) as f32);
-            let scale = (cell_w / im.w as f32).min(cell_h / im.h as f32);
-            let (w, h) = (im.w as f32 * scale, im.h as f32 * scale);
-            let x = MARGIN + c * (cell_w + GAP) + (cell_w - w) / 2.0;
-            let y = PAGE_H - MARGIN - (r + 1.0) * cell_h - r * GAP + (cell_h - h) / 2.0;
-            content.push_str(&format!("q {w:.2} 0 0 {h:.2} {x:.2} {y:.2} cm /Im{k} Do Q\n"));
-            xobjs.push_str(&format!("/Im{k} {} 0 R ", image_ids[idx]));
-        }
-        objs.push(format!("<< /Length {} >>\nstream\n{content}endstream", content.len()).into_bytes());
-        let content_id = objs.len();
-        objs.push(format!("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {PAGE_W} {PAGE_H}] /Contents {content_id} 0 R /Resources << /XObject << {xobjs}>> >> >>").into_bytes());
-        page_ids.push(objs.len());
-    }
-    objs[0] = b"<< /Type /Catalog /Pages 2 0 R >>".to_vec();
-    let kids: String = page_ids.iter().map(|i| format!("{i} 0 R ")).collect();
-    objs[1] = format!("<< /Type /Pages /Kids [{kids}] /Count {} >>", page_ids.len()).into_bytes();
 
-    let mut out = b"%PDF-1.4\n%\xE2\xE3\xCF\xD3\n".to_vec();
-    let mut offsets = Vec::new();
-    for (i, o) in objs.iter().enumerate() {
-        offsets.push(out.len());
-        out.extend_from_slice(format!("{} 0 obj\n", i + 1).as_bytes());
-        out.extend_from_slice(o);
-        out.extend_from_slice(b"\nendobj\n");
+    /// Strony z już zapisanych obrazów (obraz `k` ma numer `3 + k`), potem katalog, lista stron i tabela odsyłaczy.
+    fn finish(mut self, dims: &[(u32, u32)], cols: u32, rows: u32) -> std::io::Result<W> {
+        let per_page = (cols * rows) as usize;
+        let cell_w = (PAGE_W - 2.0 * MARGIN - (cols - 1) as f32 * GAP) / cols as f32;
+        let cell_h = (PAGE_H - 2.0 * MARGIN - (rows - 1) as f32 * GAP) / rows as f32;
+        let mut next = 3 + dims.len();
+        let mut page_ids = Vec::new();
+        for (pi, group) in dims.chunks(per_page).enumerate() {
+            let mut content = String::new();
+            let mut xobjs = String::new();
+            for (k, &(iw, ih)) in group.iter().enumerate() {
+                let idx = pi * per_page + k;
+                let (c, r) = ((k as u32 % cols) as f32, (k as u32 / cols) as f32);
+                let scale = (cell_w / iw as f32).min(cell_h / ih as f32);
+                let (w, h) = (iw as f32 * scale, ih as f32 * scale);
+                let x = MARGIN + c * (cell_w + GAP) + (cell_w - w) / 2.0;
+                let y = PAGE_H - MARGIN - (r + 1.0) * cell_h - r * GAP + (cell_h - h) / 2.0;
+                content.push_str(&format!("q {w:.2} 0 0 {h:.2} {x:.2} {y:.2} cm /Im{k} Do Q\n"));
+                xobjs.push_str(&format!("/Im{k} {} 0 R ", 3 + idx));
+            }
+            let content_id = next;
+            let page_id = next + 1;
+            next += 2;
+            self.put(content_id, &[format!("<< /Length {} >>\nstream\n{content}endstream", content.len()).as_bytes()])?;
+            self.put(page_id, &[format!("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {PAGE_W} {PAGE_H}] /Contents {content_id} 0 R /Resources << /XObject << {xobjs}>> >> >>").as_bytes()])?;
+            page_ids.push(page_id);
+        }
+        self.put(1, &[b"<< /Type /Catalog /Pages 2 0 R >>"])?;
+        let kids: String = page_ids.iter().map(|i| format!("{i} 0 R ")).collect();
+        self.put(2, &[format!("<< /Type /Pages /Kids [{kids}] /Count {} >>", page_ids.len()).as_bytes()])?;
+        let xref = self.pos;
+        let n = self.offsets.len();
+        let mut table = format!("xref\n0 {}\n0000000000 65535 f \n", n + 1);
+        for off in &self.offsets {
+            table.push_str(&format!("{off:010} 00000 n \n"));
+        }
+        table.push_str(&format!("trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n", n + 1));
+        self.write(table.as_bytes())?;
+        self.w.flush()?;
+        Ok(self.w)
     }
-    let xref = out.len();
-    out.extend_from_slice(format!("xref\n0 {}\n0000000000 65535 f \n", objs.len() + 1).as_bytes());
-    for off in offsets {
-        out.extend_from_slice(format!("{off:010} 00000 n \n").as_bytes());
+}
+
+/// Składa dokument PDF z gotowych obrazów JPEG rozłożonych w siatce `cols` x `rows` na stronach A4 (wersja w pamięci, używana w testach).
+#[cfg(test)]
+pub fn build_pdf(images: &[Img], cols: u32, rows: u32) -> Vec<u8> {
+    let mut out = PdfOut::new(Vec::new()).unwrap();
+    for (i, im) in images.iter().enumerate() {
+        out.image(3 + i, im).unwrap();
     }
-    out.extend_from_slice(format!("trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n", objs.len() + 1).as_bytes());
-    out
+    let dims: Vec<(u32, u32)> = images.iter().map(|i| (i.w, i.h)).collect();
+    out.finish(&dims, cols, rows).unwrap()
 }
 
 fn stamp() -> String {
@@ -102,33 +140,50 @@ pub fn pdf_core(state: &AppState, ids: &[i64], dest: &Path, cols: u32, rows: u32
     if !(300..=4000).contains(&max_side) {
         return Err("Rozmiar zdjęć poza zakresem 300-4000 px".into());
     }
-    let mut images = Vec::new();
-    for (k, &id) in ids.iter().enumerate() {
-        crate::jobs::tick("pdf", k, ids.len());
-        let (path, _, _) = photo_path(state, id)?;
-        let src = PathBuf::from(&path);
-        let (mut img, orientation) = crate::formats::open(&src).map_err(|e| format!("{path}: {e}"))?;
-        if img.width().max(img.height()) > max_side {
-            img = img.resize(max_side, max_side, FilterType::Lanczos3);
-        }
-        img = match orientation {
-            2 => img.fliph(),
-            3 => img.rotate180(),
-            4 => img.flipv(),
-            6 => img.rotate90(),
-            8 => img.rotate270(),
-            _ => img,
-        };
-        let rgb = img.to_rgb8();
-        let mut jpeg = Vec::new();
-        image::codecs::jpeg::JpegEncoder::new_with_quality(&mut jpeg, quality.clamp(1, 100)).encode_image(&rgb).map_err(|e| e.to_string())?;
-        images.push(Img { jpeg, w: rgb.width(), h: rgb.height() });
-    }
-    let pages = images.len().div_ceil((cols * rows) as usize);
-    let bytes = build_pdf(&images, cols, rows);
     let target = unique_target(dest, &format!("fibo-zdjecia_{}.pdf", stamp()));
-    std::fs::write(&target, bytes).map_err(|e| e.to_string())?;
-    Ok((target, pages))
+    // Najpierw plik tymczasowy: przerwany eksport nie zostawia uciętego PDF pod docelową nazwą.
+    let mut tmp = target.as_os_str().to_os_string();
+    tmp.push(".fibo-tmp");
+    let tmp = PathBuf::from(tmp);
+    let result = (|| -> Result<(PathBuf, usize), String> {
+        let file = std::fs::File::create(&tmp).map_err(|e| e.to_string())?;
+        let mut out = PdfOut::new(std::io::BufWriter::new(file)).map_err(|e| e.to_string())?;
+        let mut dims: Vec<(u32, u32)> = Vec::with_capacity(ids.len());
+        for (k, &id) in ids.iter().enumerate() {
+            crate::jobs::tick("pdf", k, ids.len());
+            let (path, _, _) = photo_path(state, id)?;
+            let src = PathBuf::from(&path);
+            let (mut img, orientation) = crate::formats::open(&src).map_err(|e| format!("{path}: {e}"))?;
+            if img.width().max(img.height()) > max_side {
+                img = img.resize(max_side, max_side, FilterType::Lanczos3);
+            }
+            img = match orientation {
+                2 => img.fliph(),
+                3 => img.rotate180(),
+                4 => img.flipv(),
+                6 => img.rotate90(),
+                8 => img.rotate270(),
+                _ => img,
+            };
+            let rgb = img.to_rgb8();
+            let mut jpeg = Vec::new();
+            image::codecs::jpeg::JpegEncoder::new_with_quality(&mut jpeg, quality.clamp(1, 100)).encode_image(&rgb).map_err(|e| e.to_string())?;
+            // Obraz trafia do pliku od razu, w pamięci zostaje tylko jedno zdjęcie naraz.
+            out.image(3 + k, &Img { jpeg, w: rgb.width(), h: rgb.height() }).map_err(|e| e.to_string())?;
+            dims.push((rgb.width(), rgb.height()));
+        }
+        let pages = dims.len().div_ceil((cols * rows) as usize);
+        let w = out.finish(&dims, cols, rows).map_err(|e| e.to_string())?;
+        let file = w.into_inner().map_err(|e| e.to_string())?;
+        file.sync_all().map_err(|e| e.to_string())?;
+        drop(file);
+        std::fs::rename(&tmp, &target).map_err(|e| e.to_string())?;
+        Ok((target.clone(), pages))
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    result
 }
 
 #[tauri::command]

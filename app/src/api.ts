@@ -24,6 +24,10 @@ export type Photo = {
   copyright?: string | null
   /** Kolor dominujący: numer 0 do 11 (zob. COLORS w App.tsx), null gdy jeszcze nie policzono. */
   color?: number | null
+  /** Flaga selekcji: 1 wybrane, -1 odrzucone, 0 brak. */
+  flag?: number
+  /** Etykieta kolorowa: 1 czerwona, 2 żółta, 3 zielona, 4 niebieska, 0 brak. */
+  label?: number
 }
 
 export type Album = { id: number; name: string; count: number; hidden: boolean }
@@ -53,6 +57,8 @@ export const inTauri = '__TAURI_INTERNALS__' in window
 export const listPhotos = () => invoke<Photo[]>('list_photos')
 export const scanFolder = (path: string, watch = true) => invoke<number>('scan_folder', { path, watch })
 export const setRating = (id: number, rating: number) => invoke('set_rating', { id, rating })
+export const setFlag = (ids: number[], flag: number) => invoke('set_flag', { ids, flag })
+export const setLabel = (ids: number[], label: number) => invoke('set_label', { ids, label })
 export const setFavorite = (id: number, favorite: boolean) => invoke('set_favorite', { id, favorite })
 
 export type DupGroup = { kind: 'exact' | 'similar'; ids: number[] }
@@ -96,7 +102,7 @@ export type SmartAlbum = { id: number; name: string; filters: string }
 export const listSmart = () => invoke<SmartAlbum[]>('list_smart')
 export const saveSmart = (name: string, filters: string) => invoke('save_smart', { name, filters })
 export const deleteSmart = (id: number) => invoke('delete_smart', { id })
-export const exportPhotos = (ids: number[], dest: string, maxSide: number, quality: number, watermark: Watermark | null = null) => invoke<MoveReport>('export_photos', { ids, dest, maxSide, quality, watermark })
+export const exportPhotos = (ids: number[], dest: string, maxSide: number, quality: number, watermark: Watermark | null = null, format: 'jpg' | 'png' | 'webp' = 'jpg') => invoke<MoveReport>('export_photos', { ids, dest, maxSide, quality, watermark, format })
 export const trashPhotos = (ids: number[], confirm?: string) => invoke<number>('trash_photos', { ids, confirm })
 export const hidePhotos = (ids: number[]) => invoke<number>('hide_photos', { ids })
 export const hiddenCount = () => invoke<number>('hidden_count')

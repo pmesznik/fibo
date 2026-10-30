@@ -5,13 +5,14 @@ import {
   ZoomIn, ZoomOut, Compare, Sliders, Sparkles, Info, Tag, Crop as CropIcon, Trash2, Sun, Palette, Aperture, Pencil, Zap, Plus,
 } from './FiboIcons'
 import { decodeBitmap } from './imageDecode'
-import { pickFile, readAudio, hasOriginal, photoPeople, readImage, restoreOriginal, saveEdit, setCaption, setPersonCover, photoExif, listPeople, reassignPersonFaces, type Person, setFavorite, setRating, type Photo, type PhotoPerson } from './api'
+import { pickFile, readAudio, hasOriginal, photoPeople, readImage, restoreOriginal, saveEdit, setCaption, setPersonCover, photoExif, listPeople, reassignPersonFaces, type Person, setFavorite, setRating, setFlag, setLabel, type Photo, type PhotoPerson } from './api'
 import { FaceImg } from './People'
 import { copyEdit, deletePreset, getClip, loadPresets, savePreset, type Preset } from './editor/batch'
 import { Thumb } from './Thumb'
 import { Chip, Sec, Toast } from './ui'
 import { TagEditor, type TagCount } from './TagEditor'
 import { pl } from './pl'
+import { flagOf, labelOf, nextMark } from './marks'
 import {
   EFFECTS, EMPTY_EDIT, ZERO_ADJUST, isEdited, renderEdit, renderGeometry, MAX_SPOTS, neutralFromSample, MAX_TEXTS, MAX_TEXT_LEN, type TextItem,
   type Adjust, type EditState,
@@ -274,6 +275,16 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
     const rating = photo.rating === r ? 0 : r
     onPatch(photo.id, { rating }); setRating(photo.id, rating)
   }
+  const markFlag = (wanted: 1 | -1 | 0) => {
+    if (!photo) return
+    const next = nextMark([flagOf(photo)], wanted)
+    onPatch(photo.id, { flag: next }); setFlag([photo.id], next).catch(() => {})
+  }
+  const markLabel = (wanted: number) => {
+    if (!photo) return
+    const next = nextMark([labelOf(photo)], wanted)
+    onPatch(photo.id, { label: next }); setLabel([photo.id], next).catch(() => {})
+  }
   const toggleFav = () => {
     if (!photo) return
     onPatch(photo.id, { favorite: !photo.favorite }); setFavorite(photo.id, !photo.favorite)
@@ -338,6 +349,10 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
       else if (e.key === ' ' && t?.tagName !== 'BUTTON') { e.preventDefault(); setPlaying((p) => !p) }
       else if (/^[0-5]$/.test(e.key)) rate(+e.key)
       else if (e.key.toLowerCase() === 'f') toggleFav()
+      else if (e.key.toLowerCase() === 'p') markFlag(1)
+      else if (e.key.toLowerCase() === 'x') markFlag(-1)
+      else if (e.key.toLowerCase() === 'u') markFlag(0)
+      else if (/^[6-9]$/.test(e.key)) markLabel(+e.key - 5)
       else if (e.key.toLowerCase() === 'e') setSheet((v) => !v)
       else if (e.key === '+' || e.key === '=') zoomAt(1.4)
       else if (e.key === '-' || e.key === '_') zoomAt(1 / 1.4)

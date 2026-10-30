@@ -65,3 +65,45 @@ export function Justified({ photos, rowHeight, gap = 12, children }: {
     </div>
   )
 }
+
+/** Siatka kafelków 4:3 o równej szerokości. Montuje tylko wiersze w pobliżu ekranu (jak `Justified`), więc 10 tysięcy zdjęć w jednej sekcji nie tworzy 10 tysięcy elementów. */
+export function VirtualGrid({ photos, size, gap = 12, children }: {
+  photos: Photo[]
+  /** Najmniejsza szerokość kafelka; faktyczna jest nieco większa, żeby wiersz wypełnił szerokość. */
+  size: number
+  gap?: number
+  children: (photo: Photo) => ReactNode
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [width, setWidth] = useState(0)
+
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const ro = new ResizeObserver(([e]) => setWidth(Math.floor(e.contentRect.width)))
+    ro.observe(el)
+    setWidth(Math.floor(el.clientWidth))
+    return () => ro.disconnect()
+  }, [])
+
+  const cols = Math.max(1, Math.floor((width + gap) / (size + gap)))
+  const cellW = width ? (width - gap * (cols - 1)) / cols : 0
+  const cellH = cellW * 0.75
+  const rows = useMemo(() => {
+    const out: Photo[][] = []
+    for (let i = 0; i < photos.length; i += cols) out.push(photos.slice(i, i + cols))
+    return out
+  }, [photos, cols])
+
+  return (
+    <div ref={ref} style={{ display: 'flex', flexDirection: 'column', gap }}>
+      {width > 0 && rows.map((row, i) => (
+        <LazyRow key={i} height={cellH} gap={gap}>
+          {row.map((p) => (
+            <div key={p.id} style={{ width: cellW, height: cellH, flex: 'none', display: 'grid' }}>{children(p)}</div>
+          ))}
+        </LazyRow>
+      ))}
+    </div>
+  )
+}

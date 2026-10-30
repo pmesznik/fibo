@@ -7,12 +7,14 @@ import { exportGallery, exportGif, exportGpx, exportPdf, exportPhotos, pickFile,
 
 const SIZES: [number, string][] = [[1024, '1024 px (e-mail)'], [1600, '1600 px'], [2048, '2048 px'], [0, 'Oryginalny rozmiar']]
 const QUALITIES: [number, string][] = [[75, 'Mała'], [88, 'Dobra'], [95, 'Najlepsza']]
+const FORMATS: ['jpg' | 'png' | 'webp', string][] = [['jpg', 'JPEG'], ['png', 'PNG (bez strat)'], ['webp', 'WebP (bez strat)']]
 
 /** Eksport kopii zaznaczonych zdjęć do wybranego folderu (pomniejszonych, bez metadanych i lokalizacji). */
 export function ExportDialog({ ids, onClose, say, initialSize, photos }: { ids: number[]; onClose: () => void; say: (m: string, kind?: 'ok' | 'err') => void; initialSize?: number; photos?: Photo[] }) {
   useEscape(onClose)
   const [size, setSize] = useState(initialSize ?? 1600)
   const [quality, setQuality] = useState(88)
+  const [format, setFormat] = useState<'jpg' | 'png' | 'webp'>('jpg')
   const [busy, setBusy] = useState(false)
   const [tab, setTab] = useState<'copies' | 'gallery' | 'pdf' | 'gif' | 'gpx'>('copies')
   // Znak wodny z własnego logo: plik, położenie, rozmiar i krycie (ustawienia są zapamiętywane na tym komputerze).
@@ -40,7 +42,7 @@ export function ExportDialog({ ids, onClose, say, initialSize, photos }: { ids: 
       const dir = await pickFolder('Wybierz folder na wyeksportowane zdjęcia')
       if (!dir) return
       setBusy(true)
-      const r = await exportPhotos(ids, dir, size, quality, watermark)
+      const r = await exportPhotos(ids, dir, size, quality, watermark, format)
       say(r.errors.length ? `Wyeksportowano ${r.done}, błędy: ${r.errors.length} (${r.errors[0]})` : `Wyeksportowano ${r.done} do wybranego folderu`, r.errors.length ? 'err' : 'ok')
       if (!r.errors.length) onClose()
     } catch (e) { say(`Błąd eksportu: ${e}`, 'err') } finally { setBusy(false) }
@@ -114,16 +116,20 @@ export function ExportDialog({ ids, onClose, say, initialSize, photos }: { ids: 
           {tab === 'copies' && (
           <>
           <p style={{ margin: '0 0 8px', color: 'var(--muted)', fontSize: 13 }}>
-            {ids.length} {pl(ids.length, 'zdjęcie', 'zdjęcia', 'zdjęć')}. Kopie są zapisywane jako JPEG bez danych EXIF (także bez lokalizacji GPS). Oryginały zostają nietknięte, a istniejące pliki nie są nadpisywane.
+            {ids.length} {pl(ids.length, 'zdjęcie', 'zdjęcia', 'zdjęć')}. Kopie powstają bez danych EXIF (także bez lokalizacji GPS), więc nadają się do wysłania dalej. Zdjęcia HEIC, RAW i inne formaty można tu zamienić na JPEG, PNG albo WebP. Oryginały zostają nietknięte, a istniejące pliki nie są nadpisywane.
           </p>
           <label>Dłuższy bok</label>
           <div className="chips">
             {SIZES.map(([v, l]) => <button key={v} className={`chip${size === v ? ' on' : ''}`} aria-pressed={size === v} onClick={() => setSize(v)}>{l}</button>)}
           </div>
-          <label>Jakość</label>
+          <label>Format</label>
           <div className="chips">
-            {QUALITIES.map(([v, l]) => <button key={v} className={`chip${quality === v ? ' on' : ''}`} aria-pressed={quality === v} onClick={() => setQuality(v)}>{l}</button>)}
+            {FORMATS.map(([v, l]) => <button key={v} className={`chip${format === v ? ' on' : ''}`} aria-pressed={format === v} onClick={() => setFormat(v)}>{l}</button>)}
           </div>
+          {format === 'jpg' && <label>Jakość</label>}
+          {format === 'jpg' && <div className="chips">
+            {QUALITIES.map(([v, l]) => <button key={v} className={`chip${quality === v ? ' on' : ''}`} aria-pressed={quality === v} onClick={() => setQuality(v)}>{l}</button>)}
+          </div>}
           <h3 style={{ margin: '14px 0 4px', fontSize: 14 }}>Znak wodny (logo)</h3>
           <div className="chips">
             <button className="chip" onClick={pickLogo}>{wm ? 'Zmień logo…' : 'Wybierz logo…'}</button>

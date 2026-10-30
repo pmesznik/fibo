@@ -65,6 +65,10 @@ struct Photo {
     author: Option<String>,
     copyright: Option<String>,
     color: Option<i64>,
+    /** Flaga selekcji: 1 wybrane, -1 odrzucone, 0 brak. */
+    flag: i64,
+    /** Etykieta kolorowa: 1 czerwona, 2 żółta, 3 zielona, 4 niebieska, 0 brak. */
+    label: i64,
 }
 
 fn open_db(path: &Path) -> rusqlite::Result<Connection> {
@@ -115,6 +119,10 @@ fn open_db(path: &Path) -> rusqlite::Result<Connection> {
     }
     // Migracja: zdjęcia ukryte w bibliotece (pliki zostają na dysku, skan ich nie dodaje ponownie).
     let _ = conn.execute("ALTER TABLE photos ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0", []);
+    // Migracja: flagi selekcji (wybierz/odrzuć) i etykiety kolorowe, zapisywane też do XMP.
+    for col in ["flag", "label"] {
+        let _ = conn.execute(&format!("ALTER TABLE photos ADD COLUMN {col} INTEGER NOT NULL DEFAULT 0"), []);
+    }
     // Migracja: albumy ukryte (znikają z list, nic nie jest kasowane; można je przywrócić).
     let _ = conn.execute("ALTER TABLE albums ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0", []);
     // Migracja: własna kolejność zdjęć w albumie (puste = jeszcze nieustawiona, wtedy decyduje data).
@@ -431,7 +439,7 @@ fn list_photos(state: State<'_, AppState>) -> Result<Vec<Photo>, String> {
             "SELECT id, path, name, size, modified, taken, width, height, camera, rating, favorite,
                     (SELECT group_concat(t.name, char(31)) FROM photo_tags pt JOIN tags t ON t.id = pt.tag_id
                      WHERE pt.photo_id = photos.id), lat, lon,
-                    (SELECT group_concat(album_id) FROM album_photos WHERE photo_id = photos.id), caption, exif_text, author, copyright, color
+                    (SELECT group_concat(album_id) FROM album_photos WHERE photo_id = photos.id), caption, exif_text, author, copyright, color, flag, label
              FROM photos WHERE hidden = 0 ORDER BY COALESCE(taken, datetime(modified,'unixepoch')) DESC",
         )
         .map_err(|e| e.to_string())?;
@@ -464,6 +472,8 @@ fn list_photos(state: State<'_, AppState>) -> Result<Vec<Photo>, String> {
                 author: r.get(17)?,
                 copyright: r.get(18)?,
                 color: r.get(19)?,
+                flag: r.get(20)?,
+                label: r.get(21)?,
             })
         })
         .map_err(|e| e.to_string())?
@@ -750,6 +760,17 @@ struct Sidecar {
     tags: Vec<String>,
     author: Option<String>,
     copyright: Option<String>,
+    /** 1 wybrane, -1 odrzucone (xmpDM:pick), 0 brak. */
+    flag: i64,
+    /** Numer etykiety kolorowej (xmp:Label), 0 brak. */
+    label: i64,
+}
+
+/// Nazwy etykiet kolorowych w XMP (te same, których używają Lightroom i Bridge).
+const LABELS: [&str; 4] = ["Red", "Yellow", "Green", "Blue"];
+
+fn label_number(name: &str) -> i64 {
+    LABELS.iter().position(|l| l.eq_ignore_ascii_case(name.trim())).map(|i| i as i64 + 1).unwrap_or(0)
 }
 
 fn xmp_path(photo: &Path) -> PathBuf {
@@ -772,6 +793,14 @@ fn build_xmp(rating: i64, favorite: bool, tags: &[String]) -> String {
 
 /// To samo z autorem (`dc:creator`) i prawami autorskimi (`dc:rights`), czyli polami, które czytają inne programy do zdjęć.
 fn build_xmp_full(rating: i64, favorite: bool, tags: &[String], author: Option<&str>, copyright: Option<&str>) -> String {
+    build_xmp_marks(rating, favorite, tags, author, copyright, 0, 0)
+}
+
+/// To samo z flagą selekcji (`xmpDM:pick`) i etykietą kolorową (`xmp:Label`). Gdy ich nie ma, plik jest bajt w bajt taki jak dawniej.
+fn build_xmp_marks(rating: i64, favorite: bool, tags: &[String], author: Option<&str>, copyright: Option<&str>, flag: i64, label: i64) -> String {
+    let pick = if flag != 0 { format!("\n    xmpDM:pick=\"{}\"", flag.clamp(-1, 1)) } else { String::new() };
+    let pick_ns = if flag != 0 { "\n    xmlns:xmpDM=\"http://ns.adobe.com/xmp/1.0/DynamicMedia/\"" } else { "" };
+    let label_attr = LABELS.get((label - 1).max(0) as usize).filter(|_| label > 0).map(|l| format!("\n    xmp:Label=\"{l}\"")).unwrap_or_default();
     let creator = author.map(|a| format!("   <dc:creator>\n    <rdf:Seq>\n     <rdf:li>{}</rdf:li>\n    </rdf:Seq>\n   </dc:creator>\n", xml_escape(a))).unwrap_or_default();
     let rights = copyright.map(|c| format!("   <dc:rights>\n    <rdf:Alt>\n     <rdf:li xml:lang=\"x-default\">{}</rdf:li>\n    </rdf:Alt>\n   </dc:rights>\n", xml_escape(c))).unwrap_or_default();
     let items: String = tags.iter().map(|t| format!("     <rdf:li>{}</rdf:li>\n", xml_escape(t))).collect();
@@ -788,8 +817,8 @@ fn build_xmp_full(rating: i64, favorite: bool, tags: &[String], author: Option<&
   <rdf:Description rdf:about=\"\"\n\
     xmlns:xmp=\"http://ns.adobe.com/xap/1.0/\"\n\
     xmlns:dc=\"http://purl.org/dc/elements/1.1/\"\n\
-    xmlns:fibo=\"https://pmesznik.github.io/fibo/ns/1.0/\"\n\
-    xmp:Rating=\"{rating}\"\n\
+    xmlns:fibo=\"https://pmesznik.github.io/fibo/ns/1.0/\"{pick_ns}\n\
+    xmp:Rating=\"{rating}\"{label_attr}{pick}\n\
     fibo:Favorite=\"{fav}\">\n\
 {subject}{creator}{rights}  </rdf:Description>\n\
  </rdf:RDF>\n\
@@ -873,6 +902,8 @@ fn read_sidecar(photo: &Path) -> Option<Sidecar> {
         tags: parse_xmp_tags(&text),
         author: parse_xmp_first_li(&text, "dc:creator"),
         copyright: parse_xmp_first_li(&text, "dc:rights"),
+        flag: xmp_value(&text, "xmpDM:pick").and_then(|v| v.trim().parse::<i64>().ok()).unwrap_or(0).clamp(-1, 1),
+        label: xmp_value(&text, "xmp:Label").map(|v| label_number(&v)).unwrap_or(0),
     })
 }
 
@@ -991,7 +1022,7 @@ fn read_embedded(path: &Path, exif: Option<&ExifInfo>) -> Option<Sidecar> {
             }
         }
     }
-    (rating > 0 || !tags.is_empty()).then_some(Sidecar { rating, favorite: false, tags, author: None, copyright: None })
+    (rating > 0 || !tags.is_empty()).then_some(Sidecar { rating, favorite: false, tags, author: None, copyright: None, flag: 0, label: 0 })
 }
 
 /// Wszystko, co zdjęcie już ma: plik XMP obok (pierwszeństwo) i metadane wewnątrz pliku.
@@ -1005,6 +1036,12 @@ fn read_metadata(path: &Path, exif: Option<&ExifInfo>) -> Option<Sidecar> {
         (Some(mut f), Some(e)) => {
             if f.rating == 0 {
                 f.rating = e.rating;
+            }
+            if f.flag == 0 {
+                f.flag = e.flag;
+            }
+            if f.label == 0 {
+                f.label = e.label;
             }
             for t in e.tags {
                 if !f.tags.contains(&t) {
@@ -1025,6 +1062,12 @@ fn apply_sidecar(conn: &Connection, id: i64, sc: &Sidecar) -> rusqlite::Result<u
     }
     if sc.favorite {
         changed += conn.execute("UPDATE photos SET favorite = 1 WHERE id = ?1 AND favorite = 0", [id])?;
+    }
+    if sc.flag != 0 {
+        changed += conn.execute("UPDATE photos SET flag = ?2 WHERE id = ?1 AND flag = 0", params![id, sc.flag])?;
+    }
+    if sc.label != 0 {
+        changed += conn.execute("UPDATE photos SET label = ?2 WHERE id = ?1 AND label = 0", params![id, sc.label])?;
     }
     if let Some(a) = &sc.author {
         changed += conn.execute("UPDATE photos SET author = ?2 WHERE id = ?1 AND author IS NULL", params![id, a])?;
@@ -1052,16 +1095,16 @@ enum SidecarOutcome {
 
 /// Zapisuje (albo usuwa, gdy nie ma już żadnych metadanych) plik XMP zdjęcia `id`.
 fn write_sidecar(state: &AppState, id: i64) -> Result<SidecarOutcome, String> {
-    let (path, rating, favorite, tags, author, copyright) = {
+    let (path, rating, favorite, tags, author, copyright, flag, label) = {
         let conn = state.db.lock().map_err(|e| e.to_string())?;
-        let (path, rating, fav, author, copyright): (String, i64, i64, Option<String>, Option<String>) = conn
-            .query_row("SELECT path, rating, favorite, author, copyright FROM photos WHERE id = ?1", [id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)))
+        let (path, rating, fav, author, copyright, flag, label): (String, i64, i64, Option<String>, Option<String>, i64, i64) = conn
+            .query_row("SELECT path, rating, favorite, author, copyright, flag, label FROM photos WHERE id = ?1", [id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?)))
             .map_err(|e| e.to_string())?;
         let mut stmt = conn
             .prepare("SELECT t.name FROM photo_tags pt JOIN tags t ON t.id = pt.tag_id WHERE pt.photo_id = ?1 ORDER BY t.name")
             .map_err(|e| e.to_string())?;
         let tags: Vec<String> = stmt.query_map([id], |r| r.get(0)).map_err(|e| e.to_string())?.filter_map(Result::ok).collect();
-        (path, rating, fav != 0, tags, author, copyright)
+        (path, rating, fav != 0, tags, author, copyright, flag, label)
     };
     let xmp = xmp_path(Path::new(&path));
     // Zbyt duży plik XMP na pewno nie jest nasz: nie wczytujemy go i nie nadpisujemy.
@@ -1072,13 +1115,13 @@ fn write_sidecar(state: &AppState, id: i64) -> Result<SidecarOutcome, String> {
     if existing.as_deref().map(|t| !t.contains(XMP_MARKER)).unwrap_or(false) {
         return Ok(SidecarOutcome::Skipped);
     }
-    if rating == 0 && !favorite && tags.is_empty() && author.is_none() && copyright.is_none() {
+    if rating == 0 && !favorite && tags.is_empty() && author.is_none() && copyright.is_none() && flag == 0 && label == 0 {
         return match existing {
             Some(_) => fs::remove_file(&xmp).map(|_| SidecarOutcome::Removed).map_err(|e| e.to_string()),
             None => Ok(SidecarOutcome::Unchanged),
         };
     }
-    let xml = build_xmp_full(rating, favorite, &tags, author.as_deref(), copyright.as_deref());
+    let xml = build_xmp_marks(rating, favorite, &tags, author.as_deref(), copyright.as_deref(), flag, label);
     if existing.as_deref() == Some(xml.as_str()) {
         return Ok(SidecarOutcome::Unchanged);
     }
@@ -2123,7 +2166,39 @@ fn set_location(state: State<'_, AppState>, ids: Vec<i64>, lat: Option<f64>, lon
 /// Kopie nie zawierają metadanych EXIF (w tym lokalizacji GPS), więc nadają się do wysłania znajomym. Oryginały nie są ruszane,
 /// a istniejące pliki nie są nadpisywane.
 fn export_photos_blocking(state: &AppState, ids: &[i64], dest: &Path, max_side: u32, quality: u8, wm: Option<&watermark::Watermark>) -> Result<MoveReport, String> {
+    export_photos_as(state, ids, dest, max_side, quality, wm, "jpg")
+}
+
+/// Rozszerzenie pliku i kodowanie dla formatu eksportu: „jpg” (z jakością), „png” albo „webp” (oba bez strat, z zachowaniem przezroczystości).
+fn export_format(format: &str) -> Result<&'static str, String> {
+    match format {
+        "jpg" | "jpeg" => Ok("jpg"),
+        "png" => Ok("png"),
+        "webp" => Ok("webp"),
+        other => Err(format!("Nieznany format eksportu: {other}")),
+    }
+}
+
+fn encode_export(img: &image::DynamicImage, ext: &str, quality: u8, target: &Path) -> Result<(), String> {
+    let result = (|| -> Result<(), String> {
+        let file = File::create(target).map_err(|e| e.to_string())?;
+        let mut w = std::io::BufWriter::new(file);
+        match ext {
+            "png" => img.write_to(&mut w, image::ImageFormat::Png).map_err(|e| e.to_string())?,
+            "webp" => img.write_to(&mut w, image::ImageFormat::WebP).map_err(|e| e.to_string())?,
+            _ => image::codecs::jpeg::JpegEncoder::new_with_quality(&mut w, quality).encode_image(&img.to_rgb8()).map_err(|e| e.to_string())?,
+        }
+        std::io::Write::flush(&mut w).map_err(|e| e.to_string())
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(target);
+    }
+    result
+}
+
+fn export_photos_as(state: &AppState, ids: &[i64], dest: &Path, max_side: u32, quality: u8, wm: Option<&watermark::Watermark>, format: &str) -> Result<MoveReport, String> {
     let _job = jobs::Guard::new("export");
+    let ext = export_format(format)?;
     if !dest.is_dir() {
         return Err("Folder docelowy nie istnieje".into());
     }
@@ -2156,10 +2231,8 @@ fn export_photos_blocking(state: &AppState, ids: &[i64], dest: &Path, max_side: 
                 img = watermark::apply(img, l, w);
             }
             let stem = src.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "zdjecie".into());
-            let target = unique_target(dest, &format!("{stem}.jpg"));
-            let file = File::create(&target).map_err(|e| e.to_string())?;
-            let mut enc = image::codecs::jpeg::JpegEncoder::new_with_quality(std::io::BufWriter::new(file), quality);
-            enc.encode_image(&img.to_rgb8()).map_err(|e| e.to_string())
+            let target = unique_target(dest, &format!("{stem}.{ext}"));
+            encode_export(&img, ext, quality, &target)
         })();
         match result {
             Ok(()) => rep.done += 1,
@@ -2170,8 +2243,8 @@ fn export_photos_blocking(state: &AppState, ids: &[i64], dest: &Path, max_side: 
 }
 
 #[tauri::command]
-async fn export_photos(app: tauri::AppHandle, ids: Vec<i64>, dest: String, max_side: u32, quality: u8, watermark: Option<watermark::Watermark>) -> Result<MoveReport, String> {
-    tauri::async_runtime::spawn_blocking(move || export_photos_blocking(&app.state::<AppState>(), &ids, Path::new(&dest), max_side, quality, watermark.as_ref()))
+async fn export_photos(app: tauri::AppHandle, ids: Vec<i64>, dest: String, max_side: u32, quality: u8, watermark: Option<watermark::Watermark>, format: Option<String>) -> Result<MoveReport, String> {
+    tauri::async_runtime::spawn_blocking(move || export_photos_as(&app.state::<AppState>(), &ids, Path::new(&dest), max_side, quality, watermark.as_ref(), format.as_deref().unwrap_or("jpg")))
         .await
         .map_err(|e| e.to_string())?
 }
@@ -2578,6 +2651,34 @@ fn set_rating(state: State<'_, AppState>, id: i64, rating: i64) -> Result<(), St
     Ok(())
 }
 
+/// Ustawia flagę selekcji (1 wybrane, -1 odrzucone, 0 brak) wielu zdjęciom naraz.
+#[tauri::command]
+fn set_flag(state: State<'_, AppState>, ids: Vec<i64>, flag: i64) -> Result<(), String> {
+    mark_photos(&state, &ids, "flag", flag.clamp(-1, 1))
+}
+
+/// Ustawia etykietę kolorową (1 do 4, 0 brak) wielu zdjęciom naraz.
+#[tauri::command]
+fn set_label(state: State<'_, AppState>, ids: Vec<i64>, label: i64) -> Result<(), String> {
+    mark_photos(&state, &ids, "label", label.clamp(0, LABELS.len() as i64))
+}
+
+fn mark_photos(state: &AppState, ids: &[i64], column: &str, value: i64) -> Result<(), String> {
+    debug_assert!(column == "flag" || column == "label");
+    {
+        let conn = state.db.lock().map_err(|e| e.to_string())?;
+        let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+        for id in ids {
+            // Stałe zapytania (bez składania SQL z tekstu), osobno dla każdej kolumny.
+            let sql = if column == "flag" { "UPDATE photos SET flag = ?2 WHERE id = ?1" } else { "UPDATE photos SET label = ?2 WHERE id = ?1" };
+            tx.execute(sql, params![id, value]).map_err(|e| e.to_string())?;
+        }
+        tx.commit().map_err(|e| e.to_string())?;
+    }
+    sync_ids(state, ids);
+    Ok(())
+}
+
 #[tauri::command]
 fn set_favorite(state: State<'_, AppState>, id: i64, favorite: bool) -> Result<(), String> {
     {
@@ -2592,6 +2693,50 @@ fn set_favorite(state: State<'_, AppState>, id: i64, favorite: bool) -> Result<(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn export_formats_are_validated_and_encoded() {
+        assert_eq!(export_format("jpg"), Ok("jpg"));
+        assert_eq!(export_format("png"), Ok("png"));
+        assert_eq!(export_format("webp"), Ok("webp"));
+        assert!(export_format("exe").is_err());
+        let dir = std::env::temp_dir().join("mz-export-format-test");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let img = image::DynamicImage::ImageRgba8(image::RgbaImage::from_pixel(20, 10, image::Rgba([10, 200, 30, 128])));
+        for ext in ["png", "webp", "jpg"] {
+            let t = dir.join(format!("a.{ext}"));
+            encode_export(&img, ext, 90, &t).unwrap();
+            let back = image::open(&t).unwrap();
+            assert_eq!((back.width(), back.height()), (20, 10), "{ext}");
+            if ext != "jpg" {
+                assert!(back.color().has_alpha(), "{ext} zachowuje przezroczystość");
+            }
+        }
+        // Nieudany zapis nie zostawia uciętego pliku.
+        assert!(encode_export(&img, "png", 90, &dir.join("brak").join("x.png")).is_err());
+    }
+
+    #[test]
+    fn flag_and_label_roundtrip_through_xmp_and_old_files_stay_identical() {
+        let plain = build_xmp_full(3, false, &["morze".to_string()], None, None);
+        assert_eq!(plain, build_xmp_marks(3, false, &["morze".to_string()], None, None, 0, 0), "bez flagi i etykiety plik jest taki jak dawniej");
+        assert!(!plain.contains("pick") && !plain.contains("Label"));
+        let marked = build_xmp_marks(2, true, &[], None, None, -1, 3);
+        assert!(marked.contains("xmpDM:pick=\"-1\"") && marked.contains("xmp:Label=\"Green\""));
+        let dir = std::env::temp_dir().join("mz-flag-test");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let photo = dir.join("a.jpg");
+        fs::write(&photo, b"x").unwrap();
+        fs::write(xmp_path(&photo), &marked).unwrap();
+        let sc = read_sidecar(&photo).unwrap();
+        assert_eq!((sc.flag, sc.label, sc.rating, sc.favorite), (-1, 3, 2, true));
+        // Etykiety z innych programów (inna wielkość liter) są rozpoznawane, nieznane (np. Purple) są pomijane.
+        assert_eq!(label_number("red"), 1);
+        assert_eq!(label_number(" Blue "), 4);
+        assert_eq!(label_number("Purple"), 0);
+    }
 
     #[test]
     fn original_backup_is_complete_and_edits_are_atomic() {
@@ -3317,7 +3462,7 @@ mod tests {
         let evil = ["'; drop table photos; --", "\" or 1=1 --", "x'); delete from tags; --", "robert'); drop table albums;--"];
         {
             let conn = state.db.lock().unwrap();
-            let sc = Sidecar { rating: 0, favorite: false, tags: evil.iter().filter_map(|t| norm_tag(t)).collect(), author: None, copyright: None };
+            let sc = Sidecar { rating: 0, favorite: false, tags: evil.iter().filter_map(|t| norm_tag(t)).collect(), author: None, copyright: None, flag: 0, label: 0 };
             apply_sidecar(&conn, id, &sc).unwrap();
             for e in evil {
                 let name = clean_album_name(e).unwrap();
@@ -3516,7 +3661,7 @@ fn main() {
             app.manage(AppState { db: Mutex::new(db), thumbs, sidecar: AtomicBool::new(sidecar) });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![list_roots, remove_root, rescan_roots, list_albums, create_album, rename_album, set_album_hidden, put_thumbnail, set_credits, color::index_colors, get_skip_gif_png, set_skip_gif_png, detect_cards, rotate::rotate_photos, list_album_order, set_album_order, open_photo_external, delete_album, add_to_album, remove_from_album, rename_photo, move_photos, get_sidecar_enabled, set_sidecar_enabled, export_sidecars, import_sidecars, scan_folder, refresh_library, find_duplicates, trash_photos, export_photos, set_location, rename_batch, import_photos, gallery::export_gallery, gallery::export_gpx, gallery::export_gif, pdf::export_pdf, check::check_files, list_smart, save_smart, delete_smart, gallery::rename_folder, locks::list_locked, locks::set_folder_locked, set_date, shift_dates, set_caption, photo_exif, list_props, set_props, people::photo_people, people::reassign_person_faces, backup::backup_library, photos_backup::backup_photos, backup::restore_library, hide_photos, hidden_count, restore_hidden, people::faces_status, people::set_faces_enabled, people::faces_start, people::faces_stop, people::faces_regroup, people::faces_reanalyze, people::faces_delete_all, people::list_people, people::person_photos, people::person_faces, people::set_person_cover, people::rename_person, people::merge_people, people::merge_suggestions, people::person_face_cards, people::photo_face_stats, calendar::save_calendar_pdf, people::confirm_faces, people::move_faces, people::reject_person_in_photos, people::move_person_faces, people::reject_faces, people::delete_person, people::restore_rejected_faces, people::ignore_person, list_photos, thumbnail, thumbnail_data, people::face_crop, set_rating, set_favorite, add_tag, remove_tag, delete_tag, save_edit, save_collage, read_image, read_audio, has_original, restore_original])
+        .invoke_handler(tauri::generate_handler![list_roots, remove_root, rescan_roots, list_albums, create_album, rename_album, set_album_hidden, put_thumbnail, set_credits, color::index_colors, get_skip_gif_png, set_skip_gif_png, detect_cards, rotate::rotate_photos, list_album_order, set_album_order, open_photo_external, delete_album, add_to_album, remove_from_album, rename_photo, move_photos, get_sidecar_enabled, set_sidecar_enabled, export_sidecars, import_sidecars, scan_folder, refresh_library, find_duplicates, trash_photos, export_photos, set_location, rename_batch, import_photos, gallery::export_gallery, gallery::export_gpx, gallery::export_gif, pdf::export_pdf, check::check_files, list_smart, save_smart, delete_smart, gallery::rename_folder, locks::list_locked, locks::set_folder_locked, set_date, shift_dates, set_caption, photo_exif, list_props, set_props, people::photo_people, people::reassign_person_faces, backup::backup_library, photos_backup::backup_photos, backup::restore_library, hide_photos, hidden_count, restore_hidden, people::faces_status, people::set_faces_enabled, people::faces_start, people::faces_stop, people::faces_regroup, people::faces_reanalyze, people::faces_delete_all, people::list_people, people::person_photos, people::person_faces, people::set_person_cover, people::rename_person, people::merge_people, people::merge_suggestions, people::person_face_cards, people::photo_face_stats, calendar::save_calendar_pdf, people::confirm_faces, people::move_faces, people::reject_person_in_photos, people::move_person_faces, people::reject_faces, people::delete_person, people::restore_rejected_faces, people::ignore_person, list_photos, thumbnail, thumbnail_data, people::face_crop, set_rating, set_flag, set_label, set_favorite, add_tag, remove_tag, delete_tag, save_edit, save_collage, read_image, read_audio, has_original, restore_original])
         .run(tauri::generate_context!())
         .expect("błąd uruchomienia aplikacji");
 

@@ -25,6 +25,8 @@ function Shell({ title, onClose, children }: { title: string; onClose: () => voi
 const SHORTCUTS: [string, string][] = [
   ['0 – 5', 'Ocena zaznaczonych zdjęć (0 czyści ocenę)'],
   ['F', 'Dodaj lub usuń z ulubionych'],
+  ['P, X, U', 'Flaga selekcji: wybierz, odrzuć, zdejmij (powtórzony klawisz zdejmuje flagę)'],
+  ['6, 7, 8, 9', 'Etykieta kolorowa: czerwona, żółta, zielona, niebieska (powtórzony klawisz ją zdejmuje)'],
   ['Enter', 'Otwórz zaznaczone zdjęcie'],
   ['Prawy przycisk', 'Menu: tagi, album, nazwa, data, lokalizacja, eksport, ukrywanie, Kosz'],
   ['? lub F1', 'Ta lista skrótów'],

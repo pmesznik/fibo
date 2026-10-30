@@ -24,13 +24,15 @@ import {
   renameAlbum, renamePhoto, rescanRoots, trashPhotos, listSmart, saveSmart, deleteSmart, type SmartAlbum, listLocked, setFolderLocked, revealInExplorer, openPhotoExternal, findDuplicates, indexColors, rejectPersonInPhotos, rotatePhotos, getSkipGifPng, setSkipGifPng, detectCards, listPeople, listProps, renameFolder, type Prop, type Person, personPhotos, importPhotos, backupLibrary, backupPhotos, restoreLibrary, pickFile, hidePhotos, hiddenCount, restoreHidden, type Album,
 } from './api'
 import { AlbumPicker, PromptDialog } from './Dialogs'
-import { addTag, deleteTag, inTauri, listPhotos, pickFolder, refreshLibrary, removeTag, scanFolder, setFavorite, setRating, type Photo } from './api'
+import { addTag, deleteTag, inTauri, listPhotos, pickFolder, refreshLibrary, removeTag, scanFolder, setFavorite, setRating, setFlag, setLabel, type Photo } from './api'
 import { TagEditor, type TagCount } from './TagEditor'
 import { Thumb } from './Thumb'
 import { Viewer } from './Viewer'
 import { Collage } from './Collage'
-import { Justified } from './Justified'
+import { Justified, VirtualGrid } from './Justified'
 import { Chip, Sec, Toast, useEscape } from './ui'
+import { dayKey, dayLabel, memoriesFor, yearsAgo, type Memory } from './memories'
+import { LABELS, flagOf, labelOf, nextMark, passesFlag } from './marks'
 import {
   Images, FolderOpen, Users, MapPin, Heart, Star, Plus, Play, Maximize2, X,
   SlidersHorizontal, Search as SearchIcon, ImageUp, Ruler, LayoutDashboard, Check, ListChecks, Tag, CalendarDays, Copy, RefreshCw, Download, Save, Pencil, Trash2, Eye, EyeOff, ChevronLeft, Wand2, Info, RotateCw, RotateCcw,
@@ -101,6 +103,8 @@ export default function App() {
   const [toast, setToast] = useState<{ text: string; kind?: 'ok' | 'err' } | null>(null)
   const [folder, setFolder] = useState<string | null>(null)
   const [minStars, setMinStars] = useState(0)
+  const [flagFilter, setFlagFilter] = useState<'' | 'pick' | 'reject' | 'keep'>('')
+  const [labelFilter, setLabelFilter] = useState<number | null>(null)
   const [color, setColor] = useState<number | null>(null)
   // Filtry dodatkowe: zakres dat (RRRR-MM-DD) oraz zdjęcia, którym czegoś brakuje (porządkowanie biblioteki).
   const [dateFrom, setDateFrom] = useState('')
@@ -177,7 +181,13 @@ export default function App() {
   const [creditIds, setCreditIds] = useState<number[] | null>(null)
   const [exportIds, setExportIds] = useState<number[] | null>(null)
   const [exportSize, setExportSize] = useState<number | undefined>(undefined)
-  const [person, setPerson] = useState<{ id?: number; name: string; ids: Set<number> } | null>(null)
+  const [person, setPerson] = useState<{ id?: number; name: string; ids: Set<number>; memory?: boolean } | null>(null)
+  // Wspomnienia „tego dnia”: zdjęcia z tej samej daty w poprzednich latach, z kartą na górze biblioteki (do odrzucenia do końca dnia).
+  const today = useMemo(() => new Date(), [])
+  const [memDismissed, setMemDismissed] = useState(() => { try { return localStorage.getItem('memories-dismissed') === dayKey(new Date()) } catch { return false } })
+  const dismissMemories = () => { setMemDismissed(true); try { localStorage.setItem('memories-dismissed', dayKey(today)) } catch { /* brak pamięci */ } }
+  const memories = useMemo(() => memoriesFor(all, today), [all, today])
+  const openMemory = (ids: number[], title: string) => { setPersonFacesMode(false); setPerson({ name: `Tego dnia: ${title}`, ids: new Set(ids), memory: true }); setAlbumId(null); setFolder(null); setMode('library') }
   const [hiddenN, setHiddenN] = useState(0)
   const reloadHidden = useCallback(async () => { if (inTauri) setHiddenN(await hiddenCount()) }, [])
   useEffect(() => { reloadHidden() }, [reloadHidden])
@@ -398,6 +408,8 @@ export default function App() {
       (!trayView || tray.includes(p.id)) &&
       (!onlyFav || p.favorite) &&
       p.rating >= minStars &&
+      passesFlag(p, flagFilter) &&
+      (labelFilter === null || labelOf(p) === labelFilter) &&
       (color === null || p.color === color) &&
       (!dateFrom || whenOf(p).slice(0, 10).replace(/:/g, '-') >= dateFrom) &&
       (!dateTo || whenOf(p).slice(0, 10).replace(/:/g, '-') <= dateTo) &&
@@ -412,7 +424,7 @@ export default function App() {
     else if (sort === 'size') list.sort((a, b) => b.size - a.size)
     else list.sort((a, b) => (sort === 'date-desc' ? whenOf(b).localeCompare(whenOf(a)) : whenOf(a).localeCompare(whenOf(b))))
     return list
-  }, [all, albumNames, propOf, query, folder, albumId, person, trayView, tray, onlyFav, minStars, color, dateFrom, dateTo, missing, sort, activeTags, albumPos])
+  }, [all, albumNames, propOf, query, folder, albumId, person, trayView, tray, onlyFav, minStars, flagFilter, labelFilter, color, dateFrom, dateTo, missing, sort, activeTags, albumPos])
 
   // Foldery od najnowszego; rok albumu to rok jego najnowszego zdjęcia (jak w Picasie).
   const folders = useMemo(() => {
@@ -560,6 +572,29 @@ export default function App() {
   const rateSelected = (rating: number) => {
     for (const id of sel) { patch(id, { rating }); if (inTauri && id >= 0) setRating(id, rating) }
     setMenu(null)
+  }
+  /** Zmiana w wielu zdjęciach naraz (jedno przejście po bibliotece zamiast jednego na zdjęcie). */
+  const patchMany = (ids: number[], change: Partial<Photo>) => {
+    const set = new Set(ids)
+    setAll((list) => list.map((p) => (set.has(p.id) ? { ...p, ...change } : p)))
+  }
+  /** Flaga selekcji zaznaczonych zdjęć: klawisz P (wybierz), X (odrzuć), U (zdejmij). Powtórzony klawisz zdejmuje flagę. */
+  const flagSelected = (wanted: 1 | -1 | 0) => {
+    const ids = sel.filter((i) => i >= 0)
+    if (!ids.length) return
+    const next = nextMark(all.filter((p) => selSet.has(p.id)).map(flagOf), wanted)
+    patchMany(ids, { flag: next })
+    if (inTauri) setFlag(ids, next).catch((e) => say(`Nie udało się zapisać flagi: ${e}`, 'err'))
+    say(next === 1 ? 'Oznaczono jako wybrane' : next === -1 ? 'Oznaczono jako odrzucone' : 'Zdjęto flagę', 'ok')
+  }
+  /** Etykieta kolorowa zaznaczonych zdjęć (klawisze 6 do 9, powtórzony klawisz zdejmuje etykietę). */
+  const labelSelected = (wanted: number) => {
+    const ids = sel.filter((i) => i >= 0)
+    if (!ids.length) return
+    const next = nextMark(all.filter((p) => selSet.has(p.id)).map(labelOf), wanted)
+    patchMany(ids, { label: next })
+    if (inTauri) setLabel(ids, next).catch((e) => say(`Nie udało się zapisać etykiety: ${e}`, 'err'))
+    say(next ? `Etykieta ${LABELS[next - 1].name}` : 'Zdjęto etykietę', 'ok')
   }
   /** Gwiazdka z tacy: dodaje wszystkie zdjęcia z tacy do ulubionych (a gdy już wszystkie są ulubione, usuwa je z ulubionych). */
   const favIds = (ids: number[]) => {
@@ -769,6 +804,10 @@ export default function App() {
       if (!sel.some((i) => i >= 0)) return
       if (/^[0-5]$/.test(e.key)) { e.preventDefault(); rateSelected(+e.key) }
       else if (e.key.toLowerCase() === 'f') { e.preventDefault(); favSelected() }
+      else if (e.key.toLowerCase() === 'p') { e.preventDefault(); flagSelected(1) }
+      else if (e.key.toLowerCase() === 'x') { e.preventDefault(); flagSelected(-1) }
+      else if (e.key.toLowerCase() === 'u') { e.preventDefault(); flagSelected(0) }
+      else if (/^[6-9]$/.test(e.key)) { e.preventDefault(); labelSelected(+e.key - 5) }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -869,10 +908,10 @@ export default function App() {
         onDragEnd={() => { setDragIds(null); setDropOver(null) }}
         onDragOver={reorderMode && dragIds ? (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move' } : undefined}
         onDrop={reorderMode && dragIds ? (e) => { e.preventDefault(); dropOnPhoto(p.id) } : undefined}
-        aria-label={`${p.name}, ocena ${p.rating}${p.favorite ? ', ulubione' : ''}`}
+        aria-label={`${p.name}, ocena ${p.rating}${p.favorite ? ', ulubione' : ''}${flagOf(p) === 1 ? ', wybrane' : flagOf(p) === -1 ? ', odrzucone' : ''}${labelOf(p) ? `, etykieta ${LABELS[labelOf(p) - 1].name}` : ''}`}
         aria-pressed={on}
         className={`bare group relative overflow-hidden text-left ${ratio43 ? 'aspect-[4/3]' : 'h-full w-full'}`}
-        style={{ borderRadius: 'var(--r-card)', boxShadow: on ? '0 0 0 3px var(--accent)' : 'var(--elev-1)', contentVisibility: 'auto', containIntrinsicSize: `${size}px ${Math.round(size * 0.75)}px` }}
+        style={{ borderRadius: 'var(--r-card)', boxShadow: on ? '0 0 0 3px var(--accent)' : 'var(--elev-1)', opacity: flagOf(p) === -1 && !on ? 0.5 : 1, contentVisibility: 'auto', containIntrinsicSize: `${size}px ${Math.round(size * 0.75)}px` }}
       >
         <Thumb photo={p} />
         <div className="absolute inset-x-0 bottom-0 flex items-center justify-between p-2 opacity-0 transition group-hover:opacity-100" style={{ background: 'linear-gradient(transparent, rgba(0,0,0,.65))' }}>
@@ -880,6 +919,13 @@ export default function App() {
             {Array.from({ length: p.rating }).map((_, k) => <Star key={k} size={13} fill="currentColor" />)}
           </span>
         </div>
+        {(flagOf(p) !== 0 || labelOf(p) !== 0) && (
+          <span className="absolute bottom-2 right-2 flex items-center gap-1" aria-hidden>
+            {labelOf(p) !== 0 && <span style={{ width: 15, height: 15, borderRadius: '50%', background: LABELS[labelOf(p) - 1].css, border: '1.5px solid #fff', boxShadow: '0 1px 3px rgba(0,0,0,.5)' }} />}
+            {flagOf(p) === 1 && <span style={{ display: 'grid', placeItems: 'center', width: 20, height: 20, borderRadius: 6, background: '#30a46c', color: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,.5)' }}><Check size={13} strokeWidth={3} /></span>}
+            {flagOf(p) === -1 && <span style={{ display: 'grid', placeItems: 'center', width: 20, height: 20, borderRadius: 6, background: '#e5484d', color: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,.5)' }}><X size={13} strokeWidth={3} /></span>}
+          </span>
+        )}
         {p.favorite && <Heart size={16} className="absolute right-2 top-2 fill-rose-400 text-rose-400" style={{ filter: 'drop-shadow(0 1px 2px rgba(0,0,0,.6))' }} />}
         {multi && (
           <span className="absolute left-2 top-2 grid h-6 w-6 place-items-center rounded-full"
@@ -891,7 +937,7 @@ export default function App() {
     )
   }
 
-  const filtersOn = minStars > 0 || color !== null || !!dateFrom || !!dateTo || missing !== '' || sort !== 'date-desc' || !!folder || activeTags.length > 0
+  const filtersOn = minStars > 0 || flagFilter !== '' || labelFilter !== null || color !== null || !!dateFrom || !!dateTo || missing !== '' || sort !== 'date-desc' || !!folder || activeTags.length > 0
   const selPhotos = useMemo(() => (sel.length ? all.filter((p) => selSet.has(p.id)) : []), [all, sel, selSet])
   const subtitle = busy ? `Skanowanie… ${progress}` : `${photos.length} z ${all.length} ${pl(all.length, 'zdjęcia', 'zdjęć', 'zdjęć')}${selPhotos.length ? ` · zaznaczono ${selPhotos.length} (${sizeText(selPhotos)})` : ''}`
 
@@ -904,7 +950,7 @@ export default function App() {
 
       <nav id="tabs" className="glass" aria-label="Widoki">
         {TABS.map((t) => (
-          <button key={t.id} className={(person ? 'people' : mode) === t.id ? 'active' : ''} aria-current={(person ? 'people' : mode) === t.id ? 'page' : undefined}
+          <button key={t.id} className={(person && !person.memory ? 'people' : mode) === t.id ? 'active' : ''} aria-current={(person && !person.memory ? 'people' : mode) === t.id ? 'page' : undefined}
             onClick={() => { setMode(t.id); if (t.id === 'albums') setFolder(null); if (t.id === 'albums' || t.id === 'library') { setAlbumId(null); setPerson(null) } }}>
             <t.icon size={19} strokeWidth={1.8} />
             <span>{t.label}</span>
@@ -969,6 +1015,22 @@ export default function App() {
                 {[0, 1, 2, 3, 4, 5].map((n) => (
                   <Chip key={n} on={minStars === n} onClick={() => setMinStars(n)} label={n ? `Co najmniej ${n} ${pl(n, 'gwiazdka', 'gwiazdki', 'gwiazdek')}` : 'Dowolna ocena'}>
                     {n === 0 ? 'Wszystkie' : <>{n} <Star size={12} fill="currentColor" /></>}
+                  </Chip>
+                ))}
+              </div>
+              <label>Flaga selekcji</label>
+              <div className="chips">
+                <Chip on={flagFilter === ''} onClick={() => setFlagFilter('')} label="Wszystkie zdjęcia">Wszystkie</Chip>
+                <Chip on={flagFilter === 'pick'} onClick={() => setFlagFilter('pick')} label="Tylko wybrane">Wybrane</Chip>
+                <Chip on={flagFilter === 'reject'} onClick={() => setFlagFilter('reject')} label="Tylko odrzucone">Odrzucone</Chip>
+                <Chip on={flagFilter === 'keep'} onClick={() => setFlagFilter('keep')} label="Bez odrzuconych">Bez odrzuconych</Chip>
+              </div>
+              <label>Etykieta kolorowa</label>
+              <div className="chips">
+                <Chip on={labelFilter === null} onClick={() => setLabelFilter(null)} label="Dowolna etykieta">Wszystkie</Chip>
+                {LABELS.map((l, i) => (
+                  <Chip key={l.name} on={labelFilter === i + 1} onClick={() => setLabelFilter(labelFilter === i + 1 ? null : i + 1)} label={`Etykieta ${l.name}`}>
+                    <span aria-hidden style={{ width: 12, height: 12, borderRadius: '50%', background: l.css, display: 'inline-block' }} /> {l.name}
                   </Chip>
                 ))}
               </div>
@@ -1133,7 +1195,7 @@ export default function App() {
         {(mode === 'library' || mode === 'favs') && (
           <>
             <div style={{ marginBottom: 14 }}>
-              {person && (
+              {person && !person.memory && (
                 <button className="chip" style={{ marginBottom: 8 }} aria-label="Wróć do listy osób" onClick={() => { setPerson(null); setMode('people') }}>
                   <ChevronLeft size={15} /> Osoby
                 </button>
@@ -1146,13 +1208,29 @@ export default function App() {
                 const meta = [pr.date && pr.date.split('-').reverse().join('.'), pr.place].filter(Boolean).join(' · ')
                 return <div style={{ marginTop: 6, fontSize: 13.5 }}>{meta && <b>{meta}</b>}{meta && pr.description ? ' · ' : ''}<span style={{ color: 'var(--muted)' }}>{pr.description}</span></div>
               })()}
+              {mode === 'library' && !person && !folder && albumId === null && !query && !trayView && !memDismissed && memories.length > 0 && (
+                <div className="glass" role="region" aria-label="Wspomnienia z tego dnia" style={{ marginTop: 12, borderRadius: 'var(--r-lg)', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  <CalendarDays size={18} style={{ color: 'var(--accent)', flex: 'none' }} />
+                  <div style={{ flex: '1 1 160px', minWidth: 0 }}>
+                    <b style={{ fontSize: 14.5 }}>Tego dnia ({dayLabel(today)})</b>
+                    <div style={{ color: 'var(--muted)', fontSize: 13 }}>{memories.reduce((n, m) => n + m.ids.length, 0)} {pl(memories.reduce((n, m) => n + m.ids.length, 0), 'zdjęcie', 'zdjęcia', 'zdjęć')} z poprzednich lat</div>
+                  </div>
+                  <div className="chips" style={{ flex: '2 1 240px' }}>
+                    {memories.slice(0, 6).map((m: Memory) => (
+                      <Chip key={m.year} onClick={() => openMemory(m.ids, `${dayLabel(today)} ${m.year}`)} label={`Zdjęcia z ${m.year}`}>{m.year} · {yearsAgo(today, m.year)} · {m.ids.length}</Chip>
+                    ))}
+                    {memories.length > 1 && <Chip onClick={() => openMemory(memories.flatMap((m) => m.ids), dayLabel(today))} label="Wszystkie zdjęcia z tego dnia">Wszystkie</Chip>}
+                  </div>
+                  <button className="ico" aria-label="Ukryj wspomnienia do jutra" title="Ukryj do jutra" onClick={dismissMemories}><X size={16} /></button>
+                </div>
+              )}
               {!faceView && !railOn && years.length > 1 && (
                 <div className="chips" style={{ marginTop: 10 }} role="navigation" aria-label="Przejdź do roku">
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--muted)', fontSize: 13 }}><CalendarDays size={15} /> Rok</span>
                   {years.map((y) => <Chip key={y} onClick={() => jumpToYear(y)}>{y}</Chip>)}
                 </div>
               )}
-              {(query || folder || albumId !== null || person || trayView || minStars > 0 || color !== null || dateFrom || dateTo || missing || activeTags.length > 0) && (
+              {(query || folder || albumId !== null || person || trayView || minStars > 0 || flagFilter !== '' || labelFilter !== null || color !== null || dateFrom || dateTo || missing || activeTags.length > 0) && (
                 <div className="chips" style={{ marginTop: 10 }}>
                   {activeTags.map((t) => <Chip key={t} on onClick={() => toggleTagFilter(t)} label={`Usuń filtr tagu ${t}`}><Tag size={13} /> {t} <X size={13} /></Chip>)}
                   {query && <Chip on onClick={() => setQuery('')} label="Usuń szukanie"><SearchIcon size={13} /> {query} <X size={13} /></Chip>}
@@ -1163,11 +1241,13 @@ export default function App() {
                   {person?.id !== undefined && <Chip on={personFacesMode} onClick={() => setPersonFacesMode(true)} label="Pokaż twarze">Twarze</Chip>}
                   {person?.id !== undefined && <Chip on={!personFacesMode} onClick={() => setPersonFacesMode(false)} label="Pokaż zdjęcia">Zdjęcia</Chip>}
                   {person && <Chip onClick={slideshow} label="Pokaz zdjęć tej osoby"><Play size={13} /> Pokaz zdjęć</Chip>}
-                  {person && <Chip onClick={async () => { try { setTogether((await listPeople()).filter((o) => !o.ignored)) } catch (e) { say(`Błąd: ${e}`, 'err') } }} label="Pokaż tylko zdjęcia razem z inną osobą"><Users size={13} /> Razem z…</Chip>}
+                  {person && !person.memory && <Chip onClick={async () => { try { setTogether((await listPeople()).filter((o) => !o.ignored)) } catch (e) { say(`Błąd: ${e}`, 'err') } }} label="Pokaż tylko zdjęcia razem z inną osobą"><Users size={13} /> Razem z…</Chip>}
                   {folder && <Chip on onClick={() => setFolder(null)} label="Usuń filtr folderu"><FolderOpen size={13} /> {folderName(folder)} <X size={13} /></Chip>}
                   {(dateFrom || dateTo) && <Chip on onClick={() => { setDateFrom(''); setDateTo('') }} label="Usuń filtr dat"><CalendarDays size={13} /> {dateFrom || '…'} – {dateTo || '…'} <X size={13} /></Chip>}
                   {missing && <Chip on onClick={() => setMissing('')} label="Usuń filtr braków">{missing === 'tags' ? 'Bez tagów' : missing === 'geo' ? 'Bez lokalizacji' : 'Bez oceny'} <X size={13} /></Chip>}
                   {color !== null && <Chip on onClick={() => setColor(null)} label="Usuń filtr koloru"><span aria-hidden style={{ width: 12, height: 12, borderRadius: '50%', background: COLORS[color].css, border: '1px solid var(--glass-line)', display: 'inline-block' }} /> {COLORS[color].name} <X size={13} /></Chip>}
+                  {flagFilter && <Chip on onClick={() => setFlagFilter('')} label="Usuń filtr flagi">{flagFilter === 'pick' ? 'Wybrane' : flagFilter === 'reject' ? 'Odrzucone' : 'Bez odrzuconych'} <X size={13} /></Chip>}
+                  {labelFilter !== null && <Chip on onClick={() => setLabelFilter(null)} label="Usuń filtr etykiety"><span aria-hidden style={{ width: 12, height: 12, borderRadius: '50%', background: LABELS[labelFilter - 1].css, display: 'inline-block' }} /> {LABELS[labelFilter - 1].name} <X size={13} /></Chip>}
                   {minStars > 0 && <Chip on onClick={() => setMinStars(0)} label="Usuń filtr oceny">≥ {minStars} <Star size={12} fill="currentColor" /> <X size={13} /></Chip>}
                 </div>
               )}
@@ -1211,9 +1291,7 @@ export default function App() {
                 {original ? (
                   <Justified photos={s.items} rowHeight={Math.round(size * 0.9)}>{(p) => tile(p, false)}</Justified>
                 ) : (
-                  <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${size}px, 1fr))` }}>
-                    {s.items.map((p) => tile(p, true))}
-                  </div>
+                  <VirtualGrid photos={s.items} size={size}>{(p) => tile(p, true)}</VirtualGrid>
                 )}
               </section>
             ))}
