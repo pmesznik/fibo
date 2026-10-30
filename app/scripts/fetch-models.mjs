@@ -11,6 +11,8 @@ const BASE = 'https://github.com/opencv/opencv_zoo/raw/main/models'
 export const MODELS = [
   { file: 'yunet.onnx', url: `${BASE}/face_detection_yunet/face_detection_yunet_2023mar.onnx`, sha256: '8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4', license: 'MIT' },
   { file: 'sface.onnx', url: `${BASE}/face_recognition_sface/face_recognition_sface_2021dec.onnx`, sha256: '0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79', license: 'Apache-2.0' },
+  // CLIP ViT-B/32 (OpenAI, licencja MIT) w wersji ONNX od Xenova: tylko koder obrazu. Wektory pojęć tekstowych są już w repozytorium (data/clip_concepts.bin).
+  { file: 'clip_vision.onnx', url: 'https://huggingface.co/Xenova/clip-vit-base-patch32/resolve/main/onnx/vision_model.onnx', sha256: 'fd6e1402a588279d1723c7534d4bcba5bc0b14b47dfab0e46f8c47b8270d7d40', license: 'MIT' },
 ]
 
 const sha = (b) => createHash('sha256').update(b).digest('hex')

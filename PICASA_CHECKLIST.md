@@ -169,7 +169,7 @@ Taca i wyjście:
 Zasady FIBO zostają: wszystko lokalnie, nic do internetu, oryginały nietknięte. Oznaczenia jak wyżej (P = priorytet, T = trudność).
 
 Szukanie i porządkowanie:
-- [ ] **Szukanie po treści zdjęcia** słowami („plaża”, „pies”, „tort”) lokalnym modelem rozpoznającym obrazy. P2 T L
+- [x] **Szukanie po treści zdjęcia** słowami („plaża”, „pies”, „tort”) lokalnym modelem rozpoznającym obrazy. P2 T L
 - [ ] **Automatyczne tagi** scen i obiektów z tego samego modelu (do zatwierdzenia przez użytkownika). P3 T L
 - [ ] **Szukanie tekstu na zdjęciach** (paragony, tablice, dokumenty) lokalnym OCR. P3 T L
 - [x] **Wspomnienia i „tego dnia”**: zdjęcia z tego samego dnia w poprzednich latach, na starcie programu. P2 T S

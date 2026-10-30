@@ -32,7 +32,7 @@ fn unique_file(dir: &Path, base: &str) -> PathBuf {
 }
 
 /// Tabele z danymi twarzy: nie trafiają do kopii dla użytkownika (są w nich imiona osób, położenie twarzy i zaszyfrowane wektory).
-const FACE_TABLES: [&str; 4] = ["faces", "people", "face_scan", "face_not"];
+const FACE_TABLES: [&str; 5] = ["faces", "people", "face_scan", "face_not", "clip_vec"];
 
 /// Zapisuje spójną kopię bazy w podanym folderze (VACUUM INTO) bez danych twarzy. Nigdy nie nadpisuje istniejącego pliku.
 pub fn backup_core(conn: &Connection, dest_dir: &Path) -> Result<PathBuf, String> {

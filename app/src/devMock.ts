@@ -125,6 +125,8 @@ function respond(cmd: string, args: Record<string, unknown> = {}): unknown | Pro
     case 'find_duplicates': return [{ kind: 'exact', ids: [1, 13] }, { kind: 'similar', ids: [4, 5, 22] }, { kind: 'exact', ids: [30, 31] }]
     case 'photo_face_stats': return photos.filter((p) => p.id % 3 === 0).map((p) => [p.id, 1 + (p.id % 3), 0.8])
     case 'save_calendar_pdf': return 'C:\\Zdjecia\\Kalendarz_2027.pdf'
+    case 'clip_status': return { models_ok: true, running: false, indexed: 90, total: 96, concepts: 134 }
+    case 'clip_search': return { ids: photos.slice(2, 14).map((p) => p.id), scores: [], matched: ['plaża'], unknown: [], indexed: 90 }
     case 'get_sidecar_enabled': return true
     case 'get_skip_gif_png': return false
     case 'hidden_count': return 0

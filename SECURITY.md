@@ -38,6 +38,10 @@ i poproś o kontakt). Najnowsza wydana wersja jest jedyną wspieraną.
 - **Usuwanie zdjęć:** „Usuń z biblioteki” tylko ukrywa zdjęcia (pliki zostają). „Przenieś do Kosza” działa wyłącznie
   na zdjęciach znanych bibliotece, odrzuca foldery, dowiązania i pliki inne niż zdjęcia, nie usuwa całych folderów,
   a od 20 zdjęć (i dla całego folderu) backend wymaga słowa potwierdzenia.
+- **Szukanie po treści zdjęć (na życzenie):** koder obrazu CLIP (ok. 350 MB, licencja MIT) jest dołączony do instalatora, pobierany tylko podczas
+  budowania z przypiętą sumą SHA256 i liczony lokalnie. Wektory zdjęć (512 liczb na zdjęcie) leżą w bazie biblioteki, nie opuszczają komputera i nie
+  trafiają do kopii biblioteki. Słowa zapytania zamieniane są na wektory z listy ok. 130 pojęć zapisanej w programie, więc nie ma kodera tekstu ani
+  żadnych połączeń sieciowych (test pilnuje, że `clip.rs` nie ma kodu sieciowego i `unsafe`). Indeksowanie rusza tylko po kliknięciu.
 - **Rozpoznawanie twarzy (opcjonalne, domyślnie wyłączone):** działa wyłącznie lokalnie. Modele (YuNet, SFace) są dołączone
   do instalatora, a przy budowaniu sprawdzana jest ich suma SHA256 (przypięta w kodzie). Moduły twarzy nie zawierają
   kodu sieciowego, a ich zależności nie ciągną bibliotek sieciowych (testy sprawdzają kod i `Cargo.lock`).

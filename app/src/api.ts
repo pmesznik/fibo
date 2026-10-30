@@ -72,6 +72,12 @@ export const inTauri = '__TAURI_INTERNALS__' in window
 export const listPhotos = () => invoke<Photo[]>('list_photos')
 export const scanFolder = (path: string, watch = true) => invoke<number>('scan_folder', { path, watch })
 export const setRating = (id: number, rating: number) => invoke('set_rating', { id, rating })
+export type ClipStatus = { models_ok: boolean; running: boolean; indexed: number; total: number; concepts: number }
+export type ClipResult = { ids: number[]; scores: number[]; matched: string[]; unknown: string[]; indexed: number }
+export const clipStatus = () => invoke<ClipStatus>('clip_status')
+export const clipStart = () => invoke<boolean>('clip_start')
+export const clipStop = () => invoke('clip_stop')
+export const clipSearch = (query: string) => invoke<ClipResult>('clip_search', { query })
 export const setFlag = (ids: number[], flag: number) => invoke('set_flag', { ids, flag })
 export const setLabel = (ids: number[], label: number) => invoke('set_label', { ids, label })
 export const setFavorite = (id: number, favorite: boolean) => invoke('set_favorite', { id, favorite })

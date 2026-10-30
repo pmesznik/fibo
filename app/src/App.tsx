@@ -36,6 +36,7 @@ import { LABELS, flagOf, labelOf, nextMark, passesFlag } from './marks'
 import { durationLabel } from './api'
 import { CompareView } from './CompareView'
 import { EventsDialog } from './EventsDialog'
+import { ContentSearch } from './ContentSearch'
 import { collapseStacks, findStacks, stackCount } from './stacks'
 import {
   Images, FolderOpen, Users, MapPin, Heart, Star, Plus, Play, Maximize2, X,
@@ -96,6 +97,7 @@ export default function App() {
   const [collage, setCollage] = useState(false)
   const [compareOpen, setCompareOpen] = useState(false)
   const [eventsOpen, setEventsOpen] = useState(false)
+  const [contentOpen, setContentOpen] = useState(false)
   const [original, setOriginal] = useState(() => { try { return localStorage.getItem('grid-original') !== '0' } catch { return true } })
   const selected = sel.length === 1 ? sel[0] : null
   const setSelected = (id: number | null) => { setSel(id === null ? [] : [id]); setAnchor(id) }
@@ -194,12 +196,14 @@ export default function App() {
   const [creditIds, setCreditIds] = useState<number[] | null>(null)
   const [exportIds, setExportIds] = useState<number[] | null>(null)
   const [exportSize, setExportSize] = useState<number | undefined>(undefined)
-  const [person, setPerson] = useState<{ id?: number; name: string; ids: Set<number>; memory?: boolean } | null>(null)
+  const [person, setPerson] = useState<{ id?: number; name: string; ids: Set<number>; memory?: boolean; ranked?: Map<number, number> } | null>(null)
   // Wspomnienia „tego dnia”: zdjęcia z tej samej daty w poprzednich latach, z kartą na górze biblioteki (do odrzucenia do końca dnia).
   const today = useMemo(() => new Date(), [])
   const [memDismissed, setMemDismissed] = useState(() => { try { return localStorage.getItem('memories-dismissed') === dayKey(new Date()) } catch { return false } })
   const dismissMemories = () => { setMemDismissed(true); try { localStorage.setItem('memories-dismissed', dayKey(today)) } catch { /* brak pamięci */ } }
   const memories = useMemo(() => memoriesFor(all, today), [all, today])
+  /** Wyniki szukania po treści: widok jak wspomnienie, ale w kolejności od najlepiej pasującego. */
+  const openRanked = (ids: number[], title: string) => { setPersonFacesMode(false); setPerson({ name: title, ids: new Set(ids), memory: true, ranked: new Map(ids.map((id, i) => [id, i])) }); setAlbumId(null); setFolder(null); setMode('library') }
   const openMemory = (ids: number[], title: string, prefix = 'Tego dnia: ') => { setPersonFacesMode(false); setPerson({ name: `${prefix}${title}`, ids: new Set(ids), memory: true }); setAlbumId(null); setFolder(null); setMode('library') }
   const [hiddenN, setHiddenN] = useState(0)
   const reloadHidden = useCallback(async () => { if (inTauri) setHiddenN(await hiddenCount()) }, [])
@@ -431,7 +435,8 @@ export default function App() {
       activeTags.every((t) => p.tags.includes(t)) &&
       (!q || `${p.name} ${p.camera ?? ''} ${p.exif ?? ''} ${p.caption ?? ''} ${p.tags.join(' ')} ${p.albums.map((a) => `${albumNames.get(a) ?? ''} ${propText('album', String(a))}`).join(' ')} ${folderName(dirOf(p.path))} ${propText('folder', dirOf(p.path))}`.toLowerCase().includes(q)),
     )
-    if (sort === 'custom' && albumId !== null) list.sort((a, b) => (albumPos.get(a.id) ?? 1e9) - (albumPos.get(b.id) ?? 1e9) || whenOf(b).localeCompare(whenOf(a)))
+    if (person?.ranked) list.sort((a, b) => (person.ranked!.get(a.id) ?? 1e9) - (person.ranked!.get(b.id) ?? 1e9))
+    else if (sort === 'custom' && albumId !== null) list.sort((a, b) => (albumPos.get(a.id) ?? 1e9) - (albumPos.get(b.id) ?? 1e9) || whenOf(b).localeCompare(whenOf(a)))
     else if (sort === 'custom') list.sort((a, b) => whenOf(b).localeCompare(whenOf(a)))
     else if (sort === 'name') list.sort((a, b) => a.name.localeCompare(b.name, 'pl', { numeric: true }))
     else if (sort === 'rating') list.sort((a, b) => b.rating - a.rating || whenOf(b).localeCompare(whenOf(a)))
@@ -470,7 +475,7 @@ export default function App() {
 
   // Sekcje biblioteki według lat lub miesięcy, tylko przy sortowaniu po dacie.
   const sections = useMemo(() => {
-    if (sort === 'name' || sort === 'rating' || sort === 'size' || (sort === 'custom' && albumId !== null) || group === 'none') return [{ key: 'all', title: '', year: '', items: photos }]
+    if (sort === 'name' || sort === 'rating' || sort === 'size' || (sort === 'custom' && albumId !== null) || group === 'none' || person?.ranked) return [{ key: 'all', title: '', year: '', items: photos }]
     const out: { key: string; title: string; year: string; items: Photo[] }[] = []
     for (const p of photos) {
       const w = whenOf(p)
@@ -481,7 +486,7 @@ export default function App() {
       else out.push({ key, year, title: group === 'month' ? `${MONTHS[+w.slice(5, 7) - 1] ?? ''} ${year}` : year, items: [p] })
     }
     return out
-  }, [photos, sort, group, albumId])
+  }, [photos, sort, group, albumId, person?.ranked])
   const years = useMemo(() => [...new Set(sections.map((s) => s.year))].filter(Boolean), [sections])
   const [timelineIdx, setTimelineIdx] = useState(0)
   // Oś czasu: przy prawej krawędzi (domyślnie), jako pasek na górze albo wyłączona.
@@ -1035,6 +1040,7 @@ export default function App() {
                 { icon: Play, label: 'Pokaz slajdów', fn: slideshow, on: false },
                 { icon: ListChecks, label: selectMode ? 'Zaznaczanie włączone' : 'Zaznaczanie wielu', fn: () => { setSelectMode((v) => !v); setDrawer(false) }, on: selectMode },
                 { icon: LayoutDashboard, label: chosen.length > 1 ? `Kolaż (${chosen.length})` : 'Kolaż', fn: () => { setDrawer(false); startCollage() }, on: false },
+                { icon: SearchIcon, label: 'Szukaj po treści zdjęć', fn: () => { setDrawer(false); setContentOpen(true) }, on: false },
                 { icon: CalendarDays, label: 'Wydarzenia i podróże', fn: () => { setDrawer(false); setEventsOpen(true) }, on: false },
                 { icon: CalendarDays, label: 'Kalendarz', fn: () => { setDrawer(false); setCalOpen(true) }, on: false },
                 { icon: Copy, label: 'Duplikaty', fn: () => { setDrawer(false); setDupOpen(true) }, on: false },
@@ -1725,6 +1731,7 @@ export default function App() {
         <MoveFacesDialog personId={person.id} personName={person.name} photoIds={moveFaces} say={say} onClose={() => setMoveFaces(null)}
           onDone={(ids) => { dropFromPerson(ids); setSel([]) }} />
       )}
+      {contentOpen && <ContentSearch say={say} onClose={() => setContentOpen(false)} onResults={openRanked} />}
       {eventsOpen && (
         <EventsDialog photos={all} albumNames={albumNames} onClose={() => setEventsOpen(false)}
           onShow={(ids, title) => openMemory(ids, title, '')}

@@ -3,12 +3,13 @@
 FIBO jest wolnym oprogramowaniem na licencji GNU GPL (plik LICENSE w repozytorium). Poniżej znajdują się składniki innych autorów, które program zawiera,
 razem z ich licencjami. Każdy z nich zachowuje prawa autorskie swoich twórców. Plik jest dołączany do instalatora.
 
-## Modele rozpoznawania twarzy (działają wyłącznie na Twoim komputerze)
+## Modele rozpoznawania twarzy i treści zdjęć (działają wyłącznie na Twoim komputerze)
 
 | Składnik | Autor | Licencja | Źródło |
 |---|---|---|---|
 | YuNet (wykrywanie twarzy), face_detection_yunet_2023mar | Shiqi Yu i współautorzy, projekt OpenCV Zoo | MIT | https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet |
 | SFace (wektory twarzy), face_recognition_sface_2021dec | Zhong Yaoyao i współautorzy, projekt OpenCV Zoo | Apache-2.0 | https://github.com/opencv/opencv_zoo/tree/main/models/face_recognition_sface |
+| CLIP ViT-B/32 (koder obrazu do szukania po treści; wektory pojęć policzono z kodera tekstu tego samego modelu) | OpenAI, wersja ONNX: Xenova (Transformers.js) | MIT | https://huggingface.co/Xenova/clip-vit-base-patch32 |
 
 ## Biblioteki interfejsu (npm)
 

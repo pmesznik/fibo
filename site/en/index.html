@@ -12,7 +12,7 @@
 <link rel="alternate" hreflang="pl" href="../pl/">
 <link rel="stylesheet" href="../assets/site.css">
 </head>
-<body data-lang="en" data-repo="pmesznik/fibo" data-version="0.4.35">
+<body data-lang="en" data-repo="pmesznik/fibo" data-version="0.4.36">
 <a class="skip" href="#docs">Documentation</a>
 <header class="top">
   <div class="wrap bar">
@@ -158,6 +158,7 @@
         <li><strong>Change date…</strong> (right-click menu): set an exact date and time, or shift the dates of the selected photos by days, hours and minutes (for example when the camera clock was wrong). The change applies to the FIBO library; photo files are not modified.</li>
         <li><strong>Copy and paste edit</strong>: in the editor “Copy edit” remembers adjustments, effects and captions (not crop or rotation) and “Paste edit” applies them to another photo. In the library <em>Paste edit to selected…</em> does it for many photos at once and saves the results as copies next to the originals.</li>
         <li><strong>People in the viewer</strong>: recognized people show as chips on the photo, and clicking a chip shows all photos of that person.</li>
+        <li><strong>Search by photo content</strong> (menu → Quick actions): type what is in the picture ("dog on the beach", "cake", "mountains") and the app shows the best matches. It runs locally on a CLIP model shipped in the installer and knows about 130 concepts in Polish and English. Photos are indexed once, on request, in the background (about 0.2 s per photo).</li>
         <li><strong>Library backup</strong> (menu): saves your library data (tags, ratings, albums, favourites, folders) to a .db file, and <em>Restore from backup</em> loads it back. Before restoring, FIBO saves a safety copy of the current library. Photos themselves, people and face data are not in the backup.</li>
         <li><strong>Sorting</strong>: newest, oldest, by name, by rating or by file size.</li>
         <li><strong>Date range and gaps</strong> (menu → Filters): limit the view to photos from chosen dates, or show only photos without tags, without location or without a rating so you can fill in the gaps. Active filters appear as chips above the photos.</li>

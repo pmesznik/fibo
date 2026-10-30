@@ -1,0 +1,1811 @@
+{
+ "templates": [
+  "a photo of {}",
+  "a picture of {}",
+  "an image of {}"
+ ],
+ "concepts": [
+  {
+   "id": "beach",
+   "en": "a beach",
+   "pl": [
+    "plaz"
+   ],
+   "alt": [
+    "beach",
+    "seaside",
+    "shore"
+   ],
+   "pl_label": "plaża"
+  },
+  {
+   "id": "sea",
+   "en": "the sea",
+   "pl": [
+    "morz",
+    "morsk",
+    "nadmorsk"
+   ],
+   "alt": [
+    "sea",
+    "ocean",
+    "waves"
+   ],
+   "pl_label": "morze"
+  },
+  {
+   "id": "lake",
+   "en": "a lake",
+   "pl": [
+    "jezior"
+   ],
+   "alt": [
+    "lake"
+   ],
+   "pl_label": "jezioro"
+  },
+  {
+   "id": "river",
+   "en": "a river",
+   "pl": [
+    "rzek",
+    "rzec"
+   ],
+   "alt": [
+    "river",
+    "stream"
+   ],
+   "pl_label": "rzeka"
+  },
+  {
+   "id": "waterfall",
+   "en": "a waterfall",
+   "pl": [
+    "wodospad"
+   ],
+   "alt": [
+    "waterfall"
+   ],
+   "pl_label": "wodospad"
+  },
+  {
+   "id": "mountains",
+   "en": "mountains",
+   "pl": [
+    "gor",
+    "szczyt",
+    "tatr",
+    "alp"
+   ],
+   "alt": [
+    "mountain",
+    "mountains",
+    "peak"
+   ],
+   "pl_label": "góry"
+  },
+  {
+   "id": "forest",
+   "en": "a forest",
+   "pl": [
+    "las",
+    "lesi",
+    "leśn"
+   ],
+   "alt": [
+    "forest",
+    "woods"
+   ],
+   "pl_label": "las"
+  },
+  {
+   "id": "snow",
+   "en": "snow",
+   "pl": [
+    "snieg",
+    "snieżn",
+    "zasniez"
+   ],
+   "alt": [
+    "snow",
+    "snowy",
+    "winter"
+   ],
+   "pl_label": "śnieg"
+  },
+  {
+   "id": "sunset",
+   "en": "a sunset",
+   "pl": [
+    "zachod",
+    "zachód"
+   ],
+   "alt": [
+    "sunset"
+   ],
+   "pl_label": "zachód słońca"
+  },
+  {
+   "id": "sunrise",
+   "en": "a sunrise",
+   "pl": [
+    "wschod",
+    "świt",
+    "swit"
+   ],
+   "alt": [
+    "sunrise",
+    "dawn"
+   ],
+   "pl_label": "wschód słońca"
+  },
+  {
+   "id": "clouds",
+   "en": "clouds in the sky",
+   "pl": [
+    "chmur",
+    "niebo",
+    "niebie"
+   ],
+   "alt": [
+    "cloud",
+    "clouds",
+    "sky"
+   ],
+   "pl_label": "chmury"
+  },
+  {
+   "id": "rainbow",
+   "en": "a rainbow",
+   "pl": [
+    "tecz"
+   ],
+   "alt": [
+    "rainbow"
+   ],
+   "pl_label": "tęcza"
+  },
+  {
+   "id": "flowers",
+   "en": "flowers",
+   "pl": [
+    "kwiat",
+    "kwiec",
+    "tulipan"
+   ],
+   "alt": [
+    "flower",
+    "flowers",
+    "blossom"
+   ],
+   "pl_label": "kwiaty"
+  },
+  {
+   "id": "tree",
+   "en": "a tree",
+   "pl": [
+    "drzew",
+    "drzewo"
+   ],
+   "alt": [
+    "tree",
+    "trees"
+   ],
+   "pl_label": "drzewo"
+  },
+  {
+   "id": "autumn",
+   "en": "autumn leaves",
+   "pl": [
+    "jesien",
+    "lisc",
+    "liść"
+   ],
+   "alt": [
+    "autumn",
+    "fall",
+    "leaves"
+   ],
+   "pl_label": "jesień"
+  },
+  {
+   "id": "field",
+   "en": "a field",
+   "pl": [
+    "pole",
+    "pola",
+    "polu",
+    "lak",
+    "łąk"
+   ],
+   "alt": [
+    "field",
+    "meadow"
+   ],
+   "pl_label": "pole i łąka"
+  },
+  {
+   "id": "desert",
+   "en": "a desert",
+   "pl": [
+    "pustyn"
+   ],
+   "alt": [
+    "desert"
+   ],
+   "pl_label": "pustynia"
+  },
+  {
+   "id": "cave",
+   "en": "a cave",
+   "pl": [
+    "jaski"
+   ],
+   "alt": [
+    "cave"
+   ],
+   "pl_label": "jaskinia"
+  },
+  {
+   "id": "island",
+   "en": "an island",
+   "pl": [
+    "wysp"
+   ],
+   "alt": [
+    "island"
+   ],
+   "pl_label": "wyspa"
+  },
+  {
+   "id": "bridge",
+   "en": "a bridge",
+   "pl": [
+    "most"
+   ],
+   "alt": [
+    "bridge"
+   ],
+   "pl_label": "most"
+  },
+  {
+   "id": "castle",
+   "en": "a castle",
+   "pl": [
+    "zamek",
+    "zamk",
+    "zamku"
+   ],
+   "alt": [
+    "castle"
+   ],
+   "pl_label": "zamek"
+  },
+  {
+   "id": "city",
+   "en": "a city",
+   "pl": [
+    "miast",
+    "miejsk"
+   ],
+   "alt": [
+    "city",
+    "town",
+    "urban"
+   ],
+   "pl_label": "miasto"
+  },
+  {
+   "id": "street",
+   "en": "a street",
+   "pl": [
+    "ulic",
+    "ulic"
+   ],
+   "alt": [
+    "street"
+   ],
+   "pl_label": "ulica"
+  },
+  {
+   "id": "skyscrapers",
+   "en": "skyscrapers",
+   "pl": [
+    "wiezowc",
+    "drapacz"
+   ],
+   "alt": [
+    "skyscraper",
+    "skyscrapers"
+   ],
+   "pl_label": "wieżowce"
+  },
+  {
+   "id": "night",
+   "en": "a night scene",
+   "pl": [
+    "noc",
+    "nocn"
+   ],
+   "alt": [
+    "night"
+   ],
+   "pl_label": "noc"
+  },
+  {
+   "id": "church",
+   "en": "a church",
+   "pl": [
+    "kosci",
+    "katedr",
+    "bazylik"
+   ],
+   "alt": [
+    "church",
+    "cathedral"
+   ],
+   "pl_label": "kościół"
+  },
+  {
+   "id": "museum",
+   "en": "a museum",
+   "pl": [
+    "muze"
+   ],
+   "alt": [
+    "museum"
+   ],
+   "pl_label": "muzeum"
+  },
+  {
+   "id": "monument",
+   "en": "a monument",
+   "pl": [
+    "pomnik"
+   ],
+   "alt": [
+    "monument"
+   ],
+   "pl_label": "pomnik"
+  },
+  {
+   "id": "statue",
+   "en": "a statue",
+   "pl": [
+    "rzezb",
+    "posag"
+   ],
+   "alt": [
+    "statue",
+    "sculpture"
+   ],
+   "pl_label": "rzeźba"
+  },
+  {
+   "id": "painting",
+   "en": "a painting",
+   "pl": [
+    "obraz",
+    "malowid"
+   ],
+   "alt": [
+    "painting"
+   ],
+   "pl_label": "obraz"
+  },
+  {
+   "id": "tower",
+   "en": "a tower",
+   "pl": [
+    "wiez"
+   ],
+   "alt": [
+    "tower"
+   ],
+   "pl_label": "wieża"
+  },
+  {
+   "id": "house",
+   "en": "a house",
+   "pl": [
+    "dom"
+   ],
+   "alt": [
+    "house",
+    "home"
+   ],
+   "pl_label": "dom"
+  },
+  {
+   "id": "room",
+   "en": "a room interior",
+   "pl": [
+    "pokoj",
+    "pokoi",
+    "wnetrz"
+   ],
+   "alt": [
+    "room",
+    "interior",
+    "indoors"
+   ],
+   "pl_label": "wnętrze"
+  },
+  {
+   "id": "kitchen",
+   "en": "a kitchen",
+   "pl": [
+    "kuchn"
+   ],
+   "alt": [
+    "kitchen"
+   ],
+   "pl_label": "kuchnia"
+  },
+  {
+   "id": "bedroom",
+   "en": "a bedroom",
+   "pl": [
+    "sypial"
+   ],
+   "alt": [
+    "bedroom"
+   ],
+   "pl_label": "sypialnia"
+  },
+  {
+   "id": "garden",
+   "en": "a garden",
+   "pl": [
+    "ogrod",
+    "ogrodz"
+   ],
+   "alt": [
+    "garden"
+   ],
+   "pl_label": "ogród"
+  },
+  {
+   "id": "playground",
+   "en": "a playground",
+   "pl": [
+    "plac zabaw",
+    "zabaw"
+   ],
+   "alt": [
+    "playground"
+   ],
+   "pl_label": "plac zabaw"
+  },
+  {
+   "id": "shop",
+   "en": "a shop",
+   "pl": [
+    "sklep"
+   ],
+   "alt": [
+    "shop",
+    "store"
+   ],
+   "pl_label": "sklep"
+  },
+  {
+   "id": "market",
+   "en": "a market",
+   "pl": [
+    "targ",
+    "rynek",
+    "rynku"
+   ],
+   "alt": [
+    "market"
+   ],
+   "pl_label": "targ"
+  },
+  {
+   "id": "restaurant",
+   "en": "a restaurant",
+   "pl": [
+    "restaur",
+    "kawiar"
+   ],
+   "alt": [
+    "restaurant",
+    "cafe"
+   ],
+   "pl_label": "restauracja"
+  },
+  {
+   "id": "hotel",
+   "en": "a hotel",
+   "pl": [
+    "hotel"
+   ],
+   "alt": [
+    "hotel"
+   ],
+   "pl_label": "hotel"
+  },
+  {
+   "id": "stadium",
+   "en": "a stadium",
+   "pl": [
+    "stadion"
+   ],
+   "alt": [
+    "stadium"
+   ],
+   "pl_label": "stadion"
+  },
+  {
+   "id": "road",
+   "en": "a road",
+   "pl": [
+    "drog",
+    "szos",
+    "autostrad"
+   ],
+   "alt": [
+    "road",
+    "highway"
+   ],
+   "pl_label": "droga"
+  },
+  {
+   "id": "airport",
+   "en": "an airport",
+   "pl": [
+    "lotnisk"
+   ],
+   "alt": [
+    "airport"
+   ],
+   "pl_label": "lotnisko"
+  },
+  {
+   "id": "train_station",
+   "en": "a train station",
+   "pl": [
+    "dworc",
+    "stacj"
+   ],
+   "alt": [
+    "station"
+   ],
+   "pl_label": "dworzec"
+  },
+  {
+   "id": "dog",
+   "en": "a dog",
+   "pl": [
+    "pies",
+    "ps",
+    "piesk",
+    "szczen"
+   ],
+   "alt": [
+    "dog",
+    "puppy"
+   ],
+   "pl_label": "pies"
+  },
+  {
+   "id": "cat",
+   "en": "a cat",
+   "pl": [
+    "kot",
+    "kotk",
+    "kocur",
+    "kici"
+   ],
+   "alt": [
+    "cat",
+    "kitten"
+   ],
+   "pl_label": "kot"
+  },
+  {
+   "id": "horse",
+   "en": "a horse",
+   "pl": [
+    "kon",
+    "konia",
+    "konie",
+    "konik"
+   ],
+   "alt": [
+    "horse"
+   ],
+   "pl_label": "koń"
+  },
+  {
+   "id": "bird",
+   "en": "a bird",
+   "pl": [
+    "ptak",
+    "ptas",
+    "ptac"
+   ],
+   "alt": [
+    "bird",
+    "birds"
+   ],
+   "pl_label": "ptak"
+  },
+  {
+   "id": "cow",
+   "en": "a cow",
+   "pl": [
+    "krow"
+   ],
+   "alt": [
+    "cow"
+   ],
+   "pl_label": "krowa"
+  },
+  {
+   "id": "sheep",
+   "en": "sheep",
+   "pl": [
+    "owc",
+    "baran"
+   ],
+   "alt": [
+    "sheep"
+   ],
+   "pl_label": "owce"
+  },
+  {
+   "id": "fish",
+   "en": "a fish",
+   "pl": [
+    "ryb"
+   ],
+   "alt": [
+    "fish"
+   ],
+   "pl_label": "ryba"
+  },
+  {
+   "id": "butterfly",
+   "en": "a butterfly",
+   "pl": [
+    "motyl"
+   ],
+   "alt": [
+    "butterfly"
+   ],
+   "pl_label": "motyl"
+  },
+  {
+   "id": "insect",
+   "en": "an insect",
+   "pl": [
+    "owad",
+    "pszcz",
+    "bied"
+   ],
+   "alt": [
+    "insect",
+    "bee"
+   ],
+   "pl_label": "owad"
+  },
+  {
+   "id": "rabbit",
+   "en": "a rabbit",
+   "pl": [
+    "krolik",
+    "krolika",
+    "zajac",
+    "zajeci"
+   ],
+   "alt": [
+    "rabbit",
+    "bunny"
+   ],
+   "pl_label": "królik"
+  },
+  {
+   "id": "deer",
+   "en": "a deer",
+   "pl": [
+    "jelen",
+    "sarn"
+   ],
+   "alt": [
+    "deer"
+   ],
+   "pl_label": "jeleń"
+  },
+  {
+   "id": "squirrel",
+   "en": "a squirrel",
+   "pl": [
+    "wiewior"
+   ],
+   "alt": [
+    "squirrel"
+   ],
+   "pl_label": "wiewiórka"
+  },
+  {
+   "id": "duck",
+   "en": "a duck",
+   "pl": [
+    "kacz",
+    "kaczk"
+   ],
+   "alt": [
+    "duck"
+   ],
+   "pl_label": "kaczka"
+  },
+  {
+   "id": "swan",
+   "en": "a swan",
+   "pl": [
+    "labedz",
+    "łabędz"
+   ],
+   "alt": [
+    "swan"
+   ],
+   "pl_label": "łabędź"
+  },
+  {
+   "id": "zoo",
+   "en": "animals in a zoo",
+   "pl": [
+    "zoo",
+    "zwierz"
+   ],
+   "alt": [
+    "zoo",
+    "animal",
+    "animals"
+   ],
+   "pl_label": "zoo"
+  },
+  {
+   "id": "baby",
+   "en": "a baby",
+   "pl": [
+    "niemowl",
+    "bobas",
+    "dzidzius",
+    "maluch"
+   ],
+   "alt": [
+    "baby",
+    "infant"
+   ],
+   "pl_label": "niemowlę"
+  },
+  {
+   "id": "child",
+   "en": "a child",
+   "pl": [
+    "dziec",
+    "dziew",
+    "chlopc",
+    "chłopc"
+   ],
+   "alt": [
+    "child",
+    "children",
+    "kid",
+    "kids"
+   ],
+   "pl_label": "dziecko"
+  },
+  {
+   "id": "group",
+   "en": "a group of people",
+   "pl": [
+    "grup",
+    "ludzi",
+    "osob",
+    "tlum"
+   ],
+   "alt": [
+    "group",
+    "people",
+    "crowd"
+   ],
+   "pl_label": "grupa ludzi"
+  },
+  {
+   "id": "couple",
+   "en": "a couple",
+   "pl": [
+    "para",
+    "pary",
+    "pare",
+    "zakochan"
+   ],
+   "alt": [
+    "couple"
+   ],
+   "pl_label": "para"
+  },
+  {
+   "id": "family",
+   "en": "a family",
+   "pl": [
+    "rodzin"
+   ],
+   "alt": [
+    "family"
+   ],
+   "pl_label": "rodzina"
+  },
+  {
+   "id": "selfie",
+   "en": "a selfie",
+   "pl": [
+    "selfie",
+    "autoportret"
+   ],
+   "alt": [
+    "selfie"
+   ],
+   "pl_label": "selfie"
+  },
+  {
+   "id": "portrait",
+   "en": "a portrait of a person",
+   "pl": [
+    "portret"
+   ],
+   "alt": [
+    "portrait"
+   ],
+   "pl_label": "portret"
+  },
+  {
+   "id": "wedding",
+   "en": "a wedding",
+   "pl": [
+    "slub",
+    "ślub",
+    "wesel",
+    "panna",
+    "pann"
+   ],
+   "alt": [
+    "wedding",
+    "bride"
+   ],
+   "pl_label": "ślub"
+  },
+  {
+   "id": "birthday",
+   "en": "a birthday party",
+   "pl": [
+    "urodzin",
+    "imprez"
+   ],
+   "alt": [
+    "birthday",
+    "party"
+   ],
+   "pl_label": "urodziny"
+  },
+  {
+   "id": "cake",
+   "en": "a cake",
+   "pl": [
+    "tort",
+    "ciast",
+    "ciaz"
+   ],
+   "alt": [
+    "cake",
+    "dessert"
+   ],
+   "pl_label": "tort"
+  },
+  {
+   "id": "christmas",
+   "en": "a christmas tree",
+   "pl": [
+    "choink",
+    "swiat",
+    "boze narodz",
+    "mikolaj",
+    "wigili"
+   ],
+   "alt": [
+    "christmas",
+    "xmas"
+   ],
+   "pl_label": "choinka"
+  },
+  {
+   "id": "fireworks",
+   "en": "fireworks",
+   "pl": [
+    "fajerwerk",
+    "sztuczne ogni"
+   ],
+   "alt": [
+    "fireworks"
+   ],
+   "pl_label": "fajerwerki"
+  },
+  {
+   "id": "concert",
+   "en": "a concert",
+   "pl": [
+    "koncert",
+    "festiwal"
+   ],
+   "alt": [
+    "concert",
+    "festival",
+    "stage"
+   ],
+   "pl_label": "koncert"
+  },
+  {
+   "id": "football",
+   "en": "a football match",
+   "pl": [
+    "pilk",
+    "mecz",
+    "futbol"
+   ],
+   "alt": [
+    "football",
+    "soccer",
+    "match"
+   ],
+   "pl_label": "piłka nożna"
+  },
+  {
+   "id": "swimming",
+   "en": "a swimming pool",
+   "pl": [
+    "basen",
+    "plywa",
+    "kapiel"
+   ],
+   "alt": [
+    "pool",
+    "swimming"
+   ],
+   "pl_label": "basen"
+  },
+  {
+   "id": "skiing",
+   "en": "skiing",
+   "pl": [
+    "narci",
+    "snowboard",
+    "stok"
+   ],
+   "alt": [
+    "skiing",
+    "ski",
+    "snowboard"
+   ],
+   "pl_label": "narty"
+  },
+  {
+   "id": "cycling",
+   "en": "cycling",
+   "pl": [
+    "rower",
+    "rowerz",
+    "kolarz"
+   ],
+   "alt": [
+    "bike",
+    "bicycle",
+    "cycling"
+   ],
+   "pl_label": "rower"
+  },
+  {
+   "id": "hiking",
+   "en": "hiking in nature",
+   "pl": [
+    "wedrow",
+    "wędrow",
+    "szlak",
+    "trekking"
+   ],
+   "alt": [
+    "hiking",
+    "trekking",
+    "trail"
+   ],
+   "pl_label": "wędrówka"
+  },
+  {
+   "id": "camping",
+   "en": "a tent camping",
+   "pl": [
+    "namiot",
+    "biwak",
+    "kemping",
+    "ognisk"
+   ],
+   "alt": [
+    "tent",
+    "camping",
+    "campfire"
+   ],
+   "pl_label": "namiot"
+  },
+  {
+   "id": "boat",
+   "en": "a boat",
+   "pl": [
+    "lodz",
+    "lodk",
+    "żagl",
+    "zagl",
+    "jacht"
+   ],
+   "alt": [
+    "boat",
+    "sailing",
+    "yacht"
+   ],
+   "pl_label": "łódź"
+  },
+  {
+   "id": "ship",
+   "en": "a ship",
+   "pl": [
+    "statek",
+    "statk",
+    "okret",
+    "prom"
+   ],
+   "alt": [
+    "ship",
+    "ferry"
+   ],
+   "pl_label": "statek"
+  },
+  {
+   "id": "airplane",
+   "en": "an airplane",
+   "pl": [
+    "samolot",
+    "lot"
+   ],
+   "alt": [
+    "airplane",
+    "plane",
+    "aeroplane"
+   ],
+   "pl_label": "samolot"
+  },
+  {
+   "id": "train",
+   "en": "a train",
+   "pl": [
+    "pociag",
+    "pociąg",
+    "kolej",
+    "tramwaj"
+   ],
+   "alt": [
+    "train",
+    "tram"
+   ],
+   "pl_label": "pociąg"
+  },
+  {
+   "id": "car",
+   "en": "a car",
+   "pl": [
+    "samochod",
+    "auto",
+    "aut",
+    "wóz"
+   ],
+   "alt": [
+    "car",
+    "cars",
+    "vehicle"
+   ],
+   "pl_label": "samochód"
+  },
+  {
+   "id": "bus",
+   "en": "a bus",
+   "pl": [
+    "autobus",
+    "bus"
+   ],
+   "alt": [
+    "bus"
+   ],
+   "pl_label": "autobus"
+  },
+  {
+   "id": "motorcycle",
+   "en": "a motorcycle",
+   "pl": [
+    "motocykl",
+    "motor",
+    "skuter"
+   ],
+   "alt": [
+    "motorcycle",
+    "motorbike",
+    "scooter"
+   ],
+   "pl_label": "motocykl"
+  },
+  {
+   "id": "helicopter",
+   "en": "a helicopter",
+   "pl": [
+    "helikopt"
+   ],
+   "alt": [
+    "helicopter"
+   ],
+   "pl_label": "helikopter"
+  },
+  {
+   "id": "drone",
+   "en": "an aerial view from above",
+   "pl": [
+    "dron",
+    "lotu ptaka",
+    "z gory"
+   ],
+   "alt": [
+    "aerial",
+    "drone"
+   ],
+   "pl_label": "widok z góry"
+  },
+  {
+   "id": "pizza",
+   "en": "a pizza",
+   "pl": [
+    "pizz"
+   ],
+   "alt": [
+    "pizza"
+   ],
+   "pl_label": "pizza"
+  },
+  {
+   "id": "burger",
+   "en": "a burger and fries",
+   "pl": [
+    "burger",
+    "frytk",
+    "fast food"
+   ],
+   "alt": [
+    "burger",
+    "fries"
+   ],
+   "pl_label": "burger"
+  },
+  {
+   "id": "coffee",
+   "en": "a cup of coffee",
+   "pl": [
+    "kaw",
+    "kawy",
+    "herbat"
+   ],
+   "alt": [
+    "coffee",
+    "tea"
+   ],
+   "pl_label": "kawa"
+  },
+  {
+   "id": "icecream",
+   "en": "ice cream",
+   "pl": [
+    "lody",
+    "lodow",
+    "lodom",
+    "lodach"
+   ],
+   "alt": [
+    "icecream",
+    "gelato"
+   ],
+   "pl_label": "lody"
+  },
+  {
+   "id": "fruit",
+   "en": "fruit",
+   "pl": [
+    "owoc",
+    "jablk",
+    "truskaw",
+    "arbuz",
+    "banan",
+    "pomarancz"
+   ],
+   "alt": [
+    "fruit",
+    "apple",
+    "strawberry"
+   ],
+   "pl_label": "owoce"
+  },
+  {
+   "id": "vegetables",
+   "en": "vegetables",
+   "pl": [
+    "warzyw",
+    "pomidor",
+    "marchew"
+   ],
+   "alt": [
+    "vegetable",
+    "vegetables",
+    "tomato"
+   ],
+   "pl_label": "warzywa"
+  },
+  {
+   "id": "meal",
+   "en": "a meal on a plate",
+   "pl": [
+    "obiad",
+    "kolacj",
+    "jedz",
+    "danie",
+    "posilek",
+    "dania"
+   ],
+   "alt": [
+    "meal",
+    "dinner",
+    "lunch",
+    "food"
+   ],
+   "pl_label": "posiłek"
+  },
+  {
+   "id": "breakfast",
+   "en": "breakfast",
+   "pl": [
+    "sniad",
+    "śniad"
+   ],
+   "alt": [
+    "breakfast"
+   ],
+   "pl_label": "śniadanie"
+  },
+  {
+   "id": "bread",
+   "en": "bread",
+   "pl": [
+    "chleb",
+    "bulk",
+    "pieczyw"
+   ],
+   "alt": [
+    "bread"
+   ],
+   "pl_label": "chleb"
+  },
+  {
+   "id": "salad",
+   "en": "a salad",
+   "pl": [
+    "salat",
+    "sałat"
+   ],
+   "alt": [
+    "salad"
+   ],
+   "pl_label": "sałatka"
+  },
+  {
+   "id": "soup",
+   "en": "soup",
+   "pl": [
+    "zup"
+   ],
+   "alt": [
+    "soup"
+   ],
+   "pl_label": "zupa"
+  },
+  {
+   "id": "sushi",
+   "en": "sushi",
+   "pl": [
+    "sushi"
+   ],
+   "alt": [
+    "sushi"
+   ],
+   "pl_label": "sushi"
+  },
+  {
+   "id": "wine",
+   "en": "a glass of wine",
+   "pl": [
+    "wino",
+    "wina",
+    "wine",
+    "winem"
+   ],
+   "alt": [
+    "wine"
+   ],
+   "pl_label": "wino"
+  },
+  {
+   "id": "beer",
+   "en": "a glass of beer",
+   "pl": [
+    "piwo",
+    "piwa",
+    "piwem",
+    "piw"
+   ],
+   "alt": [
+    "beer"
+   ],
+   "pl_label": "piwo"
+  },
+  {
+   "id": "sports",
+   "en": "people playing sports",
+   "pl": [
+    "sport",
+    "bieg",
+    "trening"
+   ],
+   "alt": [
+    "sport",
+    "sports",
+    "running"
+   ],
+   "pl_label": "sport"
+  },
+  {
+   "id": "music",
+   "en": "a musical instrument",
+   "pl": [
+    "muzyk",
+    "gitar",
+    "pianin",
+    "instrument"
+   ],
+   "alt": [
+    "music",
+    "guitar",
+    "piano"
+   ],
+   "pl_label": "muzyka"
+  },
+  {
+   "id": "computer",
+   "en": "a computer",
+   "pl": [
+    "komputer",
+    "laptop",
+    "monitor"
+   ],
+   "alt": [
+    "computer",
+    "laptop"
+   ],
+   "pl_label": "komputer"
+  },
+  {
+   "id": "phone",
+   "en": "a smartphone",
+   "pl": [
+    "telefon",
+    "smartfon"
+   ],
+   "alt": [
+    "phone",
+    "smartphone"
+   ],
+   "pl_label": "telefon"
+  },
+  {
+   "id": "book",
+   "en": "a book",
+   "pl": [
+    "ksiazk",
+    "książk",
+    "ksiaz",
+    "czytan"
+   ],
+   "alt": [
+    "book",
+    "books"
+   ],
+   "pl_label": "książka"
+  },
+  {
+   "id": "document",
+   "en": "a document with text",
+   "pl": [
+    "dokument",
+    "tekst",
+    "napis",
+    "paragon",
+    "faktur",
+    "kartk"
+   ],
+   "alt": [
+    "document",
+    "text",
+    "paper",
+    "receipt"
+   ],
+   "pl_label": "dokument"
+  },
+  {
+   "id": "screenshot",
+   "en": "a screenshot of an app",
+   "pl": [
+    "zrzut",
+    "screenshot",
+    "ekran"
+   ],
+   "alt": [
+    "screenshot",
+    "screen"
+   ],
+   "pl_label": "zrzut ekranu"
+  },
+  {
+   "id": "map",
+   "en": "a map",
+   "pl": [
+    "mapa",
+    "mapy",
+    "mape"
+   ],
+   "alt": [
+    "map"
+   ],
+   "pl_label": "mapa"
+  },
+  {
+   "id": "sign",
+   "en": "a street sign",
+   "pl": [
+    "znak",
+    "tablic",
+    "szyld"
+   ],
+   "alt": [
+    "sign",
+    "signboard"
+   ],
+   "pl_label": "znak"
+  },
+  {
+   "id": "toy",
+   "en": "a toy",
+   "pl": [
+    "zabawk",
+    "lalk",
+    "klock"
+   ],
+   "alt": [
+    "toy",
+    "toys"
+   ],
+   "pl_label": "zabawka"
+  },
+  {
+   "id": "school",
+   "en": "a school classroom",
+   "pl": [
+    "szkol",
+    "klas",
+    "uczn"
+   ],
+   "alt": [
+    "school",
+    "classroom"
+   ],
+   "pl_label": "szkoła"
+  },
+  {
+   "id": "hospital",
+   "en": "a hospital",
+   "pl": [
+    "szpital",
+    "lekarz"
+   ],
+   "alt": [
+    "hospital",
+    "doctor"
+   ],
+   "pl_label": "szpital"
+  },
+  {
+   "id": "bw",
+   "en": "a black and white photo",
+   "pl": [
+    "czarno",
+    "czarnobial",
+    "sepi"
+   ],
+   "alt": [
+    "monochrome",
+    "grayscale"
+   ],
+   "pl_label": "czarno-białe"
+  },
+  {
+   "id": "macro",
+   "en": "a macro close-up",
+   "pl": [
+    "makro",
+    "zblizen",
+    "zbliżen"
+   ],
+   "alt": [
+    "macro",
+    "closeup"
+   ],
+   "pl_label": "makro"
+  },
+  {
+   "id": "panorama",
+   "en": "a panorama",
+   "pl": [
+    "panoram"
+   ],
+   "alt": [
+    "panorama",
+    "panoramic"
+   ],
+   "pl_label": "panorama"
+  },
+  {
+   "id": "sun",
+   "en": "the sun",
+   "pl": [
+    "slonc",
+    "słońc",
+    "slonecz"
+   ],
+   "alt": [
+    "sun",
+    "sunny"
+   ],
+   "pl_label": "słońce"
+  },
+  {
+   "id": "rain",
+   "en": "rain",
+   "pl": [
+    "desz",
+    "deszcz",
+    "parasol"
+   ],
+   "alt": [
+    "rain",
+    "rainy"
+   ],
+   "pl_label": "deszcz"
+  },
+  {
+   "id": "fog",
+   "en": "fog",
+   "pl": [
+    "mgl",
+    "mgł"
+   ],
+   "alt": [
+    "fog",
+    "mist"
+   ],
+   "pl_label": "mgła"
+  },
+  {
+   "id": "stars",
+   "en": "stars at night",
+   "pl": [
+    "gwiazd",
+    "ksiezyc",
+    "księżyc"
+   ],
+   "alt": [
+    "stars",
+    "moon"
+   ],
+   "pl_label": "gwiazdy"
+  },
+  {
+   "id": "fire",
+   "en": "a fire",
+   "pl": [
+    "ogien",
+    "ogni",
+    "plomien",
+    "pożar"
+   ],
+   "alt": [
+    "fire",
+    "flame"
+   ],
+   "pl_label": "ogień"
+  },
+  {
+   "id": "water",
+   "en": "water",
+   "pl": [
+    "wod",
+    "fontann"
+   ],
+   "alt": [
+    "water",
+    "fountain"
+   ],
+   "pl_label": "woda"
+  },
+  {
+   "id": "pets",
+   "en": "a pet at home",
+   "pl": [
+    "zwierzak",
+    "pupil"
+   ],
+   "alt": [
+    "pet",
+    "pets"
+   ],
+   "pl_label": "zwierzak domowy"
+  },
+  {
+   "id": "candle",
+   "en": "candles",
+   "pl": [
+    "swiec",
+    "świec"
+   ],
+   "alt": [
+    "candle",
+    "candles"
+   ],
+   "pl_label": "świece"
+  },
+  {
+   "id": "gift",
+   "en": "a gift",
+   "pl": [
+    "prezent",
+    "upomin"
+   ],
+   "alt": [
+    "gift",
+    "present"
+   ],
+   "pl_label": "prezent"
+  },
+  {
+   "id": "balloon",
+   "en": "balloons",
+   "pl": [
+    "balon"
+   ],
+   "alt": [
+    "balloon",
+    "balloons"
+   ],
+   "pl_label": "balony"
+  },
+  {
+   "id": "costume",
+   "en": "a costume",
+   "pl": [
+    "kostium",
+    "przebran",
+    "maska",
+    "maski"
+   ],
+   "alt": [
+    "costume",
+    "mask"
+   ],
+   "pl_label": "przebranie"
+  },
+  {
+   "id": "dance",
+   "en": "people dancing",
+   "pl": [
+    "taniec",
+    "tanc",
+    "tancz"
+   ],
+   "alt": [
+    "dance",
+    "dancing"
+   ],
+   "pl_label": "taniec"
+  },
+  {
+   "id": "graduation",
+   "en": "a graduation ceremony",
+   "pl": [
+    "ukonczen",
+    "absolwent",
+    "dyplom"
+   ],
+   "alt": [
+    "graduation"
+   ],
+   "pl_label": "rozdanie dyplomów"
+  },
+  {
+   "id": "funeral",
+   "en": "a cemetery with graves",
+   "pl": [
+    "cmentarz",
+    "grob",
+    "nagrob",
+    "znicz"
+   ],
+   "alt": [
+    "cemetery",
+    "grave"
+   ],
+   "pl_label": "cmentarz"
+  },
+  {
+   "id": "farm",
+   "en": "a farm",
+   "pl": [
+    "wiej",
+    "wsi",
+    "gospodarstw",
+    "farm"
+   ],
+   "alt": [
+    "farm",
+    "village",
+    "countryside"
+   ],
+   "pl_label": "wieś"
+  },
+  {
+   "id": "construction",
+   "en": "a construction site",
+   "pl": [
+    "budow",
+    "remont"
+   ],
+   "alt": [
+    "construction"
+   ],
+   "pl_label": "budowa"
+  },
+  {
+   "id": "factory",
+   "en": "a factory",
+   "pl": [
+    "fabryk",
+    "przemysl"
+   ],
+   "alt": [
+    "factory",
+    "industrial"
+   ],
+   "pl_label": "fabryka"
+  }
+ ]
+}
