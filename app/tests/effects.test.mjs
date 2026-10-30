@@ -89,3 +89,45 @@ test('przechylenie i przesunięcie zostawia pas środkowy ostry', () => {
   assert.equal(at(copy, 10, 20), at(img, 10, 20), 'środek bez zmian')
   assert.notEqual(at(copy, 10, 1), at(img, 10, 1), 'góra jest rozmyta')
 })
+
+/** Obraz w x h z jednolitym kolorem i opcjonalnym jaśniejszym środkiem, do sprawdzania masek radialnych. */
+const flat = (w, h, fill) => { const d = new Uint8ClampedArray(w * h * 4); for (let i = 0; i < d.length; i += 4) { d[i] = fill[0]; d[i + 1] = fill[1]; d[i + 2] = fill[2]; d[i + 3] = 255 } return { d, w, h } }
+const pixelAt = (img, x, y) => { const i = (y * img.w + x) * 4; return [img.d[i], img.d[i + 1], img.d[i + 2]] }
+
+test('odcień z wyboru koloru: jasność zostaje, barwa idzie w stronę wybranego koloru', () => {
+  const a = run('tint', 200, 200, 200)
+  assert.ok(a[0] > a[2], `domyślny ciepły odcień: ${a}`)
+  const img = px(180, 180, 180)
+  mod.EFFECT_BY_ID.get('tint').fn(img, 1, { color: '#3060ff' })
+  const [r, g, b] = [...img.d]
+  assert.ok(b > r && b > g, `niebieski odcień: ${[r, g, b]}`)
+  const lum = (x, y, z) => 0.299 * x + 0.587 * y + 0.114 * z
+  assert.ok(Math.abs(lum(r, g, b) - 180 * 0.9 - 180 * 0.1) < 30, 'jasność w przybliżeniu zachowana')
+  // Zły zapis koloru nie psuje efektu.
+  const bad = px(100, 100, 100); mod.EFFECT_BY_ID.get('tint').fn(bad, 1, { color: 'nie-kolor' })
+  assert.ok([...bad.d].every((v) => Number.isFinite(v)))
+  assert.deepEqual(mod.parseColor('#ff0080', [1, 2, 3]), [255, 0, 128])
+  assert.deepEqual(mod.parseColor('ff0080', [1, 2, 3]), [1, 2, 3])
+})
+
+test('czerń i biel z ogniskiem: ognisko zostaje w kolorze tam, gdzie wskazano środek, a rozmiar je powiększa', () => {
+  const make = () => flat(40, 20, [220, 40, 40])
+  const left = make(); mod.EFFECT_BY_ID.get('focalbw').fn(left, 1, { cx: 0.1, cy: 0.5 })
+  assert.ok(pixelAt(left, 3, 10)[0] - pixelAt(left, 3, 10)[1] > 120, 'przy środku w lewej części lewy brzeg jest kolorowy')
+  const farRight = pixelAt(left, 38, 10)
+  assert.ok(Math.abs(farRight[0] - farRight[1]) < 40, `prawy brzeg jest szary: ${farRight}`)
+  const small = make(); mod.EFFECT_BY_ID.get('focalbw').fn(small, 1, { size: 0.4 })
+  const big = make(); mod.EFFECT_BY_ID.get('focalbw').fn(big, 1, { size: 2 })
+  const sat = (p) => p[0] - p[1]
+  assert.ok(sat(pixelAt(big, 30, 10)) > sat(pixelAt(small, 30, 10)), 'większe ognisko zostawia więcej koloru')
+  // Bez ustawień wynik jest taki sam jak dawniej: środek kadru zostaje kolorowy, rogi szare.
+  const def = make(); mod.EFFECT_BY_ID.get('focalbw').fn(def, 1)
+  assert.ok(sat(pixelAt(def, 20, 10)) > 150 && sat(pixelAt(def, 0, 0)) < sat(pixelAt(def, 20, 10)))
+})
+
+test('efekty z opcjami wymieniają je w opts, a pozostałe ich nie mają', () => {
+  const by = (id) => mod.EFFECT_BY_ID.get(id)
+  for (const id of ['softfocus', 'focalbw', 'radialblur', 'vignette']) assert.deepEqual(by(id).opts, ['center', 'size'], id)
+  for (const id of ['tint', 'gradtint']) assert.deepEqual(by(id).opts, ['color'], id)
+  assert.equal(by('sepia').opts, undefined)
+})

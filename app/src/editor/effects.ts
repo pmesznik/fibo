@@ -15,7 +15,9 @@ export type Geometry = {
 }
 export const ZERO_GEO: Geometry = { rot: 0, flipH: false, flipV: false, angle: 0, aspect: null, zoom: 1, panX: 0, panY: 0 }
 
-export type EffectInst = { id: string; amount: number }
+/** Ustawienia efektu poza siłą: środek (ułamki szerokości i wysokości kadru), rozmiar (1 = domyślny) i kolor (#rrggbb). */
+export type FxOptions = { cx?: number; cy?: number; size?: number; color?: string }
+export type EffectInst = { id: string; amount: number } & FxOptions
 export type RedEye = { x: number; y: number; r: number }
 /** Napis na zdjęciu: środek w ułamkach szerokości i wysokości kadru, wysokość tekstu jako ułamek wysokości kadru. */
 export type TextItem = { text: string; x: number; y: number; size: number; color: string; bold: boolean }
@@ -159,7 +161,14 @@ export function applyAdjust({ d, w, h }: Img, a: Adjust) {
 
 // ---- Efekty --------------------------------------------------------------
 
-type Effect = { id: string; label: string; fn: (img: Img, t: number) => void; slider?: boolean }
+/** `opts` wymienia ustawienia, które efekt rozumie (środek, rozmiar, kolor); okno edycji pokazuje tylko je. */
+type Effect = { id: string; label: string; fn: (img: Img, t: number, o?: FxOptions) => void; slider?: boolean; opts?: ('center' | 'size' | 'color')[] }
+
+/** Kolor #rrggbb jako [r, g, b]; zły zapis daje kolor domyślny. */
+export function parseColor(c: string | undefined, fallback: [number, number, number]): [number, number, number] {
+  const m = c?.match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i)
+  return m ? [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)] : fallback
+}
 
 function gradientMap(img: Img, stops: [number, number, number][], t: number) {
   const { d } = img
@@ -178,9 +187,11 @@ function perPixel(img: Img, t: number, f: (r: number, g: number, b: number) => [
   }
 }
 
-function radial(img: Img, f: (dist: number, i: number) => void) {
+/** Maska radialna: odległość od środka (domyślnie środek kadru) liczona względem najdalszego rogu, dzielona przez rozmiar (większy rozmiar = szersze ognisko). */
+function radial(img: Img, f: (dist: number, i: number) => void, o?: FxOptions) {
   const { w, h } = img
-  const cx = w / 2, cy = h / 2, maxd = Math.hypot(cx, cy)
+  const cx = Math.min(1, Math.max(0, o?.cx ?? 0.5)) * w, cy = Math.min(1, Math.max(0, o?.cy ?? 0.5)) * h
+  const maxd = Math.hypot(Math.max(cx, w - cx), Math.max(cy, h - cy)) * Math.min(3, Math.max(0.2, o?.size ?? 1))
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) f(Math.hypot(x - cx, y - cy) / maxd, (y * w + x) * 4)
 }
 
@@ -243,8 +254,8 @@ export const EFFECTS: Effect[] = [
   { id: 'soften', label: 'Zmiękczenie', slider: true, fn(img, t) { const b = boxBlur(img.d, img.w, img.h, bigRadius(img) / 3); for (let i = 0; i < img.d.length; i += 4) for (let c = 0; c < 3; c++) img.d[i + c] = lerp(img.d[i + c], b[i + c], t * .7) } },
   { id: 'glow', label: 'Poświata', slider: true, fn(img, t) { const b = boxBlur(img.d, img.w, img.h, bigRadius(img) / 2); const { d } = img; for (let i = 0; i < d.length; i += 4) for (let c = 0; c < 3; c++) d[i + c] = clamp(255 - (255 - d[i + c]) * (255 - b[i + c] * t) / 255) } },
   { id: 'orton', label: 'Orton', slider: true, fn(img, t) { const b = boxBlur(img.d, img.w, img.h, bigRadius(img) / 2); const { d } = img; for (let i = 0; i < d.length; i += 4) for (let c = 0; c < 3; c++) d[i + c] = clamp(lerp(d[i + c], Math.min(255, b[i + c] * 1.25 + 12), t * .55)) } },
-  { id: 'softfocus', label: 'Miękki fokus', slider: true, fn(img, t) { const b = boxBlur(img.d, img.w, img.h, bigRadius(img) / 1.5); radial(img, (dist, i) => { const k = Math.min(1, Math.max(0, (dist - .25) / .5)) * t; for (let c = 0; c < 3; c++) img.d[i + c] = lerp(img.d[i + c], b[i + c], k) }) } },
-  { id: 'focalbw', label: 'Czerń i biel z ogniskiem', slider: true, fn(img, t) { radial(img, (dist, i) => { const k = Math.min(1, Math.max(0, (dist - .2) / .5)) * t; const y = lum(img.d[i], img.d[i + 1], img.d[i + 2]); for (let c = 0; c < 3; c++) img.d[i + c] = lerp(img.d[i + c], y, k) }) } },
+  { id: 'softfocus', label: 'Miękki fokus', slider: true, opts: ['center', 'size'], fn(img, t, o) { const b = boxBlur(img.d, img.w, img.h, bigRadius(img) / 1.5); radial(img, (dist, i) => { const k = Math.min(1, Math.max(0, (dist - .25) / .5)) * t; for (let c = 0; c < 3; c++) img.d[i + c] = lerp(img.d[i + c], b[i + c], k) }, o) } },
+  { id: 'focalbw', label: 'Czerń i biel z ogniskiem', slider: true, opts: ['center', 'size'], fn(img, t, o) { radial(img, (dist, i) => { const k = Math.min(1, Math.max(0, (dist - .2) / .5)) * t; const y = lum(img.d[i], img.d[i + 1], img.d[i + 2]); for (let c = 0; c < 3; c++) img.d[i + c] = lerp(img.d[i + c], y, k) }, o) } },
   // Redukcja szumu: wygładza tylko miejsca o drobnych różnicach (szum), a krawędzie zostają ostre.
   { id: 'denoise', label: 'Redukcja szumu', slider: true, fn(img, t) {
     const b = boxBlur(img.d, img.w, img.h, 1 + Math.round(t * 2)); const { d } = img; const tol = 18 + 50 * t
@@ -268,9 +279,14 @@ export const EFFECTS: Effect[] = [
     }
   } },
   // Rozmycie poza środkiem (maska radialna): środek zostaje ostry, brzegi są mocno rozmyte.
-  { id: 'radialblur', label: 'Rozmycie poza środkiem', slider: true, fn(img, t) { const b = boxBlur(img.d, img.w, img.h, Math.max(2, bigRadius(img) * 0.9)); radial(img, (dist, i) => { const k = Math.min(1, Math.max(0, (dist - .18) / .45)) * t; for (let c = 0; c < 3; c++) img.d[i + c] = lerp(img.d[i + c], b[i + c], k) }) } },
-  { id: 'vignette', label: 'Winieta', slider: true, fn(img, t) { radial(img, (dist, i) => { const k = 1 - Math.pow(Math.max(0, dist - .25) / .75, 1.6) * t * 1.1; for (let c = 0; c < 3; c++) img.d[i + c] = clamp(img.d[i + c] * Math.max(0, k)) }) } },
-  { id: 'gradtint', label: 'Gradientowy odcień', slider: true, fn(img, t) { const { d, w, h } = img; for (let y = 0; y < h; y++) { const k = Math.max(0, 1 - y / (h * .6)) * t * .6; for (let x = 0; x < w; x++) { const i = (y * w + x) * 4; d[i] = lerp(d[i], 255, k * .8); d[i + 1] = lerp(d[i + 1], 140, k); d[i + 2] = lerp(d[i + 2], 40, k) } } } },
+  { id: 'radialblur', label: 'Rozmycie poza środkiem', slider: true, opts: ['center', 'size'], fn(img, t, o) { const b = boxBlur(img.d, img.w, img.h, Math.max(2, bigRadius(img) * 0.9)); radial(img, (dist, i) => { const k = Math.min(1, Math.max(0, (dist - .18) / .45)) * t; for (let c = 0; c < 3; c++) img.d[i + c] = lerp(img.d[i + c], b[i + c], k) }, o) } },
+  { id: 'vignette', label: 'Winieta', slider: true, opts: ['center', 'size'], fn(img, t, o) { radial(img, (dist, i) => { const k = 1 - Math.pow(Math.max(0, dist - .25) / .75, 1.6) * t * 1.1; for (let c = 0; c < 3; c++) img.d[i + c] = clamp(img.d[i + c] * Math.max(0, k)) }, o) } },
+  { id: 'gradtint', label: 'Gradientowy odcień', slider: true, opts: ['color'], fn(img, t, o) { const { d, w, h } = img; const [cr, cg, cb] = parseColor(o?.color, [255, 140, 40]); for (let y = 0; y < h; y++) { const k = Math.max(0, 1 - y / (h * .6)) * t * .6; for (let x = 0; x < w; x++) { const i = (y * w + x) * 4; d[i] = lerp(d[i], cr, k * .8); d[i + 1] = lerp(d[i + 1], cg, k); d[i + 2] = lerp(d[i + 2], cb, k) } } } },
+  // Odcień: cały obraz dostaje wybrany kolor, ale jasność każdego piksela zostaje (jak „Tint” w Picasie).
+  { id: 'tint', label: 'Odcień (kolor do wyboru)', slider: true, opts: ['color'], fn(img, t, o) {
+    const [cr, cg, cb] = parseColor(o?.color, [216, 154, 82]); const lc = Math.max(1, lum(cr, cg, cb))
+    perPixel(img, t * .9, (r, g, b) => { const k = lum(r, g, b) / lc; return [cr * k, cg * k, cb * k] })
+  } },
   { id: 'duotone', label: 'Dwutonowy', slider: true, fn: (img, t) => gradientMap(img, [[20, 20, 90], [255, 220, 120]], t) },
   { id: 'heatmap', label: 'Mapa cieplna', slider: true, fn: (img, t) => gradientMap(img, [[0, 0, 120], [0, 180, 255], [0, 220, 80], [255, 230, 0], [255, 40, 0]], t) },
   { id: 'night', label: 'Noktowizor', slider: true, fn: (img, t) => gradientMap(img, [[0, 10, 0], [20, 120, 20], [160, 255, 140]], t) },
@@ -382,7 +398,7 @@ export function applyColor(canvas: HTMLCanvasElement, st: EditState) {
     for (let i = 0; i < img.d.length; i += 4) { img.d[i] = clamp(img.d[i] * r); img.d[i + 1] = clamp(img.d[i + 1] * g); img.d[i + 2] = clamp(img.d[i + 2] * b) }
   }
   if (JSON.stringify(st.adj) !== JSON.stringify(ZERO_ADJUST)) applyAdjust(img, st.adj)
-  for (const fx of st.fx) EFFECT_BY_ID.get(fx.id)?.fn(img, fx.amount / 100)
+  for (const fx of st.fx) EFFECT_BY_ID.get(fx.id)?.fn(img, fx.amount / 100, { cx: fx.cx, cy: fx.cy, size: fx.size, color: fx.color })
   ctx.putImageData(data, 0, 0)
 }
 

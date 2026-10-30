@@ -134,8 +134,8 @@ Widoki i wyszukiwanie:
 - [x] **Filmstrip w edytorze** (pasek miniatur zdjęć z albumu u góry, zamiast samych strzałek). P3 T S Już był: pasek miniatur w podglądzie.
 
 Edytor, szczegóły z podręcznika:
-- [ ] **Soft focus i focal B&W z punktem środkowym**: wskazanie środka na zdjęciu, suwaki rozmiaru i ostrości (dziś jeden suwak siły). P2 T M
-- [ ] **Tint i graduated tint z wyborem koloru** zakraplaczem (dziś kolor jest stały). P2 T M
+- [x] **Soft focus i focal B&W z punktem środkowym**: wskazanie środka na zdjęciu, suwaki rozmiaru i ostrości (dziś jeden suwak siły). P2 T M
+- [x] **Tint i graduated tint z wyborem koloru** zakraplaczem (dziś kolor jest stały). P2 T M
 - [x] **Filtered B&W**: czerń i biel z kolorowym filtrem (czerwony, żółty, zielony…). P3 T S Gotowe: filtry czerwony, żółty, zielony.
 - [x] **Jednoprzyciskowe poprawki światła** obok suwaków doświetlenia, świateł i cieni (jak w Picasie). P3 T S Gotowe: przyciski w Jednym kliknięciu i nad suwakami światła.
 - [x] **Gotowe rozmiary kadru** z podręcznika (np. 4x6) z przeciąganiem ramki i zmianą proporcji rogami. P3 T M Częściowo: rozmiary gotowe, przeciąganie ramki rogami jeszcze nie.

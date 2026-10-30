@@ -15,7 +15,7 @@ import { pl } from './pl'
 import { flagOf, labelOf, nextMark } from './marks'
 import {
   EFFECTS, EMPTY_EDIT, ZERO_ADJUST, isEdited, renderEdit, renderGeometry, MAX_SPOTS, neutralFromSample, MAX_TEXTS, MAX_TEXT_LEN, type TextItem,
-  type Adjust, type EditState,
+  type Adjust, type EditState, type EffectInst,
 } from './editor/effects'
 
 type Tab = 'basic' | 'tune' | 'fx' | 'info'
@@ -49,9 +49,13 @@ const TUNE_GROUPS: { id: string; title: string; icon: typeof Sun; items: TuneDef
   ] },
 ]
 
+/** Kolory początkowe efektów z wyborem koloru (takie same jak w efekcie, gdy koloru nie wybrano). */
+const FX_DEFAULT_COLOR: Record<string, string> = { tint: '#d89a52', gradtint: '#ff8c28' }
+/** Zakraplacz ekranu z przeglądarki (WebView2 go ma); bez niego zostaje sam wybór koloru. */
+const EYE_DROPPER = (window as unknown as { EyeDropper?: new () => { open: () => Promise<{ sRGBHex: string }> } }).EyeDropper
 const ONE_CLICK = ['lucky', 'autocontrast', 'autocolor']
 const FX_GROUPS: { id: string; title: string; icon: typeof Sun; ids: string[] }[] = [
-  { id: 'fx-color', title: 'Kolor i ton', icon: Palette, ids: ['bw', 'sepia', 'warm', 'boost', 'duotone', 'heatmap', 'night', 'infrared', 'invert'] },
+  { id: 'fx-color', title: 'Kolor i ton', icon: Palette, ids: ['bw', 'sepia', 'tint', 'warm', 'boost', 'duotone', 'heatmap', 'night', 'infrared', 'invert'] },
   { id: 'fx-bw', title: 'Czerń i biel z filtrem, jeden kolor', icon: Aperture, ids: ['bwred', 'bwyellow', 'bwgreen', 'keepred', 'keepyellow', 'keepgreen', 'keepblue'] },
   { id: 'fx-retro', title: 'Retro i film', icon: History, ids: ['grain', 'matte', 'cross', 'lomo', 'sixties', 'polaroid', 'frame'] },
   { id: 'fx-focus', title: 'Światło i ostrość', icon: Aperture, ids: ['denoise', 'tiltshift', 'radialblur', 'soften', 'glow', 'orton', 'softfocus', 'focalbw', 'vignette', 'gradtint', 'hdr'] },
@@ -103,6 +107,8 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
   const [undo, setUndo] = useState<EditState[]>([])
   const [redo, setRedo] = useState<EditState[]>([])
   const [sheet, setSheet] = useState(false)
+  /** Efekt, któremu użytkownik właśnie wskazuje środek (kliknięciem na zdjęciu). */
+  const [centerFor, setCenterFor] = useState<string | null>(null)
   const [tab, setTab] = useState<Tab>('basic')
   const [redEyeMode, setRedEyeMode] = useState(false)
   const [neutralMode, setNeutralMode] = useState(false)
@@ -340,7 +346,8 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
       if (e.key === 'ArrowLeft' && !onRange) go(-1)
       else if (e.key === 'ArrowRight' && !onRange) go(1)
       else if (e.key === 'Escape') {
-        if (redEyeMode) setRedEyeMode(false)
+        if (centerFor) setCenterFor(null)
+        else if (redEyeMode) setRedEyeMode(false)
         else if (neutralMode) setNeutralMode(false)
         else if (retouchMode) setRetouchMode(false)
         else if (pendingNav !== null) setPendingNav(null)
@@ -369,6 +376,12 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
 
   const onCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const r0 = e.currentTarget.getBoundingClientRect()
+    if (centerFor) {
+      const cx = Math.min(1, Math.max(0, (e.clientX - r0.left) / r0.width)), cy = Math.min(1, Math.max(0, (e.clientY - r0.top) / r0.height))
+      change((st) => ({ ...st, fx: st.fx.map((x) => (x.id === centerFor ? { ...x, cx, cy } : x)) }))
+      setCenterFor(null)
+      return
+    }
     if (neutralMode && bitmap) {
       const n = neutralFromSample(renderGeometry(bitmap, edit.geo, 800), (e.clientX - r0.left) / r0.width, (e.clientY - r0.top) / r0.height)
       if (!n) { say('Ten punkt jest zbyt ciemny. Kliknij fragment, który ma być szary lub biały.'); return }
@@ -420,7 +433,7 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
           className={bitmap && !photo.video ? '' : 'hidden'}
           style={{
             maxWidth: '100%', maxHeight: '100%', borderRadius: 'var(--r-md)', boxShadow: '0 10px 40px rgba(0,0,0,.4)',
-            cursor: redEyeMode || neutralMode || retouchMode ? 'crosshair' : zoom > 1 ? 'grab' : 'zoom-in', touchAction: 'none',
+            cursor: redEyeMode || neutralMode || retouchMode || centerFor ? 'crosshair' : zoom > 1 ? 'grab' : 'zoom-in', touchAction: 'none',
             transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: 'center center',
           }}
         />
@@ -643,10 +656,32 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
               <div style={{ color: 'var(--muted)', fontSize: 13, margin: '0 2px 4px' }}>Nakładają się w kolejności wyboru</div>
               {slidersFx.length > 0 && (
                 <Sec id="fx-active" icon={<Sliders size={17} />} title="Siła efektów" hint={`${slidersFx.length} aktywne`} defaultOpen>
-                  {slidersFx.map((f) => (
-                    <Slider key={f.id} label={fxLabel(f.id)} value={f.amount} min={0} max={100} onStart={snap}
-                      onChange={(v) => live((s) => ({ ...s, fx: s.fx.map((x) => (x.id === f.id ? { ...x, amount: v } : x)) }))} />
-                  ))}
+                  {slidersFx.map((f) => {
+                    const def = EFFECTS.find((e) => e.id === f.id)
+                    const setOpt = (patch: Partial<EffectInst>) => live((s) => ({ ...s, fx: s.fx.map((x) => (x.id === f.id ? { ...x, ...patch } : x)) }))
+                    return (
+                      <div key={f.id}>
+                        <Slider label={fxLabel(f.id)} value={f.amount} min={0} max={100} onStart={snap}
+                          onChange={(v) => setOpt({ amount: v })} />
+                        {def?.opts?.includes('size') && (
+                          <Slider label="Rozmiar ogniska" value={Math.round((f.size ?? 1) * 100)} min={30} max={200} onStart={snap} onChange={(v) => setOpt({ size: v / 100 })} />
+                        )}
+                        {def?.opts?.includes('center') && (
+                          <div className="chips" style={{ marginTop: 6 }}>
+                            <Chip on={centerFor === f.id} onClick={() => setCenterFor(centerFor === f.id ? null : f.id)} label="Wskaż środek efektu kliknięciem na zdjęciu">{centerFor === f.id ? 'Kliknij na zdjęciu…' : 'Wskaż środek'}</Chip>
+                            {f.cx !== undefined && <Chip onClick={() => { snap(); setOpt({ cx: undefined, cy: undefined }) }} label="Wróć do środka kadru">Wyśrodkuj</Chip>}
+                          </div>
+                        )}
+                        {def?.opts?.includes('color') && (
+                          <div className="chips" style={{ marginTop: 6, alignItems: 'center' }}>
+                            <input type="color" aria-label={`Kolor: ${fxLabel(f.id)}`} value={f.color ?? FX_DEFAULT_COLOR[f.id] ?? '#d89a52'} onFocus={snap}
+                              onChange={(e) => setOpt({ color: e.target.value })} style={{ width: 44, height: 34, padding: 2, minHeight: 0 }} />
+                            {EYE_DROPPER && <Chip onClick={async () => { try { const r = await new EYE_DROPPER().open(); snap(); setOpt({ color: r.sRGBHex }) } catch { /* anulowano */ } }} label="Wybierz kolor z ekranu zakraplaczem">Zakraplacz</Chip>}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
                 </Sec>
               )}
               <Sec id="fx-presets" icon={<Sparkles size={17} />} title="Moje zestawy" hint={presets.length ? `${presets.length} zapisanych` : 'Zapisz ulubione ustawienia'}>
