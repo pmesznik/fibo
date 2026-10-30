@@ -177,7 +177,7 @@ Szukanie i porządkowanie:
 - [ ] **Stosy zdjęć seryjnych** i **RAW + JPEG jako jedno zdjęcie**. P2 T M
 - [ ] **Wybór najlepszego ze zdjęć seryjnych** i wykrywanie zdjęć nieostrych, poruszonych, ciemnych albo z zamkniętymi oczami (do przejrzenia i ukrycia). P3 T L
 - [x] **Flagi „wybierz / odrzuć” i kolorowe etykiety** zapisywane do XMP, szybkie selekcjonowanie klawiaturą. P2 T S
-- [ ] **Porównanie 2 do 4 zdjęć obok siebie** z jednoczesnym powiększaniem. P2 T M
+- [x] **Porównanie 2 do 4 zdjęć obok siebie** z jednoczesnym powiększaniem. P2 T M
 - [ ] **Widok kalendarza** (miesiące z miniaturami). P3 T M
 - [ ] **Zwierzęta domowe** jako osobna kategoria osób. P4 T L
 - [ ] **Prywatny, zablokowany album** (ukryty po haśle). P3 T M

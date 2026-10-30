@@ -33,9 +33,10 @@ import { Justified, VirtualGrid } from './Justified'
 import { Chip, Sec, Toast, useEscape } from './ui'
 import { dayKey, dayLabel, memoriesFor, yearsAgo, type Memory } from './memories'
 import { LABELS, flagOf, labelOf, nextMark, passesFlag } from './marks'
+import { CompareView } from './CompareView'
 import {
   Images, FolderOpen, Users, MapPin, Heart, Star, Plus, Play, Maximize2, X,
-  SlidersHorizontal, Search as SearchIcon, ImageUp, Ruler, LayoutDashboard, Check, ListChecks, Tag, CalendarDays, Copy, RefreshCw, Download, Save, Pencil, Trash2, Eye, EyeOff, ChevronLeft, Wand2, Info, RotateCw, RotateCcw,
+  Compare, SlidersHorizontal, Search as SearchIcon, ImageUp, Ruler, LayoutDashboard, Check, ListChecks, Tag, CalendarDays, Copy, RefreshCw, Download, Save, Pencil, Trash2, Eye, EyeOff, ChevronLeft, Wand2, Info, RotateCw, RotateCcw,
 } from './FiboIcons'
 
 type Mode = 'library' | 'albums' | 'favs' | 'people' | 'map'
@@ -90,6 +91,7 @@ export default function App() {
   const [anchor, setAnchor] = useState<number | null>(null)
   const [selectMode, setSelectMode] = useState(false)
   const [collage, setCollage] = useState(false)
+  const [compareOpen, setCompareOpen] = useState(false)
   const [original, setOriginal] = useState(() => { try { return localStorage.getItem('grid-original') !== '0' } catch { return true } })
   const selected = sel.length === 1 ? sel[0] : null
   const setSelected = (id: number | null) => { setSel(id === null ? [] : [id]); setAnchor(id) }
@@ -540,6 +542,13 @@ export default function App() {
     } else setSelected(id)
   }
   const setGridMode = (v: boolean) => { setOriginal(v); try { localStorage.setItem('grid-original', v ? '1' : '0') } catch { /* brak pamięci */ } }
+  /** Porównanie 2 do 4 zaznaczonych zdjęć obok siebie (klawisz C albo przycisk na pasku zaznaczenia). */
+  const startCompare = () => {
+    const n = chosen.filter((p) => p.id >= 0).length
+    if (n < 2) return say('Zaznacz od dwóch do czterech zdjęć, żeby je porównać: Ctrl lub Shift przy kliknięciu.')
+    if (n > 4) say('Porównuję pierwsze cztery z zaznaczonych zdjęć')
+    setCompareOpen(true)
+  }
   const startCollage = () => {
     if (chosen.length < 2) return say('Zaznacz co najmniej dwa zdjęcia: Ctrl lub Shift przy kliknięciu, albo tryb zaznaczania w menu.')
     setCollage(true)
@@ -800,10 +809,11 @@ export default function App() {
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
       if (e.ctrlKey || e.metaKey || e.altKey) return
       if (e.key === '?' || e.key === 'F1') { e.preventDefault(); setHelpDlg('keys'); return }
-      if (confirm || prompt || picker || tagDlg || helpDlg || collage || dateIds || renameIds || locIds || exportIds) return
+      if (confirm || prompt || picker || tagDlg || helpDlg || collage || compareOpen || dateIds || renameIds || locIds || exportIds) return
       if (!sel.some((i) => i >= 0)) return
       if (/^[0-5]$/.test(e.key)) { e.preventDefault(); rateSelected(+e.key) }
       else if (e.key.toLowerCase() === 'f') { e.preventDefault(); favSelected() }
+      else if (e.key.toLowerCase() === 'c' && sel.length > 1) { e.preventDefault(); startCompare() }
       else if (e.key.toLowerCase() === 'p') { e.preventDefault(); flagSelected(1) }
       else if (e.key.toLowerCase() === 'x') { e.preventDefault(); flagSelected(-1) }
       else if (e.key.toLowerCase() === 'u') { e.preventDefault(); flagSelected(0) }
@@ -812,7 +822,7 @@ export default function App() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewer, sel, all, confirm, prompt, picker, tagDlg, helpDlg, collage, dateIds, renameIds, locIds, exportIds])
+  }, [viewer, sel, all, confirm, prompt, picker, tagDlg, helpDlg, collage, compareOpen, dateIds, renameIds, locIds, exportIds])
 
   const smartFilters = () => JSON.stringify({ query: query.trim(), minStars, dateFrom, dateTo, missing, tags: activeTags })
   const applySmart = (a: SmartAlbum) => {
@@ -1420,17 +1430,26 @@ export default function App() {
           )}
         </div>
       )}
-      {sel.length > 1 && !viewer && !collage && (
+      {sel.length > 1 && !viewer && !collage && !compareOpen && (
         <div className="glass fixed left-1/2 z-[1050] flex -translate-x-1/2 items-center gap-1 p-1.5" style={{ bottom: 'calc(20px + var(--sab))', borderRadius: 'var(--r-lg)' }}>
           <span style={{ padding: '0 12px', fontWeight: 600 }}>{sel.length} {pl(sel.length, 'zdjęcie', 'zdjęcia', 'zdjęć')}</span>
           <button className="ico" style={{ minWidth: 'auto', padding: '0 14px', gap: 8, display: 'flex', alignItems: 'center', fontWeight: 600 }} aria-label="Tagi zaznaczonych zdjęć" onClick={() => setTagDlg(true)}>
             <Tag size={20} /> Tagi
           </button>
+          {sel.length <= 4 && (
+            <button className="ico" style={{ minWidth: 'auto', padding: '0 14px', gap: 8, display: 'flex', alignItems: 'center', fontWeight: 600 }} aria-label="Porównaj zaznaczone zdjęcia obok siebie" title="Porównaj (C)" onClick={startCompare}>
+              <Compare size={20} /> Porównaj
+            </button>
+          )}
           <button className="ico" style={{ minWidth: 'auto', padding: '0 14px', gap: 8, display: 'flex', alignItems: 'center', color: 'var(--accent)', fontWeight: 600 }} aria-label="Utwórz kolaż" onClick={startCollage}>
             <LayoutDashboard size={20} /> Kolaż
           </button>
           <button className="ico" aria-label="Odznacz wszystkie" onClick={() => setSelected(null)}><X size={20} /></button>
         </div>
+      )}
+
+      {compareOpen && chosen.filter((p) => p.id >= 0).length > 1 && (
+        <CompareView photos={chosen.filter((p) => p.id >= 0).slice(0, 4)} onClose={() => setCompareOpen(false)} onPatch={patch} say={say} />
       )}
 
       {collage && chosen.length > 1 && (
