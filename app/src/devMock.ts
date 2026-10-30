@@ -80,6 +80,10 @@ const photos = Array.from({ length: PHOTO_N }, (_, i) => {
     color: i % 12,
   }
 })
+// Przykładowe wydarzenia: dwanaście zdjęć z jednego dnia i trzynaście z trzech dni z rzędu (podróż).
+for (let k = 0; k < 12; k++) { const p = photos[30 + k]; p.taken = `2025-08-10 ${String(10 + Math.floor(k / 3)).padStart(2, '0')}:${String((k % 3) * 20).padStart(2, '0')}:00` }
+for (let k = 0; k < 13; k++) { const p = photos[50 + k] as unknown as { taken: string; lat: number; lon: number }; p.taken = `2024-07-${12 + Math.floor(k / 5)} ${String(8 + (k % 5) * 3).padStart(2, '0')}:00:00`; p.lat = 50.06 + k * 0.001; p.lon = 19.94 }
+
 // Przykładowe filmy (bez odtwarzania: w podglądzie przeglądarkowym nie ma protokołu programu).
 for (const i of [20, 21]) { const p = photos[i] as unknown as { video: boolean; duration: number; name: string; path: string }; p.video = true; p.duration = i === 20 ? 42 : 3725; p.name = `MOV_${i}.mp4`; p.path = `C:\\Zdjecia\\${FOLDERS[0]}\\MOV_${i}.mp4` }
 

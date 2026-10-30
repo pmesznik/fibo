@@ -243,6 +243,9 @@ pub fn rename_folder_core(conn: &Connection, old: &Path, new_name: &str) -> Resu
         return Err("Folder nie istnieje na dysku".into());
     }
     crate::locks::ensure_unlocked(conn, &old.join("x"))?;
+    if crate::locks::has_locked_inside(conn, old) {
+        return Err("W tym folderze jest zablokowany podfolder. Odblokuj go (menu → Foldery), zmień nazwę i zablokuj ponownie".into());
+    }
     let parent = old.parent().ok_or("Nie można zmienić nazwy folderu głównego dysku")?;
     let target = parent.join(&new_name);
     if target.exists() {
@@ -382,5 +385,10 @@ mod tests {
         // Istniejącego folderu nie nadpisujemy.
         fs::create_dir_all(dir.join("Inny")).unwrap();
         assert!(rename_folder_core(&conn, &new, "Inny").is_err());
+        // Zablokowany podfolder blokuje zmianę nazwy folderu nadrzędnego (inaczej blokada wskazywałaby nieistniejącą ścieżkę).
+        conn.execute("INSERT INTO locked_folders (path) VALUES (?1)", [new.join("sub").to_string_lossy().to_string()]).unwrap();
+        let err = rename_folder_core(&conn, &new, "Drugie").unwrap_err();
+        assert!(err.contains("zablokowany podfolder"), "{err}");
+        assert!(new.join("a.jpg").exists(), "nic się nie zmieniło na dysku");
     }
 }

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { listen } from '@tauri-apps/api/event'
 import { FolderOpen, X } from './FiboIcons'
 import { checkFiles, hidePhotos, revealInExplorer, type BrokenFile } from './api'
+import { useEscape } from './ui'
 
 /** Sprawdzenie plików biblioteki: brakujące, puste i uszkodzone zdjęcia. Tylko odczyt; wynik można ukryć w bibliotece (pliki zostają). */
 export function CheckDialog({ onClose, onChanged, say }: { onClose: () => void; onChanged: () => void; say: (m: string, k?: 'ok' | 'err') => void }) {
@@ -12,10 +13,9 @@ export function CheckDialog({ onClose, onChanged, say }: { onClose: () => void; 
 
   useEffect(() => {
     const un = listen<[number, number]>('check-progress', (e) => setProgress(e.payload))
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); onClose() } }
-    window.addEventListener('keydown', onKey, true)
-    return () => { un.then((f) => f()); window.removeEventListener('keydown', onKey, true) }
-  }, [onClose])
+    return () => { un.then((f) => f()) }
+  }, [])
+  useEscape(onClose)
 
   const run = async () => {
     setBusy(true); setResult(null); setProgress(null)

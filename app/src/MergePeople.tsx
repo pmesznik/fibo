@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Check, Search, Users, X } from './FiboIcons'
 import { FaceImg } from './FaceImg'
 import { listPeople, mergePeople, mergeSuggestions, movePersonFaces, personFaces, type MergeSuggestion, type Person } from './api'
+import { useEscape } from './ui'
 
 const pl = (n: number, one: string, few: string, many: string) =>
   n === 1 ? one : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? few : many
@@ -9,11 +10,7 @@ const nm = (p: Person) => p.name ?? 'Nieznana osoba'
 const pct = (s: number) => `${Math.max(0, Math.round(s * 100))}%`
 
 function Modal({ title, onClose, children, width = 640 }: { title: string; onClose: () => void; children: ReactNode; width?: number }) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); onClose() } }
-    window.addEventListener('keydown', onKey, true)
-    return () => window.removeEventListener('keydown', onKey, true)
-  }, [onClose])
+  useEscape(onClose)
   return (
     <>
       <div className="fixed inset-0 z-[2300]" style={{ background: 'rgba(0,0,0,.5)' }} onClick={onClose} />

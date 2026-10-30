@@ -24,6 +24,18 @@ pub fn is_locked(conn: &Connection, path: &Path) -> bool {
     .is_ok()
 }
 
+/// Czy w tym folderze (albo w którymś z jego podfolderów) jest zablokowany folder. Zmiana nazwy folderu nadrzędnego zepsułaby wtedy zapisaną ścieżkę blokady.
+pub fn has_locked_inside(conn: &Connection, folder: &Path) -> bool {
+    let sep = std::path::MAIN_SEPARATOR.to_string();
+    let f = folder.to_string_lossy().to_string();
+    conn.query_row(
+        "SELECT 1 FROM locked_folders WHERE path = ?1 OR substr(path, 1, length(?1) + 1) = ?1 || ?2 LIMIT 1",
+        params![f, sep],
+        |_| Ok(()),
+    )
+    .is_ok()
+}
+
 pub fn ensure_unlocked(conn: &Connection, path: &Path) -> Result<(), String> {
     if is_locked(conn, path) {
         let folder = path.parent().unwrap_or(path).display();

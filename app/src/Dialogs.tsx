@@ -2,13 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import { FolderOpen, Plus, X } from './FiboIcons'
 import type { Album } from './api'
 import { pl } from './pl'
+import { useEscape } from './ui'
 
 function Shell({ title, onClose, children, label }: { title: string; onClose: () => void; children: React.ReactNode; label: string }) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); onClose() } }
-    window.addEventListener('keydown', onKey, true)
-    return () => window.removeEventListener('keydown', onKey, true)
-  }, [onClose])
+  useEscape(onClose)
   return (
     <>
       <div className="fixed inset-0 z-[2300]" style={{ background: 'rgba(0,0,0,.45)' }} onClick={onClose} />

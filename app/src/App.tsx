@@ -35,6 +35,7 @@ import { dayKey, dayLabel, memoriesFor, yearsAgo, type Memory } from './memories
 import { LABELS, flagOf, labelOf, nextMark, passesFlag } from './marks'
 import { durationLabel } from './api'
 import { CompareView } from './CompareView'
+import { EventsDialog } from './EventsDialog'
 import { collapseStacks, findStacks, stackCount } from './stacks'
 import {
   Images, FolderOpen, Users, MapPin, Heart, Star, Plus, Play, Maximize2, X,
@@ -94,6 +95,7 @@ export default function App() {
   const [selectMode, setSelectMode] = useState(false)
   const [collage, setCollage] = useState(false)
   const [compareOpen, setCompareOpen] = useState(false)
+  const [eventsOpen, setEventsOpen] = useState(false)
   const [original, setOriginal] = useState(() => { try { return localStorage.getItem('grid-original') !== '0' } catch { return true } })
   const selected = sel.length === 1 ? sel[0] : null
   const setSelected = (id: number | null) => { setSel(id === null ? [] : [id]); setAnchor(id) }
@@ -198,7 +200,7 @@ export default function App() {
   const [memDismissed, setMemDismissed] = useState(() => { try { return localStorage.getItem('memories-dismissed') === dayKey(new Date()) } catch { return false } })
   const dismissMemories = () => { setMemDismissed(true); try { localStorage.setItem('memories-dismissed', dayKey(today)) } catch { /* brak pamięci */ } }
   const memories = useMemo(() => memoriesFor(all, today), [all, today])
-  const openMemory = (ids: number[], title: string) => { setPersonFacesMode(false); setPerson({ name: `Tego dnia: ${title}`, ids: new Set(ids), memory: true }); setAlbumId(null); setFolder(null); setMode('library') }
+  const openMemory = (ids: number[], title: string, prefix = 'Tego dnia: ') => { setPersonFacesMode(false); setPerson({ name: `${prefix}${title}`, ids: new Set(ids), memory: true }); setAlbumId(null); setFolder(null); setMode('library') }
   const [hiddenN, setHiddenN] = useState(0)
   const reloadHidden = useCallback(async () => { if (inTauri) setHiddenN(await hiddenCount()) }, [])
   useEffect(() => { reloadHidden() }, [reloadHidden])
@@ -1033,6 +1035,7 @@ export default function App() {
                 { icon: Play, label: 'Pokaz slajdów', fn: slideshow, on: false },
                 { icon: ListChecks, label: selectMode ? 'Zaznaczanie włączone' : 'Zaznaczanie wielu', fn: () => { setSelectMode((v) => !v); setDrawer(false) }, on: selectMode },
                 { icon: LayoutDashboard, label: chosen.length > 1 ? `Kolaż (${chosen.length})` : 'Kolaż', fn: () => { setDrawer(false); startCollage() }, on: false },
+                { icon: CalendarDays, label: 'Wydarzenia i podróże', fn: () => { setDrawer(false); setEventsOpen(true) }, on: false },
                 { icon: CalendarDays, label: 'Kalendarz', fn: () => { setDrawer(false); setCalOpen(true) }, on: false },
                 { icon: Copy, label: 'Duplikaty', fn: () => { setDrawer(false); setDupOpen(true) }, on: false },
                 { icon: RefreshCw, label: refreshing ? 'Odświeżanie…' : 'Odśwież dane zdjęć', fn: () => { setDrawer(false); refresh() }, on: false },
@@ -1721,6 +1724,19 @@ export default function App() {
       {moveFaces && person?.id !== undefined && (
         <MoveFacesDialog personId={person.id} personName={person.name} photoIds={moveFaces} say={say} onClose={() => setMoveFaces(null)}
           onDone={(ids) => { dropFromPerson(ids); setSel([]) }} />
+      )}
+      {eventsOpen && (
+        <EventsDialog photos={all} albumNames={albumNames} onClose={() => setEventsOpen(false)}
+          onShow={(ids, title) => openMemory(ids, title, '')}
+          onCreate={async (name, ids) => {
+            try {
+              const a = await createAlbum(name)
+              await addToAlbum(a.id, ids)
+              await afterAlbumChange()
+              say(`Utworzono album „${a.name}”: ${ids.length} ${pl(ids.length, 'zdjęcie', 'zdjęcia', 'zdjęć')}`, 'ok')
+              return true
+            } catch (e) { say(`Nie udało się utworzyć albumu: ${e}`, 'err'); return false }
+          }} />
       )}
       {calOpen && <CalendarMaker photos={all.filter((p) => !p.video)} say={say} onClose={() => setCalOpen(false)} />}
       {creditIds && creditIds.length > 0 && <CreditsDialog photos={all.filter((p) => creditIds.includes(p.id))} say={say} onClose={() => setCreditIds(null)} onDone={reload} />}
