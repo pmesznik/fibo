@@ -30,6 +30,7 @@ i poproś o kontakt). Najnowsza wydana wersja jest jedyną wspieraną.
 - **Ręczne zaznaczanie twarzy** (przycisk „Dodaj twarz” w podglądzie) działa tylko po włączeniu rozpoznawania twarzy i tylko na jednym zdjęciu. Ramka jest sprawdzana (ułamki 0 do 1,
   minimalny rozmiar), wektor liczą te same dołączone, sprawdzane modele lokalnie i trafia do bazy zaszyfrowany jak pozostałe. Nic nie wychodzi z komputera.
 - **Nazwy miejsc** liczą się lokalnie z tabeli miejscowości dołączonej do programu (GeoNames, CC BY 4.0). Współrzędne zdjęć nie są nigdzie wysyłane, a program nie pobiera żadnych map ani słowników w trakcie działania.
+- **Znak wodny z tekstu** jest rysowany w oknie programu na PNG, sprawdzany po stronie programu (prawdziwy PNG, do 2 MB, rozsądne wymiary) i zapisywany w folderze danych jako zwykły plik. Nic nie wychodzi z komputera.
 - **Edycja nieniszcząca** zapisuje tylko przepis edycji (tekst JSON do 256 KB: korekty, efekty, napisy, ustawienia RAW) w bazie i, gdy zapis metadanych jest
   włączony, w pliku `<zdjęcie>.fibo.json` obok zdjęcia (poza zablokowanymi folderami). Plik zdjęcia pozostaje nietknięty. Przepis jest tylko sprawdzany
   jako JSON, a nie wykonywany. Pliki `.fibo.json` innych autorów są wczytywane tylko przy znaczniku `fibo_edit` i limicie rozmiaru.

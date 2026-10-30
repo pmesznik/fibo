@@ -3,13 +3,15 @@ import { useEscape } from './ui'
 import { pl } from './pl'
 import { X, Download } from './FiboIcons'
 import { Thumb } from './Thumb'
-import { exportGallery, exportGif, exportGpx, exportPdf, exportPhotos, pickFile, pickFolder, type Photo, type Watermark } from './api'
+import { saveWatermarkText, exportGallery, exportGif, exportGpx, exportPdf, exportPhotos, pickFile, pickFolder, type Photo, type Watermark } from './api'
 
 const SIZES: [number, string][] = [[1024, '1024 px (e-mail)'], [1600, '1600 px'], [2048, '2048 px'], [0, 'Oryginalny rozmiar']]
 const QUALITIES: [number, string][] = [[75, 'Mała'], [88, 'Dobra'], [95, 'Najlepsza']]
 const FORMATS: ['jpg' | 'png' | 'webp', string][] = [['jpg', 'JPEG'], ['png', 'PNG (bez strat)'], ['webp', 'WebP (bez strat)']]
 
 /** Eksport kopii zaznaczonych zdjęć do wybranego folderu (pomniejszonych, bez metadanych i lokalizacji). */
+const WM_COLORS: [string, string][] = [['#ffffff', 'Biały'], ['#000000', 'Czarny'], ['#f5b301', 'Złoty'], ['#e5484d', 'Czerwony']]
+
 export function ExportDialog({ ids, onClose, say, initialSize, photos }: { ids: number[]; onClose: () => void; say: (m: string, kind?: 'ok' | 'err') => void; initialSize?: number; photos?: Photo[] }) {
   useEscape(onClose)
   const [size, setSize] = useState(initialSize ?? 1600)
@@ -25,14 +27,44 @@ export function ExportDialog({ ids, onClose, say, initialSize, photos }: { ids: 
     } catch { return null }
   })
   const [useWm, setUseWm] = useState(false)
-  const saveWm = (w: typeof wm) => { setWm(w); try { localStorage.setItem('watermark-logo', JSON.stringify(w)) } catch { /* brak pamięci przeglądarki */ } }
+  /** Rodzaj znaku: logo z pliku albo tekst (np. „© Jan Kowalski”), rysowany na przezroczystym PNG tuż przed eksportem. */
+  const stored = (() => { try { return JSON.parse(localStorage.getItem('watermark-logo') ?? 'null') ?? {} } catch { return {} } })()
+  const [kind, setKind] = useState<'logo' | 'text'>(stored.kind === 'text' ? 'text' : 'logo')
+  const [wmText, setWmText] = useState<string>(typeof stored.text === 'string' ? stored.text.slice(0, 80) : '')
+  const [wmColor, setWmColor] = useState<string>(WM_COLORS.some((c) => c[0] === stored.color) ? stored.color : '#ffffff')
+  const [textPos, setTextPos] = useState({ position: String(stored.textPosition ?? 'br'), sizePct: +stored.textSizePct || 30, opacity: +stored.textOpacity || 80 })
+  const persist = (patch: Record<string, unknown>) => { try { localStorage.setItem('watermark-logo', JSON.stringify({ ...(wm ?? {}), kind, text: wmText, color: wmColor, textPosition: textPos.position, textSizePct: textPos.sizePct, textOpacity: textPos.opacity, ...patch })) } catch { /* brak pamięci przeglądarki */ } }
+  const saveWm = (w: typeof wm) => { setWm(w); persist(w ?? {}) }
+  const saveText = (patch: { kind?: 'logo' | 'text'; text?: string; color?: string; pos?: Partial<typeof textPos> }) => {
+    const next = { kind: patch.kind ?? kind, text: patch.text ?? wmText, color: patch.color ?? wmColor, pos: { ...textPos, ...(patch.pos ?? {}) } }
+    setKind(next.kind); setWmText(next.text); setWmColor(next.color); setTextPos(next.pos)
+    persist({ kind: next.kind, text: next.text, color: next.color, textPosition: next.pos.position, textSizePct: next.pos.sizePct, textOpacity: next.pos.opacity })
+  }
   const pickLogo = async () => {
     try {
       const f = await pickFile('Wybierz logo (PNG z przezroczystością, JPEG lub WebP)', ['png', 'jpg', 'jpeg', 'webp'], 'Logo')
       if (f) { saveWm({ path: f, position: wm?.position ?? 'br', sizePct: wm?.sizePct ?? 20, opacity: wm?.opacity ?? 70 }); setUseWm(true) }
     } catch (e) { say(`Błąd: ${e}`, 'err') }
   }
-  const watermark: Watermark | null = useWm && wm ? { ...wm } : null
+  const textMode = kind === 'text'
+  const watermark: Watermark | null = useWm && (textMode ? wmText.trim() !== '' : !!wm) ? (textMode ? { path: '', position: textPos.position, sizePct: textPos.sizePct, opacity: textPos.opacity } : { ...wm! }) : null
+  /** Rysuje tekst znaku na przezroczystym PNG (z lekkim cieniem, żeby był czytelny na jasnym i ciemnym tle) i zapisuje go lokalnie. */
+  const renderTextMark = async (): Promise<string> => {
+    const text = wmText.trim().slice(0, 80)
+    const font = '700 160px "Segoe UI", system-ui, sans-serif'
+    const probe = document.createElement('canvas').getContext('2d')!
+    probe.font = font
+    const w = Math.min(7000, Math.ceil(probe.measureText(text).width) + 80), h = 240
+    const c = document.createElement('canvas'); c.width = w; c.height = h
+    const g = c.getContext('2d')!
+    g.font = font; g.textBaseline = 'middle'; g.textAlign = 'center'
+    g.shadowColor = wmColor === '#000000' ? 'rgba(255,255,255,.55)' : 'rgba(0,0,0,.6)'; g.shadowBlur = 14; g.shadowOffsetY = 3
+    g.fillStyle = wmColor
+    g.fillText(text, w / 2, h / 2)
+    const blob = await new Promise<Blob | null>((res) => c.toBlob(res, 'image/png'))
+    if (!blob) throw new Error('nie udało się narysować znaku wodnego')
+    return saveWatermarkText(await blob.arrayBuffer())
+  }
   const [title, setTitle] = useState('Galeria')
   const [delay, setDelay] = useState(1000)
   const [layout, setLayout] = useState<[number, number]>([2, 2])
@@ -42,7 +74,8 @@ export function ExportDialog({ ids, onClose, say, initialSize, photos }: { ids: 
       const dir = await pickFolder('Wybierz folder na wyeksportowane zdjęcia')
       if (!dir) return
       setBusy(true)
-      const r = await exportPhotos(ids, dir, size, quality, watermark, format)
+      const wmFinal = watermark && textMode ? { ...watermark, path: await renderTextMark() } : watermark
+      const r = await exportPhotos(ids, dir, size, quality, wmFinal, format)
       say(r.errors.length ? `Wyeksportowano ${r.done}, błędy: ${r.errors.length} (${r.errors[0]})` : `Wyeksportowano ${r.done} do wybranego folderu`, r.errors.length ? 'err' : 'ok')
       if (!r.errors.length) onClose()
     } catch (e) { say(`Błąd eksportu: ${e}`, 'err') } finally { setBusy(false) }
@@ -130,27 +163,48 @@ export function ExportDialog({ ids, onClose, say, initialSize, photos }: { ids: 
           {format === 'jpg' && <div className="chips">
             {QUALITIES.map(([v, l]) => <button key={v} className={`chip${quality === v ? ' on' : ''}`} aria-pressed={quality === v} onClick={() => setQuality(v)}>{l}</button>)}
           </div>}
-          <h3 style={{ margin: '14px 0 4px', fontSize: 14 }}>Znak wodny (logo)</h3>
-          <div className="chips">
-            <button className="chip" onClick={pickLogo}>{wm ? 'Zmień logo…' : 'Wybierz logo…'}</button>
-            {wm && <button className={`chip${useWm ? ' on' : ''}`} aria-pressed={useWm} onClick={() => setUseWm((v) => !v)}>{useWm ? 'Znak wodny włączony' : 'Użyj znaku wodnego'}</button>}
+          <h3 style={{ margin: '14px 0 4px', fontSize: 14 }}>Znak wodny</h3>
+          <div className="chips" role="group" aria-label="Rodzaj znaku wodnego">
+            <button className={`chip${!textMode ? ' on' : ''}`} aria-pressed={!textMode} onClick={() => saveText({ kind: 'logo' })}>Logo z pliku</button>
+            <button className={`chip${textMode ? ' on' : ''}`} aria-pressed={textMode} onClick={() => saveText({ kind: 'text' })}>Tekst</button>
           </div>
-          {wm && <p style={{ margin: '6px 0 0', color: 'var(--muted)', fontSize: 12.5, wordBreak: 'break-all' }}>Logo: {wm.path.split(/[\\/]/).pop()}</p>}
-          {wm && useWm && (
+          {!textMode && (
+            <div className="chips" style={{ marginTop: 6 }}>
+              <button className="chip" onClick={pickLogo}>{wm ? 'Zmień logo…' : 'Wybierz logo…'}</button>
+              {wm && <button className={`chip${useWm ? ' on' : ''}`} aria-pressed={useWm} onClick={() => setUseWm((v) => !v)}>{useWm ? 'Znak wodny włączony' : 'Użyj znaku wodnego'}</button>}
+            </div>
+          )}
+          {!textMode && wm && <p style={{ margin: '6px 0 0', color: 'var(--muted)', fontSize: 12.5, wordBreak: 'break-all' }}>Logo: {wm.path.split(/[\\/]/).pop()}</p>}
+          {textMode && (
             <>
-              <label>Położenie</label>
-              <div role="group" aria-label="Położenie znaku wodnego" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 44px)', gap: 4 }}>
-                {['tl', 'tc', 'tr', 'ml', 'mc', 'mr', 'bl', 'bc', 'br'].map((p) => (
-                  <button key={p} className={`chip${wm.position === p ? ' on' : ''}`} aria-pressed={wm.position === p} aria-label={`Położenie: ${({ t: 'góra', m: 'środek', b: 'dół' } as Record<string, string>)[p[0]]} ${({ l: 'lewo', c: 'środek', r: 'prawo' } as Record<string, string>)[p[1]]}`}
-                    style={{ minWidth: 44, height: 32, justifyContent: 'center' }} onClick={() => saveWm({ ...wm, position: p })}>{wm.position === p ? '●' : '○'}</button>
-                ))}
+              <label htmlFor="wm-text">Tekst znaku wodnego</label>
+              <input id="wm-text" type="text" maxLength={80} autoComplete="off" placeholder="np. © Jan Kowalski 2026" value={wmText} onChange={(e) => { saveText({ text: e.target.value }); setUseWm(e.target.value.trim() !== '') }} />
+              <label>Kolor</label>
+              <div className="chips" role="group" aria-label="Kolor tekstu znaku wodnego">
+                {WM_COLORS.map(([v, l]) => <button key={v} className={`chip${wmColor === v ? ' on' : ''}`} aria-pressed={wmColor === v} onClick={() => saveText({ color: v })}>{l}</button>)}
               </div>
-              <label htmlFor="wm-size" style={{ display: 'flex', justifyContent: 'space-between' }}><span>Rozmiar logo</span><span>{wm.sizePct}% szerokości zdjęcia</span></label>
-              <input id="wm-size" type="range" min={3} max={60} value={wm.sizePct} onChange={(e) => saveWm({ ...wm, sizePct: +e.target.value })} />
-              <label htmlFor="wm-op" style={{ display: 'flex', justifyContent: 'space-between' }}><span>Krycie</span><span>{wm.opacity}%</span></label>
-              <input id="wm-op" type="range" min={5} max={100} value={wm.opacity} onChange={(e) => saveWm({ ...wm, opacity: +e.target.value })} />
+              {wmText.trim() !== '' && <button className={`chip${useWm ? ' on' : ''}`} style={{ marginTop: 8 }} aria-pressed={useWm} onClick={() => setUseWm((v) => !v)}>{useWm ? 'Znak wodny włączony' : 'Użyj znaku wodnego'}</button>}
             </>
           )}
+          {useWm && (textMode ? wmText.trim() !== '' : !!wm) && (() => {
+            const cur = textMode ? textPos : { position: wm!.position, sizePct: wm!.sizePct, opacity: wm!.opacity }
+            const upd = (patch: Partial<typeof textPos>) => (textMode ? saveText({ pos: patch }) : saveWm({ ...wm!, ...(patch.position !== undefined ? { position: patch.position } : {}), ...(patch.sizePct !== undefined ? { sizePct: patch.sizePct } : {}), ...(patch.opacity !== undefined ? { opacity: patch.opacity } : {}) }))
+            return (
+              <>
+                <label>Położenie</label>
+                <div role="group" aria-label="Położenie znaku wodnego" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 44px)', gap: 4 }}>
+                  {['tl', 'tc', 'tr', 'ml', 'mc', 'mr', 'bl', 'bc', 'br'].map((p) => (
+                    <button key={p} className={`chip${cur.position === p ? ' on' : ''}`} aria-pressed={cur.position === p} aria-label={`Położenie: ${({ t: 'góra', m: 'środek', b: 'dół' } as Record<string, string>)[p[0]]} ${({ l: 'lewo', c: 'środek', r: 'prawo' } as Record<string, string>)[p[1]]}`}
+                      style={{ minWidth: 44, height: 32, justifyContent: 'center' }} onClick={() => upd({ position: p })}>{cur.position === p ? '●' : '○'}</button>
+                  ))}
+                </div>
+                <label htmlFor="wm-size" style={{ display: 'flex', justifyContent: 'space-between' }}><span>Rozmiar znaku</span><span>{cur.sizePct}% szerokości zdjęcia</span></label>
+                <input id="wm-size" type="range" min={3} max={60} value={cur.sizePct} onChange={(e) => upd({ sizePct: +e.target.value })} />
+                <label htmlFor="wm-op" style={{ display: 'flex', justifyContent: 'space-between' }}><span>Krycie</span><span>{cur.opacity}%</span></label>
+                <input id="wm-op" type="range" min={5} max={100} value={cur.opacity} onChange={(e) => upd({ opacity: +e.target.value })} />
+              </>
+            )
+          })()}
           <button className="primary" style={{ marginTop: 16 }} disabled={busy} onClick={run}>
             <span className="inline-flex items-center gap-2"><Download size={17} /> {busy ? 'Eksportuję…' : 'Wybierz folder i eksportuj'}</span>
           </button>

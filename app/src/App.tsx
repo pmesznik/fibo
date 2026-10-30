@@ -38,6 +38,7 @@ import { CompareView } from './CompareView'
 import { EventsDialog } from './EventsDialog'
 import { ContentSearch } from './ContentSearch'
 import { OrganizerDialog } from './OrganizerDialog'
+import { LibraryCalendar } from './LibraryCalendar'
 import { collapseStacks, findStacks, stackCount } from './stacks'
 import {
   Images, FolderOpen, Users, MapPin, Heart, Star, Plus, Play, Maximize2, X,
@@ -100,6 +101,7 @@ export default function App() {
   const [eventsOpen, setEventsOpen] = useState(false)
   const [contentOpen, setContentOpen] = useState(false)
   const [organizeOpen, setOrganizeOpen] = useState(false)
+  const [dayViewOpen, setDayViewOpen] = useState(false)
   const [original, setOriginal] = useState(() => { try { return localStorage.getItem('grid-original') !== '0' } catch { return true } })
   const selected = sel.length === 1 ? sel[0] : null
   const setSelected = (id: number | null) => { setSel(id === null ? [] : [id]); setAnchor(id) }
@@ -1081,7 +1083,8 @@ export default function App() {
                 { icon: FolderOpen, label: 'Porządkuj według daty', fn: () => { setDrawer(false); setOrganizeOpen(true) }, on: false },
                 { icon: SearchIcon, label: 'Szukaj po treści zdjęć', fn: () => { setDrawer(false); setContentOpen(true) }, on: false },
                 { icon: CalendarDays, label: 'Wydarzenia i podróże', fn: () => { setDrawer(false); setEventsOpen(true) }, on: false },
-                { icon: CalendarDays, label: 'Kalendarz', fn: () => { setDrawer(false); setCalOpen(true) }, on: false },
+                { icon: CalendarDays, label: 'Widok kalendarza', fn: () => { setDrawer(false); setDayViewOpen(true) }, on: false },
+                { icon: CalendarDays, label: 'Kalendarz do wydruku', fn: () => { setDrawer(false); setCalOpen(true) }, on: false },
                 { icon: Copy, label: 'Duplikaty', fn: () => { setDrawer(false); setDupOpen(true) }, on: false },
                 { icon: RefreshCw, label: refreshing ? 'Odświeżanie…' : 'Odśwież dane zdjęć', fn: () => { setDrawer(false); refresh() }, on: false },
                 { icon: Download, label: updater.phase === 'checking' ? 'Sprawdzam…' : 'Sprawdź aktualizacje', fn: () => { setDrawer(false); updater.checkNow(true) }, on: false },
@@ -1827,6 +1830,7 @@ export default function App() {
             } catch (e) { say(`Nie udało się utworzyć albumu: ${e}`, 'err'); return false }
           }} />
       )}
+      {dayViewOpen && <LibraryCalendar photos={all} onClose={() => setDayViewOpen(false)} onOpenDay={(ids, title) => openMemory(ids, title, '')} />}
       {calOpen && <CalendarMaker photos={all.filter((p) => !p.video)} say={say} onClose={() => setCalOpen(false)} />}
       {creditIds && creditIds.length > 0 && <CreditsDialog photos={all.filter((p) => creditIds.includes(p.id))} say={say} onClose={() => setCreditIds(null)} onDone={reload} />}
       {cardOffer && (

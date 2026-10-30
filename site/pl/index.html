@@ -12,7 +12,7 @@
 <link rel="alternate" hreflang="en" href="../en/">
 <link rel="stylesheet" href="../assets/site.css">
 </head>
-<body data-lang="pl" data-repo="pmesznik/fibo" data-version="0.4.44">
+<body data-lang="pl" data-repo="pmesznik/fibo" data-version="0.4.45">
 <a class="skip" href="#docs">Dokumentacja</a>
 <header class="top">
   <div class="wrap bar">
@@ -161,6 +161,8 @@
         <li><strong>Szukanie po treści zdjęć</strong> (menu → Szybkie akcje): wpisujesz, co jest na zdjęciu („pies na plaży”, „tort”, „góry”), a program pokazuje najlepiej pasujące zdjęcia. Działa lokalnie, na modelu CLIP dołączonym do instalatora, i zna ok. 130 pojęć po polsku i angielsku. Zdjęcia indeksuje się jednorazowo, na życzenie, w tle (około 0,2 s na zdjęcie).</li>
         <li><strong>Przeciąganie na foldery</strong>: gdy przeciągasz zdjęcia, na dole obok albumów pojawia się pasek folderów. Upuszczenie na folder pyta o potwierdzenie i przenosi pliki na dysku (razem z XMP i edycją). Foldery zablokowane przed zmianami nie są celem, a zajęta nazwa dostaje _1, _2.</li>
         <li><strong>Nazwy miejsc</strong>: zdjęcia ze współrzędnymi GPS dostają nazwę najbliższej miejscowości (np. „Warszawa, Polska”). Nazwa jest w informacjach o zdjęciu, w szukaniu i w sekcji <em>Miejsca</em> w menu. Działa bez internetu, na tabeli ok. 27 tysięcy miejscowości dołączonej do instalatora (dane GeoNames, CC BY 4.0). Zdjęcie dalej niż 30 km od jakiejkolwiek większej miejscowości nie dostaje nazwy.</li>
+        <li><strong>Widok kalendarza</strong> (menu → Szybkie akcje): miesiąc w siatce, w każdym dniu miniatura pierwszego zdjęcia i liczba zdjęć. Strzałki, lista lat i skróty miesięcy pozwalają skakać po czasie, a kliknięcie dnia pokazuje jego zdjęcia. Daty biorą się z EXIF, a gdy ich brak, z daty pliku.</li>
+        <li><strong>Znak wodny z tekstu</strong>: w eksporcie obok logo z pliku możesz wpisać tekst (np. „© Jan Kowalski 2026”), wybrać kolor, położenie, rozmiar i krycie. Tekst jest rysowany lokalnie i nakładany tylko na kopie, oryginały się nie zmieniają.</li>
         <li><strong>Porządkowanie według daty</strong>: z menu „Porządkuj według daty” przenosisz zaznaczone lub widoczne zdjęcia do folderów RRRR, RRRR/MM albo RRRR/RRRR-MM-DD. Najpierw zobaczysz plan i nic się nie zmienia na dysku, pliki nigdy nie są nadpisywane, zablokowane foldery są pomijane, a całe porządkowanie cofniesz jednym kliknięciem (razem z plikami XMP, edycją i kopią oryginału).</li>
         <li><strong>Edycja nieniszcząca</strong>: w edytorze „Zapisz edycję (oryginał bez zmian)” zapisuje zmiany jako przepis (w bazie, w historii 20 ostatnich wersji i w pliku <code>zdjęcie.jpg.fibo.json</code> obok zdjęcia, gdy zapis metadanych jest włączony). Plik zdjęcia się nie zmienia, miniatura w bibliotece pokazuje edytowaną wersję, a edycję możesz później zmienić, cofnąć albo przywrócić z historii.</li>
         <li><strong>Kopia zapasowa biblioteki</strong> (menu): zapisuje dane biblioteki (tagi, oceny, albumy, ulubione, foldery) do pliku .db, a <em>Przywróć z kopii</em> wczytuje je z powrotem. Przed przywróceniem FIBO zapisuje kopię bezpieczeństwa obecnej biblioteki. Same zdjęcia, osoby i dane twarzy nie są w kopii.</li>

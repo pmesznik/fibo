@@ -190,6 +190,7 @@ export type EditRecord = { recipe: string; updated: number }
 export type EditVersion = { id: number; created: number }
 export const getEdit = (id: number) => invoke<EditRecord | null>('get_edit', { id })
 export const saveEditRecipe = (id: number, recipe: string) => invoke<number>('save_edit_recipe', { id, recipe })
+export const saveWatermarkText = (bytes: ArrayBuffer) => invoke<string>('save_watermark_text', bytes)
 export const putEditThumbnail = (id: number, bytes: ArrayBuffer) => invoke('put_edit_thumbnail', bytes, { headers: { id: String(id) } })
 export const deleteEdit = (id: number) => invoke('delete_edit', { id })
 export const listEditHistory = (id: number) => invoke<EditVersion[]>('list_edit_history', { id })

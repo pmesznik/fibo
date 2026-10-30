@@ -5,6 +5,9 @@ use std::path::Path;
 
 use image::{imageops::FilterType, DynamicImage, RgbaImage};
 use serde::Deserialize;
+use tauri::State;
+
+use crate::AppState;
 
 const MAX_LOGO_BYTES: u64 = 20 * 1024 * 1024;
 const MARGIN: f32 = 0.025;
@@ -20,6 +23,28 @@ pub struct Watermark {
     pub size_pct: u8,
     /// Krycie logo w procentach (5-100).
     pub opacity: u8,
+}
+
+/// Zapisuje obraz znaku wodnego z tekstu (PNG narysowany w oknie programu) w folderze danych i zwraca jego ścieżkę, którą podaje się potem jak logo.
+#[tauri::command]
+pub fn save_watermark_text(state: State<'_, AppState>, request: tauri::ipc::Request<'_>) -> Result<String, String> {
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else { return Err("brak danych obrazu".into()) };
+    check_text_png(bytes)?;
+    let dst = state.thumbs.join("watermark-text.png");
+    crate::write_atomic(&dst, bytes)?;
+    Ok(dst.to_string_lossy().to_string())
+}
+
+/// Obraz znaku z tekstu musi być prawdziwym PNG do 2 MB i rozsądnych wymiarów.
+fn check_text_png(bytes: &[u8]) -> Result<(), String> {
+    if bytes.len() > 2 * 1024 * 1024 || bytes.len() < 8 || bytes[..4] != [0x89, b'P', b'N', b'G'] {
+        return Err("znak wodny z tekstu musi być plikiem PNG do 2 MB".into());
+    }
+    let img = image::load_from_memory_with_format(bytes, image::ImageFormat::Png).map_err(|e| format!("zły obraz znaku: {e}"))?;
+    if img.width() < 4 || img.height() < 4 || img.width() > 8000 || img.height() > 2000 {
+        return Err("zły rozmiar obrazu znaku wodnego".into());
+    }
+    Ok(())
 }
 
 /// Wczytuje logo po sprawdzeniu pliku (zwykły plik, znane rozszerzenie, rozsądny rozmiar) i parametrów.
@@ -92,6 +117,18 @@ mod tests {
         // Krycie 50%: kolor pośredni między czerwonym a białym.
         let half = apply(base, &logo, &wm("mc", 20, 50)).to_rgba8().get_pixel(50, 50).0;
         assert!(half[1] > 90 && half[1] < 170, "{half:?}");
+    }
+
+    #[test]
+    fn text_watermark_png_is_validated() {
+        let mut ok = Vec::new();
+        RgbaImage::from_pixel(40, 10, Rgba([255, 255, 255, 255])).write_to(&mut std::io::Cursor::new(&mut ok), image::ImageFormat::Png).unwrap();
+        assert!(check_text_png(&ok).is_ok());
+        assert!(check_text_png(b"MZ not an image at all").is_err());
+        assert!(check_text_png(&ok[..20]).is_err(), "obcięty PNG");
+        let mut big = Vec::new();
+        RgbaImage::from_pixel(9000, 10, Rgba([0, 0, 0, 255])).write_to(&mut std::io::Cursor::new(&mut big), image::ImageFormat::Png).unwrap();
+        assert!(check_text_png(&big).is_err(), "za szeroki");
     }
 
     #[test]

@@ -179,7 +179,7 @@ Szukanie i porządkowanie:
 - [ ] **Wybór najlepszego ze zdjęć seryjnych** i wykrywanie zdjęć nieostrych, poruszonych, ciemnych albo z zamkniętymi oczami (do przejrzenia i ukrycia). P3 T L
 - [x] **Flagi „wybierz / odrzuć” i kolorowe etykiety** zapisywane do XMP, szybkie selekcjonowanie klawiaturą. P2 T S
 - [x] **Porównanie 2 do 4 zdjęć obok siebie** z jednoczesnym powiększaniem. P2 T M
-- [ ] **Widok kalendarza** (miesiące z miniaturami). P3 T M
+- [x] **Widok kalendarza** (miesiące z miniaturami). P3 T M Gotowe: menu → Szybkie akcje → „Widok kalendarza”: siatka miesiąca z miniaturą i liczbą zdjęć w dniu, rok i miesiące na górze, kliknięcie dnia pokazuje jego zdjęcia.
 - [ ] **Zwierzęta domowe** jako osobna kategoria osób. P4 T L
 - [ ] **Prywatny, zablokowany album** (ukryty po haśle). P3 T M
 - [x] **Organizator plików**: przenoszenie zdjęć do folderów według daty, ze sprawdzeniem i cofaniem. P3 T M
@@ -192,7 +192,7 @@ Edycja:
 - [x] **Wywoływanie RAW**: ekspozycja, balans bieli, odzyskiwanie świateł (dziś RAW ma tylko podgląd). P2 T L
 - [ ] **Korekta obiektywu** (dystorsja, winietowanie, aberracja chromatyczna). P4 T L
 - [ ] **Łączenie zdjęć**: panorama, HDR, stos ostrości. P4 T L
-- [ ] **Znak wodny tekstowy** (dziś tylko logo). P3 T S
+- [x] **Znak wodny tekstowy** (dziś tylko logo). P3 T S Gotowe: w eksporcie przełącznik „Logo z pliku” i „Tekst” (do 80 znaków, 4 kolory, położenie, rozmiar, krycie).
 - [x] **Konwersja wsadowa formatów** (np. HEIC lub RAW do JPEG, PNG, WebP) z wyborem jakości. P2 T S
 
 Pliki i formaty:
