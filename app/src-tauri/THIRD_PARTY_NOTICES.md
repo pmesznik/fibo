@@ -696,3 +696,9 @@ Apache License
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
+
+---
+
+GeoNames (data/places.tsv): lista miejscowości powyżej 15 tysięcy mieszkańców z polskimi nazwami, www.geonames.org,
+licencja Creative Commons Attribution 4.0 (https://creativecommons.org/licenses/by/4.0/). Dane zostały przefiltrowane
+i skrócone skryptem app/scripts/build-places.py. Program nie pobiera ich w trakcie działania.

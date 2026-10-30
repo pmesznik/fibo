@@ -20,7 +20,7 @@ import { Duplicates } from './Duplicates'
 import { UpdateDialog, useUpdater } from './Updater'
 import { exportSidecars, getSidecarEnabled, importSidecars, setSidecarEnabled } from './api'
 import {
-  addToAlbum, createAlbum, deleteAlbum, setAlbumHidden, listAlbumOrder, setAlbumOrder, listAlbums, listRoots, movePhotos, removeFromAlbum, removeRoot,
+  addToAlbum, createAlbum, deleteAlbum, setAlbumHidden, listAlbumOrder, setAlbumOrder, listAlbums, fillPlaces, listRoots, movePhotos, removeFromAlbum, removeRoot,
   renameAlbum, renamePhoto, rescanRoots, trashPhotos, listSmart, saveSmart, deleteSmart, type SmartAlbum, listLocked, setFolderLocked, revealInExplorer, openPhotoExternal, findDuplicates, indexColors, rejectPersonInPhotos, rotatePhotos, getSkipGifPng, setSkipGifPng, detectCards, listPeople, listProps, renameFolder, type Prop, type Person, personPhotos, importPhotos, backupLibrary, backupPhotos, restoreLibrary, pickFile, hidePhotos, hiddenCount, restoreHidden, type Album,
 } from './api'
 import { AlbumPicker, PromptDialog } from './Dialogs'
@@ -112,6 +112,10 @@ export default function App() {
   const [progress, setProgress] = useState(0)
   const [toast, setToast] = useState<{ text: string; kind?: 'ok' | 'err' } | null>(null)
   const [folder, setFolder] = useState<string | null>(null)
+  /** Filtr „Miejsca”: nazwa miejscowości z kodu GPS zdjęcia (np. „Warszawa, Polska”). */
+  const [placeFilter, setPlaceFilter] = useState<string | null>(null)
+  const regionNames = useMemo(() => { try { return new Intl.DisplayNames(['pl'], { type: 'region' }) } catch { return null } }, [])
+  const placeOf = useCallback((p: Photo) => (p.place ? `${p.place}${p.country ? `, ${regionNames?.of(p.country) ?? p.country}` : ''}` : ''), [regionNames])
   const [minStars, setMinStars] = useState(0)
   // Stosy: para RAW + JPEG i seria zdjęć pokazują się jako jedno zdjęcie (wyłączone domyślnie; nic się nie zmienia na dysku).
   const [stacksOn, setStacksOnState] = useState(() => { try { return localStorage.getItem('stacks-on') === '1' } catch { return false } })
@@ -425,6 +429,7 @@ export default function App() {
       (albumId === null || p.albums.includes(albumId)) &&
       (!person || person.ids.has(p.id)) &&
       (!trayView || tray.includes(p.id)) &&
+      (placeFilter === null || placeOf(p) === placeFilter) &&
       (!onlyFav || p.favorite) &&
       p.rating >= minStars &&
       (kindFilter === '' || (kindFilter === 'video') === !!p.video) &&
@@ -435,7 +440,7 @@ export default function App() {
       (!dateTo || whenOf(p).slice(0, 10).replace(/:/g, '-') <= dateTo) &&
       (missing === '' || (missing === 'tags' ? p.tags.length === 0 : missing === 'geo' ? p.lat == null || p.lon == null : p.rating === 0)) &&
       activeTags.every((t) => p.tags.includes(t)) &&
-      (!q || `${p.name} ${p.camera ?? ''} ${p.exif ?? ''} ${p.caption ?? ''} ${p.tags.join(' ')} ${p.albums.map((a) => `${albumNames.get(a) ?? ''} ${propText('album', String(a))}`).join(' ')} ${folderName(dirOf(p.path))} ${propText('folder', dirOf(p.path))}`.toLowerCase().includes(q)),
+      (!q || `${p.name} ${p.camera ?? ''} ${p.exif ?? ''} ${p.caption ?? ''} ${p.tags.join(' ')} ${p.albums.map((a) => `${albumNames.get(a) ?? ''} ${propText('album', String(a))}`).join(' ')} ${folderName(dirOf(p.path))} ${propText('folder', dirOf(p.path))} ${placeOf(p)}`.toLowerCase().includes(q)),
     )
     if (person?.ranked) list.sort((a, b) => (person.ranked!.get(a.id) ?? 1e9) - (person.ranked!.get(b.id) ?? 1e9))
     else if (sort === 'custom' && albumId !== null) list.sort((a, b) => (albumPos.get(a.id) ?? 1e9) - (albumPos.get(b.id) ?? 1e9) || whenOf(b).localeCompare(whenOf(a)))
@@ -445,7 +450,7 @@ export default function App() {
     else if (sort === 'size') list.sort((a, b) => b.size - a.size)
     else list.sort((a, b) => (sort === 'date-desc' ? whenOf(b).localeCompare(whenOf(a)) : whenOf(a).localeCompare(whenOf(b))))
     return list
-  }, [all, albumNames, propOf, query, folder, albumId, person, trayView, tray, onlyFav, minStars, kindFilter, flagFilter, labelFilter, color, dateFrom, dateTo, missing, sort, activeTags, albumPos])
+  }, [all, albumNames, propOf, query, folder, albumId, person, trayView, tray, onlyFav, minStars, kindFilter, flagFilter, labelFilter, color, dateFrom, dateTo, missing, sort, activeTags, albumPos, placeFilter, placeOf])
   const stacks = useMemo(() => findStacks(all), [all])
   const stackTotal = useMemo(() => stackCount(stacks), [stacks])
   const collapsed = useMemo(() => (stacksOn && stackTotal > 0 ? collapseStacks(filtered, stacks, openStacks) : null), [stacksOn, stackTotal, filtered, stacks, openStacks])
@@ -464,6 +469,18 @@ export default function App() {
     return [...map.entries()]
       .map(([dir, list]): [string, Photo[], string] => [dir, list.sort((a, b) => whenOf(b).localeCompare(whenOf(a))), newest(list)])
       .sort((a, b) => b[2].localeCompare(a[2]))
+  }, [all])
+  const placeCounts = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const p of all) { const k = placeOf(p); if (k) m.set(k, (m.get(k) ?? 0) + 1) }
+    return [...m.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'pl'))
+  }, [all, placeOf])
+  // Nazwy miejsc liczy się lokalnie z dołączonej tabeli miejscowości; zdjęcia ze współrzędnymi i bez nazwy dostają ją raz.
+  const fillingPlaces = useRef(false)
+  useEffect(() => {
+    if (!inTauri || fillingPlaces.current || !all.some((p) => p.lat != null && p.lon != null && p.place == null)) return
+    fillingPlaces.current = true
+    fillPlaces().then((n) => { if (n > 0) return reload() }).catch(() => {}).finally(() => { fillingPlaces.current = false })
   }, [all])
   const foldersByYear = useMemo(() => {
     const out: { year: string; items: [string, Photo[], string][] }[] = []
@@ -1192,6 +1209,16 @@ export default function App() {
               </div>
               <button className="wide" onClick={() => rescan(true)}><RefreshCw size={17} /> Sprawdź nowe zdjęcia teraz</button>
             </Sec>
+            {placeCounts.length > 0 && (
+              <Sec id="places" icon={<MapPin size={17} />} title="Miejsca" hint={placeFilter ?? `${placeCounts.length} ${pl(placeCounts.length, 'miejsce', 'miejsca', 'miejsc')}`}>
+                <div className="chips">
+                  <Chip on={placeFilter === null} onClick={() => setPlaceFilter(null)}>Wszystkie miejsca</Chip>
+                  {placeCounts.slice(0, 40).map(([name, n]) => (
+                    <Chip key={name} on={placeFilter === name} onClick={() => { setPlaceFilter(name); setMode('library'); setDrawer(false) }}>{name} <b>{n}</b></Chip>
+                  ))}
+                </div>
+              </Sec>
+            )}
             <Sec id="folders" icon={<FolderOpen size={17} />} title="Foldery" hint={folder ? folderName(folder) : `${folders.length} ${pl(folders.length, 'folder', 'foldery', 'folderów')}`}>
               <div className="chips" style={{ marginBottom: 8 }}>
                 <Chip on={folderSort === 'date'} onClick={() => setFolderSort('date')}>Od najnowszych</Chip>
@@ -1276,6 +1303,11 @@ export default function App() {
               {person && !person.memory && (
                 <button className="chip" style={{ marginBottom: 8 }} aria-label="Wróć do listy osób" onClick={() => { setPerson(null); setMode('people') }}>
                   <ChevronLeft size={15} /> Osoby
+                </button>
+              )}
+              {person?.memory && (
+                <button className="chip" style={{ marginBottom: 8 }} aria-label="Wróć do biblioteki" onClick={() => setPerson(null)}>
+                  <ChevronLeft size={15} /> Biblioteka
                 </button>
               )}
               <h1 style={{ margin: 0, font: '700 22px/1.2 system-ui' }}>{mode === 'favs' ? 'Ulubione' : person ? person.name : albumId !== null ? (albums.find((a) => a.id === albumId)?.name ?? 'Album') : folder ? folderName(folder) : 'Biblioteka'}</h1>
