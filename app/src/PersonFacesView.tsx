@@ -66,9 +66,9 @@ export function PersonFacesView({ personId, name, onOpen, onPhotoGone, onChanged
         )}
       </div>
       {c.unsure && (
-        <div style={{ display: 'flex', justifyContent: 'center', gap: 14, marginTop: 6 }}>
-          <button className="fc-btn fc-yes" aria-label={`Potwierdź: to ${name}`} title="To ta osoba" onClick={() => confirmOne(c)}><Check size={17} strokeWidth={3} /></button>
-          <button className="fc-btn fc-no" aria-label={`To nie ${name}: odepnij twarz`} title="To nie ta osoba" onClick={() => rejectOne(c)}><X size={17} strokeWidth={3} /></button>
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: 5 }}>
+          <button className="fc-btn fc-yes" aria-label={`Potwierdź: to ${name}`} title="To ta osoba" onClick={() => confirmOne(c)}><Check size={14} strokeWidth={3} /></button>
+          <button className="fc-btn fc-no" aria-label={`To nie ${name}: odepnij twarz`} title="To nie ta osoba" onClick={() => rejectOne(c)}><X size={14} strokeWidth={3} /></button>
         </div>
       )}
     </div>

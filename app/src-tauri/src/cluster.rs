@@ -12,7 +12,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::faces::{cosine, normalize, EMB_LEN};
 
-/// Najmniejsze podobieństwo, od którego twarz może dołączyć do osoby (próg tożsamości SFace to ok. 0.36).
+/// Najmniejsze podobieństwo, od którego twarz może dołączyć do osoby (próg tożsamości modelu to ok. 0.36).
 pub const JOIN: f32 = 0.45;
 /// O ile najlepsza osoba musi wygrać z drugą, żeby przypisanie było pewne.
 pub const MARGIN: f32 = 0.04;
@@ -26,7 +26,7 @@ pub const LINKAGE: f32 = 0.35;
 pub const AUTO_MERGE: f32 = 0.62;
 /// O ile próg dołączenia spada na każde podwojenie liczby twarzy osoby (2 twarze: -0.02, 4: -0.04, 8 i więcej: -0.06).
 /// Osoba z wieloma twarzami ma dokładny środek i wzorce z różnych ujęć (światło, kąt, wiek), więc nowa twarz, która do niej pasuje,
-/// jest dużo pewniejsza niż przy osobie znanej z jednego zdjęcia. Dolna granica 0.39 leży tuż nad progiem tożsamości SFace (0.36).
+/// jest dużo pewniejsza niż przy osobie znanej z jednego zdjęcia. Dolna granica 0.39 leży tuż nad progiem tożsamości modelu (0.36).
 const JOIN_STEP: f32 = 0.02;
 const JOIN_MAX_BONUS: f32 = 0.06;
 /// Okno czasu (w dniach), w którym wzorce osoby uznajemy za „z tego samego okresu”: dziecko po półtora roku wygląda już inaczej,

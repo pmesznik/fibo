@@ -1,6 +1,6 @@
 //! Rozpoznawanie twarzy w całości na komputerze użytkownika.
 //!
-//! Ten moduł celowo nie ma nic wspólnego z siecią: liczy detekcję (YuNet) i wektory twarzy (SFace)
+//! Ten moduł celowo nie ma nic wspólnego z siecią: liczy detekcję (YuNet) i wektory twarzy (AuraFace, ArcFace ResNet100)
 //! silnikiem `tract` (czysty Rust), na modelach dołączonych do instalatora. Testy bezpieczeństwa pilnują,
 //! żeby tu nie pojawiły się żadne odwołania do sieci ani pobieranie plików.
 
@@ -14,11 +14,11 @@ type Plan = std::sync::Arc<TypedRunnableModel>;
 pub const DEFAULT_BASE: usize = 1280;
 const STRIDES: [usize; 3] = [8, 16, 32];
 const NMS_IOU: f32 = 0.3;
-/// Rozmiar twarzy po wyrównaniu, wymagany przez SFace.
+/// Rozmiar twarzy po wyrównaniu, wymagany przez model rozpoznawania.
 const ALIGN: usize = 112;
 /// Wzorcowe położenie oczu, nosa i kącików ust po wyrównaniu (układ ArcFace dla 112x112).
 const REF_POINTS: [(f32, f32); 5] = [(38.2946, 51.6963), (73.5318, 51.5014), (56.0252, 71.7366), (41.5493, 92.3655), (70.7299, 92.2041)];
-pub const EMB_LEN: usize = 128;
+pub const EMB_LEN: usize = 512;
 
 pub struct Detection {
     /// Prostokąt twarzy w pikselach zdjęcia.
@@ -55,18 +55,18 @@ fn load(bytes: &[u8], shape: &[usize]) -> TractResult<Plan> {
 }
 
 impl Engine {
-    pub fn new(yunet: &[u8], sface: &[u8]) -> Result<Engine, String> {
-        Engine::with_base(yunet, sface, DEFAULT_BASE)
+    pub fn new(yunet: &[u8], face_model: &[u8]) -> Result<Engine, String> {
+        Engine::with_base(yunet, face_model, DEFAULT_BASE)
     }
 
     /// `base` to dłuższy bok wejścia detektora (np. 640 szybciej, 1280 dokładniej dla małych twarzy).
-    pub fn with_base(yunet: &[u8], sface: &[u8], base: usize) -> Result<Engine, String> {
+    pub fn with_base(yunet: &[u8], face_model: &[u8], base: usize) -> Result<Engine, String> {
         let long = base.div_ceil(32) * 32;
         let short = (base * 3 / 4).div_ceil(32) * 32;
         let mk = |h: usize, w: usize| -> Result<DetPlan, String> {
             Ok(DetPlan { plan: load(yunet, &[1, 3, h, w]).map_err(|e| format!("model detekcji: {e}"))?, h, w })
         };
-        let embedder = load(sface, &[1, 3, ALIGN, ALIGN]).map_err(|e| format!("model rozpoznawania: {e}"))?;
+        let embedder = load(face_model, &[1, 3, ALIGN, ALIGN]).map_err(|e| format!("model rozpoznawania: {e}"))?;
         Ok(Engine { dets: [mk(short, long)?, mk(long, short)?], embedder })
     }
 
@@ -127,7 +127,7 @@ impl Engine {
         Ok(nms(found))
     }
 
-    /// Wektor (128 liczb, długość 1) opisujący twarz: wyrównuje twarz po punktach charakterystycznych i liczy cechy.
+    /// Wektor (512 liczb, długość 1) opisujący twarz: wyrównuje twarz po punktach charakterystycznych i liczy cechy.
     pub fn embed(&self, img: &RgbImage, d: &Detection) -> Result<Vec<f32>, String> {
         self.embed_aligned(&align(img, &d.lm))
     }
@@ -147,7 +147,7 @@ impl Engine {
         let mut input = tract_ndarray::Array4::<f32>::zeros((1, 3, ALIGN, ALIGN));
         for (x, y, p) in aligned.enumerate_pixels() {
             for ch in 0..3 {
-                input[[0, ch, y as usize, x as usize]] = p[ch] as f32; // RGB, 0-255
+                input[[0, ch, y as usize, x as usize]] = (p[ch] as f32 - 127.5) / 127.5; // RGB, skala -1..1 jak w ArcFace
             }
         }
         let out = self.embedder.run(tvec!(Tensor::from(input).into())).map_err(|e| e.to_string())?;
@@ -283,7 +283,7 @@ mod tests {
 
     fn models() -> Option<(Vec<u8>, Vec<u8>)> {
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("models");
-        Some((std::fs::read(dir.join("yunet.onnx")).ok()?, std::fs::read(dir.join("sface.onnx")).ok()?))
+        Some((std::fs::read(dir.join("yunet.onnx")).ok()?, std::fs::read(dir.join("aura.onnx")).ok()?))
     }
 
     #[test]
@@ -342,5 +342,26 @@ mod shape_probe {
             let r = super::load(&y, &shape);
             eprintln!("{shape:?}: {}", match r { Ok(_) => "ok".to_string(), Err(e) => format!("{e:#}").chars().take(600).collect::<String>() });
         }
+    }
+}
+
+#[cfg(test)]
+mod aura_probe {
+    use tract_onnx::prelude::*;
+    #[test]
+    #[ignore]
+    fn probe_aura() {
+        let Ok(p) = std::env::var("FIBO_AURA") else { return };
+        let bytes = std::fs::read(p).unwrap();
+        let t = std::time::Instant::now();
+        let plan = super::load(&bytes, &[1, 3, 112, 112]).expect("load");
+        eprintln!("zaladowano w {:?}", t.elapsed());
+        let input = tract_onnx::prelude::tract_ndarray::Array4::<f32>::from_elem((1, 3, 112, 112), 0.1);
+        let t = std::time::Instant::now();
+        for _ in 0..5 {
+            let out = plan.run(tract_onnx::prelude::tvec!(tract_onnx::prelude::Tensor::from(input.clone()).into())).unwrap();
+            eprintln!("wyjscie {:?}", out[0].shape());
+        }
+        eprintln!("5 przebiegow: {:?}", t.elapsed());
     }
 }

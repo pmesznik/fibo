@@ -180,7 +180,7 @@ export const PL = {
     { id: 'people', t: 'Osoby (rozpoznawanie twarzy)', h: `
       <p>Zakładka <strong>Osoby</strong> grupuje zdjęcia według osób. Funkcja jest <strong>domyślnie wyłączona</strong>: włączasz ją przyciskiem <em>Włącz rozpoznawanie twarzy</em> po przeczytaniu informacji o prywatności. Analiza działa w tle (można ją wstrzymać i wznowić), a nowe zdjęcia są dopisywane same.</p>
       <ul>
-        <li><strong>Nic nie wychodzi z komputera.</strong> Twarze są wykrywane i porównywane lokalnie (modele YuNet i SFace, dołączone do instalatora, bez pobierania w trakcie działania). Moduł nie ma żadnego kodu sieciowego, a testy to sprawdzają.</li>
+        <li><strong>Nic nie wychodzi z komputera.</strong> Twarze są wykrywane i porównywane lokalnie (modele YuNet i AuraFace, dołączone do instalatora, bez pobierania w trakcie działania). Moduł nie ma żadnego kodu sieciowego, a testy to sprawdzają.</li>
         <li><strong>Wektory twarzy są zaszyfrowane</strong> kluczem Twojego konta Windows (DPAPI). Skopiowana baza FIBO ich nie ujawni.</li>
         <li><strong>Imiona zostają w bazie FIBO</strong> i nie trafiają do plików zdjęć ani XMP.</li>
         <li>Przy osobie możesz <em>nadać imię</em>, <em>wybrać okładkę</em> (twarz pokazywaną na liście: przycisk <em>Zmień okładkę</em> przy osobie albo <em>Okładka</em> przy znaczku osoby w podglądzie zdjęcia), <em>połączyć</em> ją z inną (gdy ta sama osoba trafiła do dwóch grup): przeciągnij jedną osobę na drugą i kliknij <em>Zatwierdź</em> albo <em>pominąć</em>. Kliknięcie osoby pokazuje jej zdjęcia.</li>
@@ -427,7 +427,7 @@ export const EN = {
     { id: 'people', t: 'People (face recognition)', h: `
       <p>The <strong>People</strong> tab groups photos by person. The feature is <strong>off by default</strong>: you turn it on with <em>Turn on face recognition</em> after reading the privacy notice. Analysis runs in the background (you can pause and resume it) and new photos are added automatically.</p>
       <ul>
-        <li><strong>Nothing leaves your computer.</strong> Faces are detected and compared locally (YuNet and SFace models shipped inside the installer, nothing is downloaded while the app runs). The module has no network code, and tests verify it.</li>
+        <li><strong>Nothing leaves your computer.</strong> Faces are detected and compared locally (YuNet and AuraFace models shipped inside the installer, nothing is downloaded while the app runs). The module has no network code, and tests verify it.</li>
         <li><strong>Face vectors are encrypted</strong> with your Windows account key (DPAPI). A copied FIBO database does not reveal them.</li>
         <li><strong>Names stay in the FIBO database</strong> and never go into photo files or XMP.</li>
         <li>For each person you can <em>name</em>, <em>pick a cover</em> (the face shown in the list: the <em>Change cover</em> button on the person, or <em>Cover</em> next to the person chip in the viewer), <em>merge</em> (when one person ended up in two groups): drag one person onto another and click <em>Confirm</em> or <em>ignore</em> them. Click a person to see their photos.</li>

@@ -27,7 +27,7 @@ use crate::AppState;
 
 const SETTING: &str = "faces-enabled";
 const YUNET_SHA256: &str = "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4";
-const SFACE_SHA256: &str = "0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79";
+const AURA_SHA256: &str = "a7933ea5330113b01c9b60351d8f4c33003f145d8470ac5f0e52ee2effe25c60";
 /// Najmniejsza twarz (w pikselach), jaką bierzemy pod uwagę: mniejsze dają niewiarygodne wektory.
 pub(crate) const MIN_FACE_PX: f32 = 32.0;
 /// Próg pewności detektora. Niższy niż dawny 0.8, bo test na prawdziwych zdjęciach pokazał dużo prawdziwych twarzy między 0.6 a 0.8;
@@ -36,7 +36,7 @@ pub(crate) const MIN_SCORE: f32 = 0.7;
 /// Większe zdjęcia są przed analizą zmniejszane (oszczędza pamięć i czas).
 const MAX_SIDE: u32 = 2400;
 /// Wersja potoku analizy: po zmianie algorytmu zdjęcia są analizowane ponownie (imiona i ręczne poprawki zostają).
-const PIPELINE_VERSION: &str = "2";
+const PIPELINE_VERSION: &str = "3";
 /// Powyżej tej liczby twarzy do pogrupowania używamy szybszego grupowania przyrostowego zamiast hierarchicznego O(n²).
 const MAX_HIERARCHICAL: usize = 15000;
 const CROP_SIZE: u32 = 128;
@@ -139,8 +139,8 @@ fn load_engine(app: &tauri::AppHandle) -> Result<Engine, String> {
         }
         Err(format!("Brak modelu {name} w programie"))
     };
-    let (y, s) = (find("yunet.onnx")?, find("sface.onnx")?);
-    if sha256_hex(&y) != YUNET_SHA256 || sha256_hex(&s) != SFACE_SHA256 {
+    let (y, s) = (find("yunet.onnx")?, find("aura.onnx")?);
+    if sha256_hex(&y) != YUNET_SHA256 || sha256_hex(&s) != AURA_SHA256 {
         return Err("Modele rozpoznawania twarzy mają niewłaściwą sumę kontrolną, nie używam ich".into());
     }
     Engine::new(&y, &s)
@@ -568,7 +568,7 @@ pub struct FacesStatus {
 pub fn faces_status(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<FacesStatus, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     let n = |sql: &str| -> i64 { conn.query_row(sql, [], |r| r.get(0)).unwrap_or(0) };
-    let models_ok = ["yunet.onnx", "sface.onnx"].iter().all(|m| {
+    let models_ok = ["yunet.onnx", "aura.onnx"].iter().all(|m| {
         app.path().resolve(format!("models/{m}"), tauri::path::BaseDirectory::Resource).map(|p| p.exists()).unwrap_or(false)
             || Path::new(env!("CARGO_MANIFEST_DIR")).join("models").join(m).exists()
     });
@@ -981,7 +981,7 @@ pub fn merge_core(conn: &Connection, from: i64, into: i64, name: Option<&str>) -
 
 // ---- Podpowiedzi łączenia osób
 
-/// Podobieństwo środków grup, od którego znana osoba jest podpowiadana nieznanej (próg tożsamości SFace dla pojedynczych par to ok. 0.36).
+/// Podobieństwo środków grup, od którego znana osoba jest podpowiadana nieznanej (próg tożsamości modelu dla pojedynczych par to ok. 0.36).
 const SUGGEST_MIN: f32 = 0.42;
 
 /// Osoba do porównań: środek jej twarzy (wektor jednostkowy) i zdjęcia, na których występuje.
@@ -1255,7 +1255,7 @@ mod tests {
         let step = (files.len() / n.max(1)).max(1);
         let files: Vec<PathBuf> = files.into_iter().step_by(step).take(n).collect();
         let mdir = Path::new(env!("CARGO_MANIFEST_DIR")).join("models");
-        let (y, sf) = (fs::read(mdir.join("yunet.onnx")).unwrap(), fs::read(mdir.join("sface.onnx")).unwrap());
+        let (y, sf) = (fs::read(mdir.join("yunet.onnx")).unwrap(), fs::read(mdir.join("aura.onnx")).unwrap());
         // (podpis, rozmiar wejścia, próg)
         let variants: [(&str, usize, f32); 5] = [("640 / 0.8 (dotychczasowy)", 640, 0.8), ("960 / 0.8", 960, 0.8), ("1280 / 0.8", 1280, 0.8), ("1280 / 0.7", 1280, 0.7), ("1280 / 0.6", 1280, 0.6)];
         let engines: Vec<Engine> = variants.iter().map(|v| Engine::with_base(&y, &sf, v.1).unwrap()).collect();
@@ -1315,7 +1315,7 @@ mod tests {
         let step = (files.len() / n.max(1)).max(1);
         let files: Vec<PathBuf> = files.into_iter().step_by(step).take(n).collect();
         let mdir = Path::new(env!("CARGO_MANIFEST_DIR")).join("models");
-        let engine = Engine::new(&fs::read(mdir.join("yunet.onnx")).unwrap(), &fs::read(mdir.join("sface.onnx")).unwrap()).unwrap();
+        let engine = Engine::new(&fs::read(mdir.join("yunet.onnx")).unwrap(), &fs::read(mdir.join("aura.onnx")).unwrap()).unwrap();
         let next = AtomicUsize::new(0);
         let results: std::sync::Mutex<Vec<(usize, Vec<NewFace>)>> = std::sync::Mutex::new(Vec::new());
         let workers = worker_count();
@@ -1386,9 +1386,9 @@ mod tests {
     #[test]
     fn model_hashes_match_pinned_constants() {
         let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("models");
-        if let (Ok(y), Ok(s)) = (fs::read(dir.join("yunet.onnx")), fs::read(dir.join("sface.onnx"))) {
+        if let (Ok(y), Ok(s)) = (fs::read(dir.join("yunet.onnx")), fs::read(dir.join("aura.onnx"))) {
             assert_eq!(sha256_hex(&y), YUNET_SHA256);
-            assert_eq!(sha256_hex(&s), SFACE_SHA256);
+            assert_eq!(sha256_hex(&s), AURA_SHA256);
         }
     }
 
@@ -1552,7 +1552,7 @@ mod tests {
     }
 
     fn cent(id: i64, named: bool, ignored: bool, dir: usize, photos: &[i64]) -> Cent {
-        let mut c = vec![0.05_f32; EMB_LEN];
+        let mut c = vec![0.01_f32; EMB_LEN];
         c[dir] = 1.0;
         normalize(&mut c);
         Cent { id, named, ignored, c, photos: photos.iter().copied().collect() }
