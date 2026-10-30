@@ -16,6 +16,8 @@ type Job = {
   stopping: boolean
   /** Zadanie zakończyło się przed końcem, bo je wstrzymano. */
   stopped: boolean
+  /** Zdjęcia pominięte, bo ich plik był niedostępny. */
+  skipped: number
   start: number
   /** Punkty pomiarowe (czas, zrobione) z ostatnich sekund do liczenia prędkości. */
   pts: { t: number; d: number }[]
@@ -135,6 +137,7 @@ function Card({ job, min, compact, onMin, onStop }: { job: Job; min: boolean; co
             <div className="pd-sum">
               {halted ? `Wstrzymano po ${dur((job.doneAt ?? Date.now()) - job.start)}. To, co policzono, zostało zapisane. Uruchom ponownie, żeby wznowić od tego miejsca.` : job.error ? job.error : `Zrobione w ${dur((job.doneAt ?? Date.now()) - job.start)}`}
               {job.kind === 'faces' && !job.error && !halted && ` · znaleziono ${fmt(job.faces)} ${pl(job.faces, 'twarz', 'twarze', 'twarzy')}`}
+              {job.skipped > 0 && ` Pominięto ${fmt(job.skipped)} ${pl(job.skipped, 'zdjęcie', 'zdjęcia', 'zdjęć')}, bo plik był niedostępny (np. odłączony dysk). Ich twarze zostają, a następna analiza spróbuje ponownie.`}
             </div>
           ) : (
             <>
@@ -169,7 +172,7 @@ export function ProgressDock() {
         let j = all[kind]
         // Nowe zadanie (inny rozmiar albo licznik cofnięty) zaczyna pomiar od zera.
         if (!j || j.finished || total !== j.total || done < j.done) {
-          j = { kind, done: 0, total, faces: 0, grouping: false, finished: false, error: null, stopping: false, stopped: false, start: now, pts: [], rate: 0, history: [], doneAt: null, label: null }
+          j = { kind, done: 0, total, faces: 0, grouping: false, finished: false, error: null, stopping: false, stopped: false, skipped: 0, start: now, pts: [], rate: 0, history: [], doneAt: null, label: null }
         }
         const pts = [...j.pts, { t: now, d: done }].filter((p) => now - p.t <= 12000)
         let { rate, history } = j
@@ -215,7 +218,7 @@ export function ProgressDock() {
         const p = e.payload
         if (p.total === 0 && !p.finished) return
         touch('faces', p.done, p.total, { faces: p.faces, grouping: !!p.grouping })
-        if (p.finished) finish('faces', { error: p.error, stopped: !p.error && p.total > 0 && p.done < p.total })
+        if (p.finished) finish('faces', { error: p.error, stopped: !p.error && !!p.stopped, skipped: p.skipped ?? 0 })
       }),
     ]
     const t = window.setInterval(() => tick((n) => n + 1), 1000)

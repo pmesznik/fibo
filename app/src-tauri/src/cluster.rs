@@ -264,7 +264,8 @@ fn avg_link(sa: &[f32], na: usize, sb: &[f32], nb: usize) -> f32 {
 /// podobieństwo jest nie mniejsze niż `threshold`, a żadne zdjęcie nie ma w nich dwóch twarzy. Wynik nie zależy od kolejności zdjęć,
 /// w odróżnieniu od zachłannego dopisywania. Złożoność O(n²), więc działa w tle także dla dziesiątek tysięcy twarzy.
 /// Zwraca numer grupy dla każdej twarzy.
-pub fn agglomerate(embs: &[&[f32]], photos: &[i64], threshold: f32) -> Vec<usize> {
+/// `stop` przerywa liczenie (wynik jest wtedy częściowy i wywołujący go odrzuca).
+pub fn agglomerate(embs: &[&[f32]], photos: &[i64], threshold: f32, stop: &dyn Fn() -> bool) -> Vec<usize> {
     let n = embs.len();
     let mut sums: Vec<Vec<f32>> = embs.iter().map(|e| e.to_vec()).collect();
     let mut size = vec![1usize; n];
@@ -274,6 +275,9 @@ pub fn agglomerate(embs: &[&[f32]], photos: &[i64], threshold: f32) -> Vec<usize
     let mut chain: Vec<usize> = Vec::new();
     let mut remaining = n;
     while remaining > 1 {
+        if stop() {
+            break;
+        }
         if chain.is_empty() {
             match active.iter().position(|a| *a) {
                 Some(i) => chain.push(i),
@@ -333,11 +337,11 @@ pub fn agglomerate(embs: &[&[f32]], photos: &[i64], threshold: f32) -> Vec<usize
 
 /// Pełne grupowanie wszystkich twarzy: hierarchiczne grupowanie twarzy dobrej jakości, a potem dołączenie słabszych do najbliższej pewnej
 /// osoby (słabe twarze nie zakładają osób). Zwraca numer grupy albo None (twarz bez grupy).
-pub fn cluster_all(embs: &[&[f32]], quality: &[f32], photos: &[i64], threshold: f32) -> Vec<Option<usize>> {
+pub fn cluster_all(embs: &[&[f32]], quality: &[f32], photos: &[i64], threshold: f32, stop: &dyn Fn() -> bool) -> Vec<Option<usize>> {
     let core: Vec<usize> = (0..embs.len()).filter(|&i| quality[i] >= LEARN_QUALITY).collect();
     let core_embs: Vec<&[f32]> = core.iter().map(|&i| embs[i]).collect();
     let core_photos: Vec<i64> = core.iter().map(|&i| photos[i]).collect();
-    let groups = agglomerate(&core_embs, &core_photos, threshold);
+    let groups = agglomerate(&core_embs, &core_photos, threshold, stop);
     let mut out: Vec<Option<usize>> = vec![None; embs.len()];
     let mut cl = Clusters::new();
     for (k, &i) in core.iter().enumerate() {
@@ -345,6 +349,9 @@ pub fn cluster_all(embs: &[&[f32]], quality: &[f32], photos: &[i64], threshold: 
         cl.add(groups[k] as i64, embs[i], quality[i], photos[i]);
     }
     for i in 0..embs.len() {
+        if stop() {
+            break;
+        }
         if out[i].is_none() {
             if let Decision::Join { id, .. } = cl.decide(embs[i], 0.0, photos[i]) {
                 out[i] = Some(id as usize);
@@ -491,7 +498,7 @@ mod tests {
         let embs: Vec<&[f32]> = data.iter().map(|d| d.emb.as_slice()).collect();
         let q: Vec<f32> = data.iter().map(|d| d.quality).collect();
         let p: Vec<i64> = data.iter().map(|d| d.photo).collect();
-        cluster_all(&embs, &q, &p, t)
+        cluster_all(&embs, &q, &p, t, &|| false)
     }
 
     #[test]
@@ -597,13 +604,13 @@ mod tests {
 
     #[test]
     fn agglomerate_handles_tiny_and_degenerate_inputs() {
-        assert!(agglomerate(&[], &[], 0.3).is_empty());
+        assert!(agglomerate(&[], &[], 0.3, &|| false).is_empty());
         let mut rng = Rng(3);
         let v = rng.unit();
-        assert_eq!(agglomerate(&[&v], &[1], 0.3), vec![0]);
+        assert_eq!(agglomerate(&[&v], &[1], 0.3, &|| false), vec![0]);
         // Identyczne wektory z różnych zdjęć łączą się, z tego samego zdjęcia nie.
-        assert_eq!(agglomerate(&[&v, &v], &[1, 2], 0.3), vec![0, 0]);
-        assert_eq!(agglomerate(&[&v, &v], &[1, 1], 0.3), vec![0, 1]);
+        assert_eq!(agglomerate(&[&v, &v], &[1, 2], 0.3, &|| false), vec![0, 0]);
+        assert_eq!(agglomerate(&[&v, &v], &[1, 1], 0.3, &|| false), vec![0, 1]);
     }
 
     #[test]

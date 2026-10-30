@@ -84,22 +84,10 @@ pub fn forget_faces(conn: &Connection, photo_id: i64) {
     if let Some(t) = THUMBS_DIR.get() {
         forget_faces_of_photo(conn, t, photo_id);
     } else {
+        let _ = conn.execute("DELETE FROM face_not WHERE face_id IN (SELECT id FROM faces WHERE photo_id = ?1)", [photo_id]);
         let _ = conn.execute("DELETE FROM faces WHERE photo_id = ?1", [photo_id]);
         let _ = conn.execute("DELETE FROM face_scan WHERE photo_id = ?1", [photo_id]);
     }
-}
-
-/// Usuwa twarze zdjęcia i ich wycinki (bez sprzątania osób), np. przed ponowną analizą.
-fn clear_faces_of_photo(conn: &Connection, thumbs: &Path, photo_id: i64) {
-    let ids: Vec<i64> = conn
-        .prepare("SELECT id FROM faces WHERE photo_id = ?1")
-        .and_then(|mut s| s.query_map([photo_id], |r| r.get(0)).map(|r| r.filter_map(Result::ok).collect()))
-        .unwrap_or_default();
-    for id in ids {
-        let _ = fs::remove_file(crops_dir(thumbs).join(format!("{id}.jpg")));
-    }
-    let _ = conn.execute("DELETE FROM faces WHERE photo_id = ?1", [photo_id]);
-    let _ = conn.execute("DELETE FROM face_scan WHERE photo_id = ?1", [photo_id]);
 }
 
 /// Wywoływane, gdy zdjęcie znika z biblioteki: jego twarze i wycinki nie mogą zostać.
@@ -111,6 +99,7 @@ pub fn forget_faces_of_photo(conn: &Connection, thumbs: &Path, photo_id: i64) {
     for id in ids {
         let _ = fs::remove_file(crops_dir(thumbs).join(format!("{id}.jpg")));
     }
+    let _ = conn.execute("DELETE FROM face_not WHERE face_id IN (SELECT id FROM faces WHERE photo_id = ?1)", [photo_id]);
     let _ = conn.execute("DELETE FROM faces WHERE photo_id = ?1", [photo_id]);
     let _ = conn.execute("DELETE FROM face_scan WHERE photo_id = ?1", [photo_id]);
     let _ = conn.execute("DELETE FROM people WHERE id NOT IN (SELECT person_id FROM faces WHERE person_id IS NOT NULL)", []);
@@ -230,7 +219,7 @@ struct NewFace {
 /// Zwraca None, gdy zdjęcia nie da się odczytać.
 fn analyze_photo(engine: &Engine, path: &Path) -> Option<Vec<NewFace>> {
     let img = load_oriented(path).ok()?;
-    let dets = engine.detect(&img, MIN_SCORE).unwrap_or_default();
+    let dets = engine.detect(&img, MIN_SCORE).ok()?;
     let mut out = Vec::new();
     for d in dets.into_iter().filter(|d| d.w >= MIN_FACE_PX && d.h >= MIN_FACE_PX) {
         let aligned = align(&img, &d.lm);
@@ -241,24 +230,96 @@ fn analyze_photo(engine: &Engine, path: &Path) -> Option<Vec<NewFace>> {
     Some(out)
 }
 
-/// Zapisuje twarze jednego zdjęcia (wektor zaszyfrowany, jakość, wycinek) bez osoby: osoby przydziela potem grupowanie.
+/// Najmniejsze nakrywanie się prostokątów, od którego nowa twarz uchodzi za tę samą twarz co poprzednio na tym zdjęciu.
+const SAME_FACE_IOU: f32 = 0.3;
+
+fn box_iou(a: (f32, f32, f32, f32), b: (f32, f32, f32, f32)) -> f32 {
+    let w = (a.0 + a.2).min(b.0 + b.2) - a.0.max(b.0);
+    let h = (a.1 + a.3).min(b.1 + b.3) - a.1.max(b.1);
+    if w <= 0.0 || h <= 0.0 {
+        return 0.0;
+    }
+    let inter = w * h;
+    inter / (a.2 * a.3 + b.2 * b.3 - inter).max(1e-9)
+}
+
+/// Zapisuje twarze jednego zdjęcia (wektor zaszyfrowany, jakość, wycinek). Twarz w tym samym miejscu zdjęcia co poprzednio przejmuje jej osobę,
+/// ręczne poprawki, odrzucenie i wyłączenia „to nie ta osoba”, więc ponowna analiza (także po zmianie modelu) niczego nie gubi.
+/// Pozostałym twarzom osoby przydziela potem grupowanie.
 fn store_faces(conn: &Connection, thumbs: &Path, photo_id: i64, modified: i64, found: Vec<NewFace>) -> Result<usize, String> {
-    // Poprzednie twarze tego zdjęcia (po zmianie pliku lub ponownej analizie) znikają razem z wycinkami.
-    clear_faces_of_photo(conn, thumbs, photo_id);
-    let mut n = 0;
-    for f in found {
+    struct Old { id: i64, rect: (f32, f32, f32, f32), person: Option<i64>, manual: i64, rejected: i64 }
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    let old: Vec<Old> = {
+        let mut stmt = tx.prepare("SELECT id, x, y, w, h, person_id, manual, rejected FROM faces WHERE photo_id = ?1").map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([photo_id], |r| {
+                Ok(Old { id: r.get(0)?, rect: (r.get::<_, f64>(1)? as f32, r.get::<_, f64>(2)? as f32, r.get::<_, f64>(3)? as f32, r.get::<_, f64>(4)? as f32), person: r.get(5)?, manual: r.get(6)?, rejected: r.get(7)? })
+            })
+            .map_err(|e| e.to_string())?
+            .filter_map(Result::ok)
+            .collect();
+        rows
+    };
+    // Najlepiej nakrywające się pary najpierw; każda stara i każda nowa twarz w co najwyżej jednej parze.
+    let new_rects: Vec<(f32, f32, f32, f32)> = found.iter().map(|f| (f.det.x / f.iw, f.det.y / f.ih, f.det.w / f.iw, f.det.h / f.ih)).collect();
+    let mut pairs: Vec<(f32, usize, usize)> = Vec::new();
+    for (n, r) in new_rects.iter().enumerate() {
+        for (o, f) in old.iter().enumerate() {
+            let iou = box_iou(*r, f.rect);
+            if iou >= SAME_FACE_IOU {
+                pairs.push((iou, n, o));
+            }
+        }
+    }
+    pairs.sort_by(|a, b| b.0.total_cmp(&a.0));
+    let (mut heir, mut taken) = (vec![None; found.len()], vec![false; old.len()]);
+    for (_, n, o) in pairs {
+        if heir[n].is_none() && !taken[o] {
+            heir[n] = Some(o);
+            taken[o] = true;
+        }
+    }
+    // Wyłączenia przenosimy na nowe numery twarzy, zanim znikną stare wiersze.
+    let mut bars: Vec<(usize, Vec<i64>)> = Vec::new();
+    for (n, h) in heir.iter().enumerate() {
+        if let Some(o) = h {
+            let mut stmt = tx.prepare("SELECT person_id FROM face_not WHERE face_id = ?1").map_err(|e| e.to_string())?;
+            let v: Vec<i64> = stmt.query_map([old[*o].id], |r| r.get(0)).map_err(|e| e.to_string())?.filter_map(Result::ok).collect();
+            bars.push((n, v));
+        }
+    }
+    tx.execute("DELETE FROM face_not WHERE face_id IN (SELECT id FROM faces WHERE photo_id = ?1)", [photo_id]).map_err(|e| e.to_string())?;
+    tx.execute("DELETE FROM faces WHERE photo_id = ?1", [photo_id]).map_err(|e| e.to_string())?;
+    let mut new_ids = Vec::with_capacity(found.len());
+    for (n, f) in found.iter().enumerate() {
         let sealed = seal_embedding(&f.emb)?;
-        conn.execute(
-            "INSERT INTO faces (photo_id, person_id, x, y, w, h, score, quality, manual, emb) VALUES (?1, NULL, ?2, ?3, ?4, ?5, ?6, ?7, 0, ?8)",
-            params![photo_id, f.det.x / f.iw, f.det.y / f.ih, f.det.w / f.iw, f.det.h / f.ih, f.det.score, f.quality, sealed],
+        let (person, manual, rejected) = heir[n].map(|o: usize| (old[o].person, old[o].manual, old[o].rejected)).unwrap_or((None, 0, 0));
+        tx.execute(
+            "INSERT INTO faces (photo_id, person_id, x, y, w, h, score, quality, manual, rejected, emb) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            params![photo_id, person, new_rects[n].0, new_rects[n].1, new_rects[n].2, new_rects[n].3, f.det.score, f.quality, manual, rejected, sealed],
         )
         .map_err(|e| e.to_string())?;
-        let face_id = conn.last_insert_rowid();
-        let _ = f.crop.save_with_format(crops_dir(thumbs).join(format!("{face_id}.jpg")), image::ImageFormat::Jpeg);
-        n += 1;
+        let face_id = tx.last_insert_rowid();
+        new_ids.push(face_id);
+        if let Some(o) = heir[n] {
+            tx.execute("UPDATE people SET cover_face = ?1 WHERE cover_face = ?2", params![face_id, old[o].id]).map_err(|e| e.to_string())?;
+        }
     }
-    conn.execute("INSERT OR REPLACE INTO face_scan (photo_id, scanned_mod) VALUES (?1, ?2)", params![photo_id, modified]).map_err(|e| e.to_string())?;
-    Ok(n)
+    for (n, persons) in bars {
+        for p in persons {
+            tx.execute("INSERT OR IGNORE INTO face_not (face_id, person_id) VALUES (?1, ?2)", params![new_ids[n], p]).map_err(|e| e.to_string())?;
+        }
+    }
+    tx.execute("INSERT OR REPLACE INTO face_scan (photo_id, scanned_mod) VALUES (?1, ?2)", params![photo_id, modified]).map_err(|e| e.to_string())?;
+    tx.commit().map_err(|e| e.to_string())?;
+    // Pliki ruszamy dopiero po udanym zapisie w bazie. Numery twarzy mogą wrócić, więc stare wycinki usuwamy przed zapisem nowych.
+    for o in &old {
+        let _ = fs::remove_file(crops_dir(thumbs).join(format!("{}.jpg", o.id)));
+    }
+    for (f, id) in found.iter().zip(&new_ids) {
+        let _ = f.crop.save_with_format(crops_dir(thumbs).join(format!("{id}.jpg")), image::ImageFormat::Jpeg);
+    }
+    Ok(found.len())
 }
 
 /// Dzień (liczba dni od 1970) z tekstu daty „RRRR-MM-DD…” albo „RRRR:MM:DD…”.
@@ -284,74 +345,100 @@ fn photo_days(conn: &Connection) -> HashMap<i64, i32> {
     }
 }
 
-/// Twarz osoby „zakotwiczonej”: takiej, której grupowanie nie może rozbić ani zmienić (osoba z imieniem, pominięta albo z ręcznie poprawioną twarzą).
-struct AnchorFace {
-    person: i64,
-    face: i64,
-    photo: i64,
-    emb: Vec<f32>,
-    quality: f32,
+/// Warunek SQL na twarze z wektorem obecnego modelu. Szyfrogram nie jest krótszy od danych, więc wektory starego (krótszego) modelu odpadają bez odszyfrowywania.
+fn current_model_sql() -> String {
+    format!("length(emb) >= {}", EMB_LEN * 4)
 }
 
-fn load_anchor_faces(conn: &Connection) -> Result<Vec<AnchorFace>, String> {
+/// Dane do grupowania odczytane z bazy. Wektory są jeszcze zaszyfrowane: odszyfrowanie i liczenie idą już bez blokady bazy.
+struct RegroupInput {
+    /// Twarze osób „zakotwiczonych”, których grupowanie nie może rozbić (z imieniem, pominięte, z ręczną poprawką): osoba, zdjęcie, wektor, jakość.
+    anchors: Vec<(i64, i64, Vec<u8>, f32)>,
+    /// Wszystkie nieodrzucone twarze: numer, zdjęcie, osoba, wektor, jakość.
+    faces: Vec<(i64, i64, Option<i64>, Vec<u8>, f64)>,
+    days: HashMap<i64, i32>,
+    barred: HashSet<(i64, i64)>,
+}
+
+fn regroup_load(conn: &Connection) -> Result<RegroupInput, String> {
     let mut stmt = conn
-        .prepare(
-            "SELECT f.person_id, f.id, f.photo_id, f.emb, COALESCE(f.quality, 0.6) FROM faces f JOIN people p ON p.id = f.person_id
-             WHERE p.name IS NOT NULL OR p.ignored = 1 OR p.id IN (SELECT person_id FROM faces WHERE manual = 1 AND person_id IS NOT NULL)",
-        )
+        .prepare(&format!(
+            "SELECT f.person_id, f.photo_id, f.emb, COALESCE(f.quality, 0.6) FROM faces f JOIN people p ON p.id = f.person_id
+             WHERE {} AND (p.name IS NOT NULL OR p.ignored = 1 OR p.id IN (SELECT person_id FROM faces WHERE manual = 1 AND person_id IS NOT NULL))",
+            current_model_sql()
+        ))
         .map_err(|e| e.to_string())?;
-    let rows: Vec<(i64, i64, i64, Vec<u8>, f32)> = stmt
-        .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get::<_, f64>(4)? as f32)))
+    let anchors = stmt
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get::<_, f64>(3)? as f32)))
         .map_err(|e| e.to_string())?
         .filter_map(Result::ok)
         .collect();
-    Ok(rows.into_iter().filter_map(|(person, face, photo, blob, quality)| open_embedding(&blob).ok().map(|emb| AnchorFace { person, face, photo, emb, quality })).collect())
+    drop(stmt);
+    let mut stmt = conn.prepare(&format!("SELECT id, photo_id, person_id, emb, COALESCE(quality, 0.6) FROM faces WHERE rejected = 0 AND {}", current_model_sql())).map_err(|e| e.to_string())?;
+    let faces = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))).map_err(|e| e.to_string())?.filter_map(Result::ok).collect();
+    drop(stmt);
+    let mut stmt = conn.prepare("SELECT face_id, person_id FROM face_not").map_err(|e| e.to_string())?;
+    let barred = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?))).map_err(|e| e.to_string())?.filter_map(Result::ok).collect();
+    drop(stmt);
+    Ok(RegroupInput { anchors, faces, days: photo_days(conn), barred })
+}
+
+/// Dokąd ma trafić twarz po grupowaniu.
+#[derive(Clone, Copy, PartialEq)]
+enum Target {
+    Nobody,
+    Person(i64),
+    /// Nowa osoba: numer grupy, osobę tworzy dopiero zapis wyniku.
+    Group(usize),
+}
+
+struct RegroupPlan {
+    /// Twarz, osoba, którą miała przy odczycie, i nowe miejsce (tylko twarze, które się zmieniają).
+    changes: Vec<(i64, Option<i64>, Target)>,
+    new_groups: Vec<usize>,
+    groups: usize,
 }
 
 /// Grupuje wszystkie twarze w osoby od nowa (wynik nie zależy od kolejności zdjęć):
 /// 1. osoby zakotwiczone (z imieniem, pominięte, z ręczną poprawką) zostają, a nowe twarze mogą do nich dołączyć, jeśli pasują wyraźnie,
 /// 2. pozostałe twarze grupuje hierarchicznie (dwie twarze z jednego zdjęcia nigdy nie trafiają do jednej osoby),
 /// 3. twarze zbyt słabe, żeby zdecydować, zostają bez grupy.
-/// `snapshot` to twarze osób zakotwiczonych sprzed analizy (potrzebne, gdy ponowna analiza usunęła ich wiersze), a `reanalyzed` to zdjęcia
-/// przeanalizowane w tym przebiegu (stare twarze z tych zdjęć nie blokują nowych).
-fn regroup(conn: &Connection, snapshot: Option<Vec<AnchorFace>>, reanalyzed: &HashSet<i64>) -> Result<usize, String> {
-    let anchor_faces = match snapshot {
-        Some(v) => v,
-        None => load_anchor_faces(conn)?,
-    };
-    let anchor_people: HashSet<i64> = anchor_faces.iter().map(|a| a.person).collect();
-    let days = photo_days(conn);
+/// Wektory z poprzedniego modelu (inna długość) nie biorą udziału: nie da się ich porównać z nowymi, a ich twarze czekają na ponowną analizę.
+/// Działa bez blokady bazy. Zwraca None, gdy `stop` przerwał liczenie (w bazie nic się wtedy nie zmienia).
+fn regroup_plan(input: RegroupInput, stop: &dyn Fn() -> bool) -> Option<RegroupPlan> {
+    let RegroupInput { anchors: anchor_rows, faces, days, barred } = input;
     let mut anchors = Clusters::new();
-    for a in &anchor_faces {
-        // Stara twarz ze zdjęcia, które właśnie przeanalizowano, nie może blokować nowej twarzy tej samej osoby z tego zdjęcia.
-        let photo = if reanalyzed.contains(&a.photo) { -a.face - 1 } else { a.photo };
-        anchors.add_at(a.person, &a.emb, a.quality, photo, days.get(&a.photo).copied());
+    let mut anchor_people: HashSet<i64> = HashSet::new();
+    for (person, photo, blob, quality) in anchor_rows {
+        if stop() {
+            return None;
+        }
+        let Ok(emb) = open_embedding(&blob) else { continue };
+        if emb.len() == EMB_LEN {
+            anchor_people.insert(person);
+            anchors.add_at(person, &emb, quality, photo, days.get(&photo).copied());
+        }
     }
 
     struct Loose { id: i64, photo: i64, old: Option<i64>, emb: Vec<f32>, quality: f32, when: Option<i32> }
     let mut loose: Vec<Loose> = Vec::new();
-    {
-        let mut stmt = conn.prepare("SELECT id, photo_id, person_id, emb, COALESCE(quality, 0.6) FROM faces WHERE rejected = 0").map_err(|e| e.to_string())?;
-        let rows: Vec<(i64, i64, Option<i64>, Vec<u8>, f64)> =
-            stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))).map_err(|e| e.to_string())?.filter_map(Result::ok).collect();
-        for (id, photo, old, blob, q) in rows {
-            if old.map(|p| anchor_people.contains(&p)).unwrap_or(false) {
-                continue; // twarze osób zakotwiczonych zostają, gdzie są
-            }
-            if let Ok(emb) = open_embedding(&blob) {
+    for (id, photo, old, blob, q) in faces {
+        if stop() {
+            return None;
+        }
+        if old.map(|p| anchor_people.contains(&p)).unwrap_or(false) {
+            continue; // twarze osób zakotwiczonych zostają, gdzie są
+        }
+        if let Ok(emb) = open_embedding(&blob) {
+            if emb.len() == EMB_LEN {
                 loose.push(Loose { id, photo, old, emb, quality: q as f32, when: days.get(&photo).copied() });
             }
         }
     }
     // Najlepsze twarze pierwsze: to one najpewniej dołączają do osób zakotwiczonych.
     loose.sort_by(|a, b| b.quality.total_cmp(&a.quality));
-    // Pary (twarz, osoba) wykluczone przez użytkownika: „To nie ta osoba”.
-    let barred: HashSet<(i64, i64)> = match conn.prepare("SELECT face_id, person_id FROM face_not") {
-        Ok(mut s) => s.query_map([], |r| Ok((r.get(0)?, r.get(1)?))).map(|it| it.filter_map(Result::ok).collect()).unwrap_or_default(),
-        Err(_) => HashSet::new(),
-    };
 
-    let mut assign: HashMap<i64, Option<i64>> = HashMap::new(); // twarz -> osoba (istniejąca zakotwiczona) albo None
+    let mut assign: HashMap<i64, Target> = HashMap::new();
     // Dołączanie do osób zakotwiczonych w kilku przebiegach: twarz, która nie pasowała do wzorców osoby, może pasować do ujęć, które osoba
     // „nauczyła się” chwilę później (np. dziecko rok starsze). Dzięki temu osoba idzie za zmieniającą się twarzą rok po roku.
     let mut pool: Vec<usize> = (0..loose.len()).collect();
@@ -360,11 +447,14 @@ fn regroup(conn: &Connection, snapshot: Option<Vec<AnchorFace>>, reanalyzed: &Ha
             let mut rest: Vec<usize> = Vec::new();
             let mut joined = 0;
             for &i in &pool {
+                if stop() {
+                    return None;
+                }
                 let f = &loose[i];
                 match anchors.decide_at(&f.emb, f.quality, f.photo, f.when) {
                     Decision::Join { id, learn } if !barred.contains(&(f.id, id)) => {
                         anchors.apply_at(id, &f.emb, f.quality, learn, f.photo, f.when);
-                        assign.insert(f.id, Some(id));
+                        assign.insert(f.id, Target::Person(id));
                         joined += 1;
                     }
                     _ => {
@@ -384,12 +474,15 @@ fn regroup(conn: &Connection, snapshot: Option<Vec<AnchorFace>>, reanalyzed: &Ha
     let qual: Vec<f32> = pool.iter().map(|&i| loose[i].quality).collect();
     let photos: Vec<i64> = pool.iter().map(|&i| loose[i].photo).collect();
     let groups: Vec<Option<usize>> = if pool.len() <= MAX_HIERARCHICAL {
-        cluster::cluster_all(&embs, &qual, &photos, cluster::LINKAGE)
+        cluster::cluster_all(&embs, &qual, &photos, cluster::LINKAGE, stop)
     } else {
         let mut cl = Clusters::new();
         let mut next = 0i64;
         let mut out = Vec::with_capacity(pool.len());
         for k in 0..pool.len() {
+            if stop() {
+                return None;
+            }
             let when = loose[pool[k]].when;
             out.push(match cl.decide_at(embs[k], qual[k], photos[k], when) {
                 Decision::Join { id, learn } => { cl.apply_at(id, embs[k], qual[k], learn, photos[k], when); Some(id as usize) }
@@ -399,6 +492,9 @@ fn regroup(conn: &Connection, snapshot: Option<Vec<AnchorFace>>, reanalyzed: &Ha
         }
         out
     };
+    if stop() {
+        return None;
+    }
 
     // Numery grup -> numery osób: używamy ponownie dawnej osoby, jeśli większość twarzy grupy już do niej należała.
     let mut members: HashMap<usize, Vec<usize>> = HashMap::new();
@@ -426,33 +522,100 @@ fn regroup(conn: &Connection, snapshot: Option<Vec<AnchorFace>>, reanalyzed: &Ha
             }
         }
     }
-
-    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
-    for g in &order {
-        if !person_of_group.contains_key(g) {
-            tx.execute("INSERT INTO people (name) VALUES (NULL)", []).map_err(|e| e.to_string())?;
-            person_of_group.insert(*g, tx.last_insert_rowid());
-        }
-    }
-    let mut final_person: HashMap<i64, Option<i64>> = assign;
+    let new_groups: Vec<usize> = order.iter().copied().filter(|g| !person_of_group.contains_key(g)).collect();
     for (k, g) in groups.iter().enumerate() {
-        final_person.insert(loose[pool[k]].id, g.map(|g| person_of_group[&g]));
+        let target = match g {
+            Some(g) => person_of_group.get(g).map(|p| Target::Person(*p)).unwrap_or(Target::Group(*g)),
+            None => Target::Nobody,
+        };
+        assign.insert(loose[pool[k]].id, target);
     }
+    let mut changes = Vec::new();
     for f in &loose {
-        let mut new = final_person.get(&f.id).copied().flatten();
-        if new.map(|p| barred.contains(&(f.id, p))).unwrap_or(false) {
-            new = None; // grupa wciągnęła twarz, którą użytkownik wyłączył z tej osoby
+        let mut new = assign.get(&f.id).copied().unwrap_or(Target::Nobody);
+        if let Target::Person(p) = new {
+            if barred.contains(&(f.id, p)) {
+                new = Target::Nobody; // grupa wciągnęła twarz, którą użytkownik wyłączył z tej osoby
+            }
         }
-        if new != f.old {
-            tx.execute("UPDATE faces SET person_id = ?2 WHERE id = ?1", params![f.id, new]).map_err(|e| e.to_string())?;
+        let same = match new {
+            Target::Nobody => f.old.is_none(),
+            Target::Person(p) => f.old == Some(p),
+            Target::Group(_) => false,
+        };
+        if !same {
+            changes.push((f.id, f.old, new));
         }
+    }
+    Some(RegroupPlan { changes, new_groups, groups: order.len() })
+}
+
+/// Zapisuje wynik grupowania. Liczenie szło bez blokady, więc użytkownik mógł w tym czasie coś poprawić:
+/// twarzy, która zmieniła osobę lub została poprawiona ręcznie, nie ruszamy, a osoby usuniętej nie przywracamy.
+fn regroup_apply(conn: &Connection, plan: &RegroupPlan) -> Result<usize, String> {
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    let mut created: HashMap<usize, i64> = HashMap::new();
+    for g in &plan.new_groups {
+        tx.execute("INSERT INTO people (name) VALUES (NULL)", []).map_err(|e| e.to_string())?;
+        created.insert(*g, tx.last_insert_rowid());
+    }
+    for (id, old, target) in &plan.changes {
+        let new = match target {
+            Target::Nobody => None,
+            Target::Person(p) => Some(*p),
+            Target::Group(g) => created.get(g).copied(),
+        };
+        tx.execute(
+            "UPDATE faces SET person_id = ?2 WHERE id = ?1 AND person_id IS ?3 AND manual = 0 AND rejected = 0
+             AND (?2 IS NULL OR EXISTS (SELECT 1 FROM people WHERE id = ?2))",
+            params![id, new, old],
+        )
+        .map_err(|e| e.to_string())?;
     }
     // Osoby bez twarzy znikają, o ile nie mają imienia i nie zostały pominięte przez użytkownika.
     tx.execute("DELETE FROM people WHERE name IS NULL AND ignored = 0 AND id NOT IN (SELECT person_id FROM faces WHERE person_id IS NOT NULL)", []).map_err(|e| e.to_string())?;
     tx.commit().map_err(|e| e.to_string())?;
+    Ok(plan.groups)
+}
+
+/// Grupowanie w tle: baza jest zablokowana tylko na czas odczytu i zapisu, więc program odpowiada, a długie liczenie można wstrzymać.
+/// Zwraca false, gdy przerwano (przypisania zostają takie jak przed grupowaniem, następne uruchomienie policzy je od nowa).
+fn regroup_in_background(state: &AppState) -> Result<bool, String> {
+    let stop = || CANCEL.load(Ordering::SeqCst);
+    let input = {
+        let conn = state.db.lock().map_err(|e| e.to_string())?;
+        regroup_load(&conn)?
+    };
+    let Some(plan) = regroup_plan(input, &stop) else { return Ok(false) };
+    {
+        let conn = state.db.lock().map_err(|e| e.to_string())?;
+        regroup_apply(&conn, &plan)?;
+    }
     // Pewność przypisań (widok „do potwierdzenia”): liczona po każdym grupowaniu; błąd nie psuje samego grupowania.
+    let rows = {
+        let conn = state.db.lock().map_err(|e| e.to_string())?;
+        conf_load(&conn, None)?
+    };
+    let values = conf_calc(rows, &stop);
+    if stop() {
+        return Ok(false);
+    }
+    for part in values.chunks(5000) {
+        if stop() {
+            return Ok(false);
+        }
+        let conn = state.db.lock().map_err(|e| e.to_string())?;
+        conf_apply(&conn, part)?;
+    }
+    Ok(true)
+}
+
+#[cfg(test)]
+fn regroup(conn: &Connection) -> Result<usize, String> {
+    let plan = regroup_plan(regroup_load(conn)?, &|| false).ok_or("przerwano")?;
+    let n = regroup_apply(conn, &plan)?;
     let _ = compute_conf(conn, None);
-    Ok(order.len())
+    Ok(n)
 }
 
 #[derive(Serialize, Clone, Default)]
@@ -463,22 +626,25 @@ pub struct Progress {
     finished: bool,
     /// Trwa grupowanie twarzy w osoby (po analizie zdjęć).
     grouping: bool,
+    /// Zadanie zatrzymano przed końcem („Wstrzymaj”).
+    stopped: bool,
+    /// Zdjęcia pominięte, bo ich plik był niedostępny (np. odłączony dysk): ich twarze zostają, następna analiza spróbuje ponownie.
+    skipped: usize,
     error: Option<String>,
 }
 
 /// Liczba wątków analizy: połowa rdzeni (model jest ciężki, a program ma zostać responsywny), ale nie więcej niż 6.
 fn worker_count() -> usize {
-    std::thread::available_parallelism().map(|n| n.get()).unwrap_or(2).div_ceil(2).saturating_sub(0).clamp(1, 6)
+    std::thread::available_parallelism().map(|n| n.get()).unwrap_or(2).div_ceil(2).clamp(1, 6)
 }
 
 /// Analizuje zdjęcia, które jeszcze nie były analizowane (lub zmieniły się od ostatniego razu), równolegle na kilku wątkach,
 /// a na końcu grupuje wszystkie twarze w osoby. Można przerwać w każdej chwili: już policzone zdjęcia zostają, następne uruchomienie kontynuuje.
 fn index_blocking(app: &tauri::AppHandle) -> Result<Progress, String> {
     let state = app.state::<AppState>();
-    let engine = load_engine(app)?;
-    let (todo, snapshot): (Vec<(i64, String, i64)>, Vec<AnchorFace>) = {
+    let todo: Vec<(i64, String, i64)> = {
         let conn = state.db.lock().map_err(|e| e.to_string())?;
-        // Po zmianie wersji potoku wszystkie zdjęcia są analizowane ponownie; imiona i ręczne poprawki zostają dzięki zapisanym osobom zakotwiczonym.
+        // Po zmianie wersji potoku wszystkie zdjęcia są analizowane ponownie; osoby i ręczne poprawki przechodzą na nowe twarze w tych samych miejscach zdjęć.
         let version: Option<String> = conn.query_row("SELECT value FROM settings WHERE key = 'faces-version'", [], |r| r.get(0)).ok();
         if version.as_deref() != Some(PIPELINE_VERSION) {
             conn.execute("UPDATE face_scan SET scanned_mod = -1", []).map_err(|e| e.to_string())?;
@@ -491,62 +657,93 @@ fn index_blocking(app: &tauri::AppHandle) -> Result<Progress, String> {
             )
             .map_err(|e| e.to_string())?;
         let v = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).map_err(|e| e.to_string())?.filter_map(Result::ok).collect();
-        drop(stmt);
-        (v, load_anchor_faces(&conn)?)
+        v
     };
     fs::create_dir_all(crops_dir(&state.thumbs)).map_err(|e| e.to_string())?;
     let total = todo.len();
     let mut prog = Progress { total, ..Default::default() };
-    let mut reanalyzed: HashSet<i64> = HashSet::new();
-    let next = AtomicUsize::new(0);
-    let (tx, rx) = std::sync::mpsc::channel::<(usize, Option<Vec<NewFace>>)>();
-    std::thread::scope(|scope| {
-        for _ in 0..worker_count().min(total.max(1)) {
-            let (tx, engine, todo, next) = (tx.clone(), &engine, &todo, &next);
-            scope.spawn(move || loop {
+    // Modele wczytujemy tylko, gdy jest co analizować: to kilka sekund i kilkaset MB pamięci.
+    if total > 0 {
+        let engine = load_engine(app)?;
+        let next = AtomicUsize::new(0);
+        let (tx, rx) = std::sync::mpsc::channel::<(usize, Option<Vec<NewFace>>)>();
+        std::thread::scope(|scope| {
+            for _ in 0..worker_count().min(total) {
+                let (tx, engine, todo, next) = (tx.clone(), &engine, &todo, &next);
+                scope.spawn(move || loop {
+                    if CANCEL.load(Ordering::SeqCst) {
+                        break;
+                    }
+                    let i = next.fetch_add(1, Ordering::SeqCst);
+                    if i >= todo.len() {
+                        break;
+                    }
+                    // Błąd odczytu jednego zdjęcia nie zatrzymuje reszty.
+                    let found = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| analyze_photo(engine, Path::new(&todo[i].1)))).unwrap_or(None);
+                    if tx.send((i, found)).is_err() {
+                        break;
+                    }
+                });
+            }
+            drop(tx);
+            for (i, found) in rx.iter() {
+                // Po „Wstrzymaj” (albo „Usuń dane twarzy”) nie zapisujemy już wyników, które były w drodze: zdjęcia wrócą przy wznowieniu.
                 if CANCEL.load(Ordering::SeqCst) {
-                    break;
+                    continue;
                 }
-                let i = next.fetch_add(1, Ordering::SeqCst);
-                if i >= todo.len() {
-                    break;
+                let (id, path, modified) = &todo[i];
+                let Ok(conn) = state.db.lock() else { continue };
+                if CANCEL.load(Ordering::SeqCst) {
+                    continue; // „Usuń dane twarzy” mogło trzymać bazę, gdy czekaliśmy na blokadę
                 }
-                // Błąd odczytu jednego zdjęcia nie zatrzymuje reszty.
-                let found = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| analyze_photo(engine, Path::new(&todo[i].1)))).unwrap_or(None);
-                if tx.send((i, found)).is_err() {
-                    break;
+                let still_there: bool = conn.query_row("SELECT 1 FROM photos WHERE id = ?1 AND hidden = 0", [id], |_| Ok(())).is_ok();
+                if still_there {
+                    match found {
+                        Some(faces) => {
+                            if let Ok(n) = store_faces(&conn, &state.thumbs, *id, *modified, faces) {
+                                prog.faces += n;
+                            }
+                        }
+                        None => {
+                            if file_reachable(Path::new(path)) {
+                                // Plik jest, ale nie da się go odczytać (uszkodzony): nie analizujemy go w kółko, a dotychczasowe twarze zostają.
+                                let _ = mark_scanned(&conn, *id, *modified);
+                            } else {
+                                prog.skipped += 1;
+                            }
+                        }
+                    }
                 }
-            });
-        }
-        drop(tx);
-        for (i, found) in rx.iter() {
-            let (id, _, modified) = &todo[i];
-            let Ok(conn) = state.db.lock() else { continue };
-            let still_there: bool = conn.query_row("SELECT 1 FROM photos WHERE id = ?1 AND hidden = 0", [id], |_| Ok(())).is_ok();
-            if still_there {
-                // Zdjęć, których nie da się odczytać, nie analizujemy w kółko: zapisujemy je jako sprawdzone.
-                if let Ok(n) = store_faces(&conn, &state.thumbs, *id, *modified, found.unwrap_or_default()) {
-                    prog.faces += n;
+                drop(conn);
+                prog.done += 1;
+                if prog.done % 5 == 0 || prog.done == total {
+                    let _ = app.emit("faces-progress", prog.clone());
                 }
-                reanalyzed.insert(*id);
             }
-            drop(conn);
-            prog.done += 1;
-            if prog.done % 5 == 0 || prog.done == total {
-                let _ = app.emit("faces-progress", prog.clone());
-            }
-        }
-    });
-    // Grupowanie: także po przerwaniu analizy, żeby osoby odpowiadały temu, co już policzono.
-    prog.grouping = true;
-    let _ = app.emit("faces-progress", prog.clone());
-    {
-        let conn = state.db.lock().map_err(|e| e.to_string())?;
-        regroup(&conn, Some(snapshot), &reanalyzed)?;
+        });
     }
-    prog.grouping = false;
+    // Grupowanie, chyba że użytkownik wstrzymał: wtedy policzy się przy wznowieniu.
+    if !CANCEL.load(Ordering::SeqCst) {
+        prog.grouping = true;
+        let _ = app.emit("faces-progress", prog.clone());
+        regroup_in_background(&state)?;
+        prog.grouping = false;
+    }
+    prog.stopped = CANCEL.load(Ordering::SeqCst);
     prog.finished = true;
     Ok(prog)
+}
+
+/// Czy plik zdjęcia da się otworzyć i czytać. Fałsz oznacza odłączony dysk, usunięty plik, plik z chmury bez połączenia albo brak dostępu, a nie uszkodzone zdjęcie.
+fn file_reachable(path: &Path) -> bool {
+    use std::io::Read;
+    fs::File::open(path).and_then(|mut f| f.read(&mut [0u8; 1])).is_ok()
+}
+
+/// Zapisuje zdjęcie jako sprawdzone bez zmiany jego twarzy.
+fn mark_scanned(conn: &Connection, photo_id: i64, modified: i64) -> Result<(), String> {
+    conn.execute("INSERT OR REPLACE INTO face_scan (photo_id, scanned_mod) VALUES (?1, ?2)", params![photo_id, modified]).map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 #[derive(Serialize)]
@@ -610,7 +807,7 @@ pub fn faces_start(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<
     }
     CANCEL.store(false, Ordering::SeqCst);
     tauri::async_runtime::spawn_blocking(move || {
-        let result = index_blocking(&app);
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| index_blocking(&app))).unwrap_or_else(|_| Err("Wewnętrzny błąd analizy twarzy. Dotychczasowe dane są bezpieczne, spróbuj ponownie.".into()));
         BUSY.store(false, Ordering::SeqCst);
         let fin = match result {
             Ok(p) => p,
@@ -627,13 +824,14 @@ pub fn faces_regroup(app: tauri::AppHandle) -> Result<bool, String> {
     if BUSY.swap(true, Ordering::SeqCst) {
         return Ok(false);
     }
+    CANCEL.store(false, Ordering::SeqCst);
     tauri::async_runtime::spawn_blocking(move || {
         let _ = app.emit("faces-progress", Progress { grouping: true, ..Default::default() });
         let state = app.state::<AppState>();
-        let result = state.db.lock().map_err(|e| e.to_string()).and_then(|conn| regroup(&conn, None, &HashSet::new()));
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| regroup_in_background(&state))).unwrap_or_else(|_| Err("Wewnętrzny błąd grupowania twarzy. Dotychczasowe dane są bezpieczne, spróbuj ponownie.".into()));
         BUSY.store(false, Ordering::SeqCst);
         let fin = match result {
-            Ok(_) => Progress { finished: true, ..Default::default() },
+            Ok(done) => Progress { finished: true, stopped: !done, ..Default::default() },
             Err(e) => Progress { finished: true, error: Some(e), ..Default::default() },
         };
         let _ = app.emit("faces-progress", fin);
@@ -672,7 +870,7 @@ pub async fn faces_delete_all(state: State<'_, AppState>) -> Result<(), String> 
     }
     {
         let conn = state.db.lock().map_err(|e| e.to_string())?;
-        conn.execute_batch("DELETE FROM faces; DELETE FROM people; DELETE FROM face_scan; VACUUM;").map_err(|e| e.to_string())?;
+        conn.execute_batch("DELETE FROM face_not; DELETE FROM faces; DELETE FROM people; DELETE FROM face_scan; VACUUM;").map_err(|e| e.to_string())?;
         conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?1, '0')", [SETTING]).map_err(|e| e.to_string())?;
     }
     let dir = crops_dir(&state.thumbs);
@@ -699,23 +897,36 @@ const UNSURE_BELOW: f32 = 0.5;
 /// Liczy pewność przypisania twarzy: podobieństwo twarzy do środka jej osoby. Środek liczą wszystkie twarze osoby, ale ręcznie
 /// potwierdzone liczą się potrójnie, więc jedna pomyłka w grupie nie przesuwa środka. `only` ogranicza liczenie do jednej osoby.
 pub fn compute_conf(conn: &Connection, only: Option<i64>) -> Result<usize, String> {
+    let values = conf_calc(conf_load(conn, only)?, &|| false);
+    conf_apply(conn, &values)?;
+    Ok(values.len())
+}
+
+type ConfRow = (i64, i64, Vec<u8>, f64, i64);
+
+fn conf_load(conn: &Connection, only: Option<i64>) -> Result<Vec<ConfRow>, String> {
     let mut stmt = conn
-        .prepare("SELECT id, person_id, emb, COALESCE(quality, 0.6), manual FROM faces WHERE person_id IS NOT NULL AND (?1 IS NULL OR person_id = ?1)")
+        .prepare(&format!("SELECT id, person_id, emb, COALESCE(quality, 0.6), manual FROM faces WHERE person_id IS NOT NULL AND (?1 IS NULL OR person_id = ?1) AND {}", current_model_sql()))
         .map_err(|e| e.to_string())?;
-    let rows: Vec<(i64, i64, Vec<u8>, f64, i64)> =
-        stmt.query_map([only], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))).map_err(|e| e.to_string())?.filter_map(Result::ok).collect();
-    drop(stmt);
+    let rows = stmt.query_map([only], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))).map_err(|e| e.to_string())?.filter_map(Result::ok).collect();
+    Ok(rows)
+}
+
+/// Pewność każdej twarzy: (twarz, osoba, pewność). Bez dostępu do bazy, więc może trwać długo.
+fn conf_calc(rows: Vec<ConfRow>, stop: &dyn Fn() -> bool) -> Vec<(i64, i64, f32)> {
     let mut groups: HashMap<i64, Vec<(i64, Vec<f32>, f32, bool)>> = HashMap::new();
     for (id, person, blob, q, manual) in rows {
+        if stop() {
+            return Vec::new();
+        }
         if let Ok(emb) = open_embedding(&blob) {
             if emb.len() == EMB_LEN {
                 groups.entry(person).or_default().push((id, emb, q as f32, manual != 0));
             }
         }
     }
-    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
-    let mut n = 0;
-    for faces in groups.values() {
+    let mut out = Vec::new();
+    for (person, faces) in &groups {
         let mut c = vec![0.0f32; EMB_LEN];
         for (_, e, q, manual) in faces {
             let w = q.max(0.05) * if *manual { 3.0 } else { 1.0 };
@@ -723,12 +934,19 @@ pub fn compute_conf(conn: &Connection, only: Option<i64>) -> Result<usize, Strin
         }
         normalize(&mut c);
         for (id, e, _, _) in faces {
-            tx.execute("UPDATE faces SET conf = ?2 WHERE id = ?1", params![id, cosine(&c, e) as f64]).map_err(|e| e.to_string())?;
-            n += 1;
+            out.push((*id, *person, cosine(&c, e)));
         }
     }
-    tx.commit().map_err(|e| e.to_string())?;
-    Ok(n)
+    out
+}
+
+/// Zapis pewności; twarzy, która w międzyczasie zmieniła osobę, nie dotyczy.
+fn conf_apply(conn: &Connection, values: &[(i64, i64, f32)]) -> Result<(), String> {
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    for (id, person, conf) in values {
+        tx.execute("UPDATE faces SET conf = ?3 WHERE id = ?1 AND person_id = ?2", params![id, person, *conf as f64]).map_err(|e| e.to_string())?;
+    }
+    tx.commit().map_err(|e| e.to_string())
 }
 
 /// Kafelek twarzy w widoku osoby: wycinek twarzy, zdjęcie, z którego pochodzi, i czy czeka na potwierdzenie.
@@ -745,7 +963,7 @@ pub async fn person_face_cards(app: tauri::AppHandle, id: i64) -> Result<Vec<Fac
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
         let conn = state.db.lock().map_err(|e| e.to_string())?;
-        let missing: i64 = conn.query_row("SELECT COUNT(*) FROM faces WHERE person_id = ?1 AND conf IS NULL", [id], |r| r.get(0)).map_err(|e| e.to_string())?;
+        let missing: i64 = conn.query_row(&format!("SELECT COUNT(*) FROM faces WHERE person_id = ?1 AND conf IS NULL AND {}", current_model_sql()), [id], |r| r.get(0)).map_err(|e| e.to_string())?;
         if missing > 0 {
             compute_conf(&conn, Some(id))?;
         }
@@ -1367,7 +1585,7 @@ mod tests {
         let refs: Vec<&[f32]> = embs.iter().map(|e| e.as_slice()).collect();
         for t in [0.3f32, 0.35, 0.4] {
             let t1 = Instant::now();
-            let new = cluster::cluster_all(&refs, &qual, &photos, t);
+            let new = cluster::cluster_all(&refs, &qual, &photos, t, &|| false);
             let (gn, sn) = singles(&|i| new[i]);
             eprintln!("NOWE (próg {t:.2}): grup {gn}, jednoosobowych {sn}, bez grupy {}, błędów {}, czas {:.0} ms", new.iter().filter(|g| g.is_none()).count(), conflicts(&|i| new[i]), t1.elapsed().as_secs_f64() * 1000.0);
         }
@@ -1457,7 +1675,7 @@ mod tests {
         store_faces(&c, &tmp, 4, 5, vec![new_face(near(0, 2, 0.15), 0.3)]).unwrap();
         let n = |sql: &str| -> i64 { c.query_row(sql, [], |r| r.get(0)).unwrap() };
         assert_eq!(n("SELECT COUNT(*) FROM faces WHERE person_id IS NULL"), 4, "przed grupowaniem nikt nie ma osoby");
-        regroup(&c, None, &HashSet::new()).unwrap();
+        regroup(&c).unwrap();
         assert_eq!(n("SELECT COUNT(*) FROM people"), 2, "dwie osoby");
         assert_eq!(n("SELECT COUNT(*) FROM faces WHERE person_id IS NULL"), 0, "słaba twarz dołączyła do pewnej osoby");
         // Wektor w bazie jest zaszyfrowany: nie zawiera jawnych liczb f32 wektora.
@@ -1483,7 +1701,7 @@ mod tests {
         // Na zdjęciu 1 dwie twarze o niemal identycznych wektorach (np. odbicie w lustrze): muszą być dwiema osobami.
         store_faces(&c, &tmp, 1, 5, vec![new_face(unit(0), 0.9), new_face(near(0, 1, 0.05), 0.9)]).unwrap();
         store_faces(&c, &tmp, 2, 5, vec![new_face(unit(0), 0.9)]).unwrap();
-        regroup(&c, None, &HashSet::new()).unwrap();
+        regroup(&c).unwrap();
         let distinct: i64 = c.query_row("SELECT COUNT(DISTINCT person_id) FROM faces WHERE photo_id = 1", [], |r| r.get(0)).unwrap();
         assert_eq!(distinct, 2);
     }
@@ -1495,36 +1713,108 @@ mod tests {
         store_faces(&c, &tmp, 1, 5, vec![new_face(unit(0), 0.9)]).unwrap();
         store_faces(&c, &tmp, 2, 5, vec![new_face(near(0, 1, 0.1), 0.9)]).unwrap();
         store_faces(&c, &tmp, 3, 5, vec![new_face(unit(7), 0.9)]).unwrap();
-        regroup(&c, None, &HashSet::new()).unwrap();
+        regroup(&c).unwrap();
         let pid = |photo: i64| -> i64 { c.query_row("SELECT person_id FROM faces WHERE photo_id = ?1", [photo], |r| r.get(0)).unwrap() };
         let ala = pid(1);
         c.execute("UPDATE people SET name = 'Ala' WHERE id = ?1", [ala]).unwrap();
         // Nowe zdjęcie z podobną twarzą dołącza do Ali (osoba z imieniem jest zakotwiczona).
         store_faces(&c, &tmp, 4, 5, vec![new_face(near(0, 2, 0.12), 0.9)]).unwrap();
-        regroup(&c, None, &HashSet::new()).unwrap();
+        regroup(&c).unwrap();
         assert_eq!(pid(4), ala, "nowa twarz dołączyła do osoby z imieniem");
         assert_eq!(pid(1), ala);
         // Ręczna poprawka: twarz ze zdjęcia 3 przeniesiona do Ali zostaje u niej, choć wektor jest zupełnie inny.
         let other = pid(3);
         reassign_core(&c, 3, other, Some(ala)).unwrap();
-        regroup(&c, None, &HashSet::new()).unwrap();
+        regroup(&c).unwrap();
         assert_eq!(pid(3), ala, "ręczna poprawka nie jest cofana przez grupowanie");
-        // Ponowna analiza: zapisujemy osoby zakotwiczone, usuwamy twarze zdjęć, analizujemy je od nowa i grupujemy ze zrzutem.
-        let snapshot = load_anchor_faces(&c).unwrap();
-        assert!(snapshot.len() >= 4);
-        let mut redone = HashSet::new();
+        // Ponowna analiza: nowe twarze w tych samych miejscach przejmują osobę, także ręcznie poprawioną, choć jej wektor jest zupełnie inny.
         for (photo, emb) in [(1i64, unit(0)), (2, near(0, 1, 0.1)), (3, unit(7)), (4, near(0, 2, 0.12))] {
             store_faces(&c, &tmp, photo, 9, vec![new_face(emb, 0.9)]).unwrap();
-            redone.insert(photo);
         }
-        let none: i64 = c.query_row("SELECT COUNT(*) FROM faces WHERE person_id IS NULL", [], |r| r.get(0)).unwrap();
-        assert_eq!(none, 4);
-        regroup(&c, Some(snapshot), &redone).unwrap();
+        regroup(&c).unwrap();
         let name: String = c.query_row("SELECT name FROM people WHERE id = ?1", [ala], |r| r.get(0)).unwrap();
         assert_eq!(name, "Ala", "imię przetrwało ponowną analizę");
-        for photo in [1, 2, 4] {
+        for photo in [1, 2, 3, 4] {
             assert_eq!(pid(photo), ala, "twarz ze zdjęcia {photo} wróciła do Ali po ponownej analizie");
         }
+        let manual: i64 = c.query_row("SELECT manual FROM faces WHERE photo_id = 3", [], |r| r.get(0)).unwrap();
+        assert_eq!(manual, 1, "ręczna poprawka nadal jest ręczna");
+    }
+
+    #[test]
+    fn reanalysis_keeps_person_rejection_bars_and_cover_by_position() {
+        let (c, tmp) = lib_with_photos(2);
+        let at = |x: f32, emb: Vec<f32>| { let mut f = new_face(emb, 0.9); f.det.x = x; f };
+        store_faces(&c, &tmp, 1, 5, vec![at(10.0, unit(0)), at(120.0, unit(1)), at(60.0, unit(2))]).unwrap();
+        let id_at = |x: f64| -> i64 { c.query_row("SELECT id FROM faces WHERE photo_id = 1 AND abs(x - ?1) < 0.001", [x / 200.0], |r| r.get(0)).unwrap() };
+        c.execute("INSERT INTO people (id, name, cover_face) VALUES (1, 'Ala', ?1), (2, 'Ola', NULL)", [id_at(10.0)]).unwrap();
+        c.execute("UPDATE faces SET person_id = 1, manual = 1 WHERE id = ?1", [id_at(10.0)]).unwrap();
+        c.execute("UPDATE faces SET rejected = 1 WHERE id = ?1", [id_at(120.0)]).unwrap();
+        c.execute("INSERT INTO face_not (face_id, person_id) VALUES (?1, 2)", [id_at(60.0)]).unwrap();
+        // Zupełnie inne wektory i inna kolejność wykrycia, ale te same miejsca.
+        store_faces(&c, &tmp, 1, 6, vec![at(61.0, unit(5)), at(121.0, unit(6)), at(11.0, unit(7))]).unwrap();
+        let row = |x: f64| -> (Option<i64>, i64, i64) { c.query_row("SELECT person_id, manual, rejected FROM faces WHERE photo_id = 1 AND abs(x - ?1) < 0.001", [x / 200.0], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).unwrap() };
+        assert_eq!(row(11.0), (Some(1), 1, 0));
+        assert_eq!(row(121.0), (None, 0, 1));
+        assert_eq!(row(61.0), (None, 0, 0));
+        let bar: i64 = c.query_row("SELECT face_id FROM face_not WHERE person_id = 2", [], |r| r.get(0)).unwrap();
+        assert_eq!(bar, id_at(61.0), "wyłączenie „to nie ta osoba” przeszło na nową twarz");
+        let cover: i64 = c.query_row("SELECT cover_face FROM people WHERE id = 1", [], |r| r.get(0)).unwrap();
+        assert_eq!(cover, id_at(11.0), "okładka przeszła na nową twarz");
+        // Twarz w innym miejscu zdjęcia nie jest tą samą twarzą.
+        store_faces(&c, &tmp, 1, 7, vec![at(150.0, unit(3))]).unwrap();
+        assert_eq!(row(150.0), (None, 0, 0));
+        assert_eq!(c.query_row::<i64, _, _>("SELECT COUNT(*) FROM face_not", [], |r| r.get(0)).unwrap(), 0, "bez sierot po starych twarzach");
+    }
+
+    #[test]
+    fn old_model_vectors_are_not_compared_and_keep_their_people() {
+        let (c, tmp) = lib_with_photos(4);
+        // Osoba z imieniem ma tylko twarz ze starego modelu (128 liczb).
+        let old = seal_embedding(&vec![0.1f32; 128]).unwrap();
+        c.execute("INSERT INTO people (id, name) VALUES (1, 'Ala')", []).unwrap();
+        c.execute("INSERT INTO faces (id, photo_id, person_id, x, y, w, h, score, emb) VALUES (500, 1, 1, 0, 0, 0.1, 0.1, 1, ?1)", [&old]).unwrap();
+        // Nowe twarze zdjęć 2 i 3 tworzą własną osobę, a stara twarz nie wchodzi do grupowania ani do pewności.
+        store_faces(&c, &tmp, 2, 5, vec![new_face(unit(0), 0.9)]).unwrap();
+        store_faces(&c, &tmp, 3, 5, vec![new_face(near(0, 1, 0.1), 0.9)]).unwrap();
+        regroup(&c).unwrap();
+        let p: i64 = c.query_row("SELECT person_id FROM faces WHERE id = 500", [], |r| r.get(0)).unwrap();
+        assert_eq!(p, 1, "stara twarz została przy swojej osobie");
+        let conf: Option<f64> = c.query_row("SELECT conf FROM faces WHERE id = 500", [], |r| r.get(0)).unwrap();
+        assert_eq!(conf, None);
+        let new: Option<i64> = c.query_row("SELECT person_id FROM faces WHERE photo_id = 2", [], |r| r.get(0)).unwrap();
+        assert_ne!(new, Some(1), "nowa twarz nie jest porównywana ze starym wektorem");
+    }
+
+    #[test]
+    fn stopped_grouping_changes_nothing_and_user_edits_win_over_the_plan() {
+        let (c, tmp) = lib_with_photos(3);
+        store_faces(&c, &tmp, 1, 5, vec![new_face(unit(0), 0.9)]).unwrap();
+        store_faces(&c, &tmp, 2, 5, vec![new_face(near(0, 1, 0.1), 0.9)]).unwrap();
+        assert!(regroup_plan(regroup_load(&c).unwrap(), &|| true).is_none(), "wstrzymanie przerywa liczenie");
+        assert_eq!(c.query_row::<i64, _, _>("SELECT COUNT(*) FROM people", [], |r| r.get(0)).unwrap(), 0);
+        // Plan policzony, a zanim się zapisze, użytkownik odrzuca twarz ze zdjęcia 1.
+        let plan = regroup_plan(regroup_load(&c).unwrap(), &|| false).unwrap();
+        c.execute("UPDATE faces SET rejected = 1 WHERE photo_id = 1", []).unwrap();
+        regroup_apply(&c, &plan).unwrap();
+        let first: Option<i64> = c.query_row("SELECT person_id FROM faces WHERE photo_id = 1", [], |r| r.get(0)).unwrap();
+        let second: Option<i64> = c.query_row("SELECT person_id FROM faces WHERE photo_id = 2", [], |r| r.get(0)).unwrap();
+        assert_eq!(first, None, "decyzja użytkownika wygrywa z planem");
+        assert!(second.is_some());
+    }
+
+    #[test]
+    fn unreadable_photo_keeps_its_faces() {
+        let (c, tmp) = lib_with_photos(1);
+        store_faces(&c, &tmp, 1, 5, vec![new_face(unit(0), 0.9)]).unwrap();
+        assert!(!file_reachable(Path::new("Z:\\nie-ma-takiego-dysku\\a.jpg")));
+        let broken = tmp.join("zepsuty.jpg");
+        fs::write(&broken, b"to nie jest zdjecie").unwrap();
+        assert!(file_reachable(&broken));
+        assert!(load_oriented(&broken).is_err());
+        mark_scanned(&c, 1, 9).unwrap();
+        let (n, m): (i64, i64) = c.query_row("SELECT (SELECT COUNT(*) FROM faces WHERE photo_id = 1), scanned_mod FROM face_scan WHERE photo_id = 1", [], |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
+        assert_eq!((n, m), (1, 9));
     }
 
     #[test]
@@ -1620,7 +1910,7 @@ mod tests {
         assert_ne!(new, 1);
         // Odrzucenie: twarz nie ma osoby i grupowanie jej nie rusza.
         assert_eq!(reject_faces_core(&c, &[10]).unwrap(), 1);
-        regroup(&c, None, &HashSet::new()).unwrap();
+        regroup(&c).unwrap();
         let (p, r): (Option<i64>, i64) = c.query_row("SELECT person_id, rejected FROM faces WHERE id = 10", [], |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
         assert_eq!((p, r), (None, 1));
         // Usunięcie osoby odrzuca wszystkie jej twarze.
@@ -1684,32 +1974,23 @@ mod tests {
     }
 }
 
-/// Narzędzie do dostrajania progów: czyta KOPIĘ lokalnej bazy (FIBO_TUNE_DB) i na twarzach osób z nazwą liczy, jak dobrze próg odróżnia
-/// „ta sama osoba” od „inna osoba” (każda twarz kontra środek swojej osoby bez niej samej i kontra środki pozostałych). Nic nie wychodzi z komputera.
+/// Narzędzia uruchamiane ręcznie na KOPII lokalnej bazy (FIBO_TUNE_DB). Nic nie wychodzi z komputera.
 #[cfg(test)]
 mod tuning {
     use super::*;
 
-    #[test]
-    #[ignore]
-    fn tune_report() {
-        let Ok(path) = std::env::var("FIBO_TUNE_DB") else { return };
-        let conn = Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap();
-        let mut stmt = conn.prepare("SELECT f.person_id, f.emb, COALESCE(f.quality, 0.6) FROM faces f JOIN people p ON p.id = f.person_id WHERE p.name IS NOT NULL AND p.ignored = 0 AND f.rejected = 0").unwrap();
-        let rows: Vec<(i64, Vec<f32>, f32)> = stmt
-            .query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, Vec<u8>>(1)?, r.get::<_, f64>(2)? as f32)))
-            .unwrap()
-            .filter_map(Result::ok)
-            .filter_map(|(p, b, q)| open_embedding(&b).ok().map(|e| (p, e, q)))
-            .collect();
+    /// Jak dobrze próg odróżnia „ta sama osoba” od „inna osoba”: każda twarz kontra środek swojej osoby bez niej samej i kontra środki pozostałych.
+    fn report(title: &str, rows: &[(i64, Vec<f32>)]) {
         let dim = rows.first().map(|r| r.1.len()).unwrap_or(0);
-        let rows: Vec<_> = rows.into_iter().filter(|r| r.1.len() == dim).collect();
         let mut by: HashMap<i64, Vec<usize>> = HashMap::new();
         for (i, r) in rows.iter().enumerate() {
             by.entry(r.0).or_default().push(i);
         }
         let people: Vec<i64> = by.iter().filter(|(_, v)| v.len() >= 3).map(|(k, _)| *k).collect();
-        eprintln!("wymiar wektora: {dim}, twarze osob z nazwa: {}, osob (>=3 twarze): {}", rows.len(), people.len());
+        eprintln!("--- {title}: wymiar {dim}, twarzy {}, osob (>=3 twarze) {}", rows.len(), people.len());
+        if people.len() < 2 {
+            return;
+        }
         let sum = |ids: &[usize], skip: Option<usize>| -> Vec<f32> {
             let mut c = vec![0.0f32; dim];
             for &i in ids {
@@ -1721,28 +2002,110 @@ mod tuning {
             c
         };
         let centers: HashMap<i64, Vec<f32>> = people.iter().map(|p| (*p, sum(&by[p], None))).collect();
-        let mut own: Vec<f32> = Vec::new();
-        let mut other: Vec<f32> = Vec::new(); // najlepsza inna osoba
+        let (mut own, mut other): (Vec<f32>, Vec<f32>) = (Vec::new(), Vec::new());
         for p in &people {
             for &i in &by[p] {
-                let c = sum(&by[p], Some(i));
-                own.push(cosine(&rows[i].1, &c));
-                let best = people.iter().filter(|o| *o != p).map(|o| cosine(&rows[i].1, &centers[o])).fold(-1.0f32, f32::max);
-                other.push(best);
+                own.push(cosine(&rows[i].1, &sum(&by[p], Some(i))));
+                other.push(people.iter().filter(|o| *o != p).map(|o| cosine(&rows[i].1, &centers[o])).fold(-1.0f32, f32::max));
             }
         }
-        let q = |v: &mut Vec<f32>, p: f32| { v.sort_by(|a, b| a.total_cmp(b)); v[((v.len() as f32 - 1.0) * p) as usize] };
-        let mut o = own.clone();
-        let mut x = other.clone();
-        eprintln!("swoja osoba (kwantyle 1%,5%,10%,50%): {:.3} {:.3} {:.3} {:.3}", q(&mut o, 0.01), q(&mut o, 0.05), q(&mut o, 0.10), q(&mut o, 0.50));
-        eprintln!("najlepsza inna osoba (50%,90%,99%,99.9%): {:.3} {:.3} {:.3} {:.3}", q(&mut x, 0.5), q(&mut x, 0.9), q(&mut x, 0.99), q(&mut x, 0.999));
+        let right = own.iter().zip(&other).filter(|(a, b)| a > b).count() as f32 / own.len() as f32;
+        eprintln!("najblizszy srodek to wlasciwa osoba: {:.1}%", right * 100.0);
         eprintln!("prog | swoje dolaczone | cudze falszywie dolaczone");
-        let mut t = 0.20f32;
-        while t <= 0.70 {
+        for t in [0.20f32, 0.25, 0.30, 0.35, 0.39, 0.45, 0.50, 0.55, 0.60] {
             let good = own.iter().filter(|s| **s >= t).count() as f32 / own.len() as f32;
             let bad = other.iter().filter(|s| **s >= t).count() as f32 / other.len() as f32;
             eprintln!("{t:.2} | {:5.1}% | {:5.2}%", good * 100.0, bad * 100.0);
-            t += 0.05;
         }
+    }
+
+    /// Próba naprawy na kopii bazy: ponowna analiza próbki zdjęć prawdziwym modelem. Sprawdza, czy nazwane osoby zostają, a na tych samych
+    /// twarzach porównuje stary i nowy model.
+    #[test]
+    #[ignore]
+    fn repair_trial_on_copy() {
+        let Ok(path) = std::env::var("FIBO_TUNE_DB") else { return };
+        let n: i64 = std::env::var("FIBO_TRIAL_N").ok().and_then(|v| v.parse().ok()).unwrap_or(300);
+        let conn = Connection::open(&path).unwrap();
+        init_schema(&conn).unwrap();
+        let tmp = std::path::PathBuf::from(&path).with_extension("crops");
+        fs::create_dir_all(crops_dir(&tmp)).unwrap();
+        let mdir = Path::new(env!("CARGO_MANIFEST_DIR")).join("models");
+        let engine = Engine::new(&fs::read(mdir.join("yunet.onnx")).unwrap(), &fs::read(mdir.join("aura.onnx")).unwrap()).unwrap();
+        // Próbka: po równo z każdej nazwanej osoby, stare twarze (tylko one mają co stracić).
+        let mut stmt = conn.prepare("SELECT id FROM people WHERE name IS NOT NULL").unwrap();
+        let named: Vec<i64> = stmt.query_map([], |r| r.get(0)).unwrap().filter_map(Result::ok).collect();
+        drop(stmt);
+        let mut photos: HashSet<i64> = HashSet::new();
+        for p in &named {
+            let mut stmt = conn.prepare("SELECT photo_id FROM faces WHERE person_id = ?1 AND length(emb) < 1500 ORDER BY random() LIMIT ?2").unwrap();
+            photos.extend(stmt.query_map(params![p, n / named.len().max(1) as i64], |r| r.get::<_, i64>(0)).unwrap().filter_map(Result::ok));
+        }
+        let list: Vec<(i64, String, i64)> = photos
+            .iter()
+            .filter_map(|id| conn.query_row("SELECT id, path, modified FROM photos WHERE id = ?1", [id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).ok())
+            .collect();
+        // Stan przed: (zdjęcie, osoba) nazwanych twarzy i stare wektory tych twarzy.
+        let before_people = |c: &Connection| -> HashSet<(i64, i64)> {
+            let mut out = HashSet::new();
+            for (id, _, _) in &list {
+                let mut st = c.prepare("SELECT f.person_id FROM faces f JOIN people p ON p.id = f.person_id WHERE f.photo_id = ?1 AND p.name IS NOT NULL").unwrap();
+                for r in st.query_map([id], |r| r.get::<_, i64>(0)).unwrap().flatten() {
+                    out.insert((*id, r));
+                }
+            }
+            out
+        };
+        let before = before_people(&conn);
+        let mut old_rows: Vec<(i64, Vec<f32>)> = Vec::new();
+        for (photo, person) in &before {
+            let blob: Vec<u8> = conn.query_row("SELECT emb FROM faces WHERE photo_id = ?1 AND person_id = ?2", params![photo, person], |r| r.get(0)).unwrap();
+            old_rows.push((*person, open_embedding(&blob).unwrap()));
+        }
+        // Analiza na wielu wątkach, jak w programie.
+        let start = std::time::Instant::now();
+        let next = AtomicUsize::new(0);
+        let results = std::sync::Mutex::new(Vec::new());
+        std::thread::scope(|sc| {
+            for _ in 0..worker_count() {
+                sc.spawn(|| loop {
+                    let i = next.fetch_add(1, Ordering::SeqCst);
+                    if i >= list.len() { break; }
+                    let r = analyze_photo(&engine, Path::new(&list[i].1));
+                    results.lock().unwrap().push((i, r));
+                });
+            }
+        });
+        let secs = start.elapsed().as_secs_f32();
+        let (mut ok, mut missing, mut broken, mut faces) = (0, 0, 0, 0usize);
+        for (i, r) in results.into_inner().unwrap() {
+            let (id, p, m) = &list[i];
+            match r {
+                Some(v) => { faces += v.len(); store_faces(&conn, &tmp, *id, *m, v).unwrap(); ok += 1; }
+                None if file_reachable(Path::new(p)) => { mark_scanned(&conn, *id, *m).unwrap(); broken += 1; }
+                None => missing += 1,
+            }
+        }
+        eprintln!("zdjec {} (ok {ok}, brak pliku {missing}, uszkodzone {broken}), twarzy {faces}, {secs:.0} s, {:.2} zdjecia/s, {} watkow", list.len(), list.len() as f32 / secs, worker_count());
+        let t = std::time::Instant::now();
+        let input = regroup_load(&conn).unwrap();
+        let load = t.elapsed();
+        let plan = regroup_plan(input, &|| false).unwrap();
+        let calc = t.elapsed() - load;
+        regroup_apply(&conn, &plan).unwrap();
+        eprintln!("grupowanie: odczyt pod blokada {load:?}, liczenie bez blokady {calc:?}, zapis pod blokada {:?}, zmian {}", t.elapsed() - load - calc, plan.changes.len());
+        let after = before_people(&conn);
+        let kept = before.iter().filter(|x| after.contains(x)).count();
+        eprintln!("nazwane twarze na probce: przed {}, zachowane {kept}, nowe {}", before.len(), after.difference(&before).count());
+        // Te same pary (zdjęcie, osoba), nowy model.
+        let mut new_rows: Vec<(i64, Vec<f32>)> = Vec::new();
+        for (photo, person) in &after {
+            let mut st = conn.prepare("SELECT emb FROM faces WHERE photo_id = ?1 AND person_id = ?2 AND length(emb) > 1500").unwrap();
+            for b in st.query_map(params![photo, person], |r| r.get::<_, Vec<u8>>(0)).unwrap().flatten() {
+                new_rows.push((*person, open_embedding(&b).unwrap()));
+            }
+        }
+        report("stary model", &old_rows);
+        report("nowy model", &new_rows);
     }
 }
