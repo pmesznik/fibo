@@ -166,7 +166,7 @@ describe('Kod frontu', () => {
   test('localStorage przechowuje tylko ustawienia interfejsu (bez haseł i kluczy)', () => {
     const keys = new Set()
     for (const f of src) for (const m of readTracked(f).matchAll(/localStorage\.(?:get|set|remove)Item\(\s*['"]([^'"]+)['"]/g)) keys.add(m[1])
-    for (const k of keys) assert.ok(/^(theme|group|grid-original|thumb-size|timeline-mode|calendar-settings|calendar-draft|memories-dismissed|sec-open|skip-update-version|update-last-check|fibo-lang|slide-secs|watermark-logo|edit-presets)$/.test(k), `nieoczekiwany klucz localStorage: ${k}`)
+    for (const k of keys) assert.ok(/^(theme|group|grid-original|thumb-size|timeline-mode|calendar-settings|calendar-draft|memories-dismissed|stacks-on|sec-open|skip-update-version|update-last-check|fibo-lang|slide-secs|watermark-logo|edit-presets)$/.test(k), `nieoczekiwany klucz localStorage: ${k}`)
   })
   test('komunikaty z backendu i opisy zmian trafiają do React jako tekst (nie jako HTML)', () => {
     const updater = readTracked('app/src/Updater.tsx')

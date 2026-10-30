@@ -34,6 +34,7 @@ import { Chip, Sec, Toast, useEscape } from './ui'
 import { dayKey, dayLabel, memoriesFor, yearsAgo, type Memory } from './memories'
 import { LABELS, flagOf, labelOf, nextMark, passesFlag } from './marks'
 import { CompareView } from './CompareView'
+import { collapseStacks, findStacks, stackCount } from './stacks'
 import {
   Images, FolderOpen, Users, MapPin, Heart, Star, Plus, Play, Maximize2, X,
   Compare, SlidersHorizontal, Search as SearchIcon, ImageUp, Ruler, LayoutDashboard, Check, ListChecks, Tag, CalendarDays, Copy, RefreshCw, Download, Save, Pencil, Trash2, Eye, EyeOff, ChevronLeft, Wand2, Info, RotateCw, RotateCcw,
@@ -105,6 +106,11 @@ export default function App() {
   const [toast, setToast] = useState<{ text: string; kind?: 'ok' | 'err' } | null>(null)
   const [folder, setFolder] = useState<string | null>(null)
   const [minStars, setMinStars] = useState(0)
+  // Stosy: para RAW + JPEG i seria zdjęć pokazują się jako jedno zdjęcie (wyłączone domyślnie; nic się nie zmienia na dysku).
+  const [stacksOn, setStacksOnState] = useState(() => { try { return localStorage.getItem('stacks-on') === '1' } catch { return false } })
+  const setStacksOn = (v: boolean) => { setStacksOnState(v); setOpenStacks(new Set()); try { localStorage.setItem('stacks-on', v ? '1' : '0') } catch { /* brak pamięci */ } }
+  const [openStacks, setOpenStacks] = useState<Set<number>>(() => new Set())
+  const toggleStack = (leader: number) => setOpenStacks((s) => { const n = new Set(s); if (!n.delete(leader)) n.add(leader); return n })
   const [flagFilter, setFlagFilter] = useState<'' | 'pick' | 'reject' | 'keep'>('')
   const [labelFilter, setLabelFilter] = useState<number | null>(null)
   const [color, setColor] = useState<number | null>(null)
@@ -401,7 +407,7 @@ export default function App() {
     catch (e) { say(`Błąd: ${e}`, 'err') }
   }
   const onlyFav = mode === 'favs'
-  const photos = useMemo(() => {
+  const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
     const list = all.filter((p) =>
       (!folder || dirOf(p.path) === folder) &&
@@ -427,6 +433,11 @@ export default function App() {
     else list.sort((a, b) => (sort === 'date-desc' ? whenOf(b).localeCompare(whenOf(a)) : whenOf(a).localeCompare(whenOf(b))))
     return list
   }, [all, albumNames, propOf, query, folder, albumId, person, trayView, tray, onlyFav, minStars, flagFilter, labelFilter, color, dateFrom, dateTo, missing, sort, activeTags, albumPos])
+  const stacks = useMemo(() => findStacks(all), [all])
+  const stackTotal = useMemo(() => stackCount(stacks), [stacks])
+  const collapsed = useMemo(() => (stacksOn && stackTotal > 0 ? collapseStacks(filtered, stacks, openStacks) : null), [stacksOn, stackTotal, filtered, stacks, openStacks])
+  /** Lista pokazywana w bibliotece: po filtrach, a przy włączonych stosach ze zwiniętymi stosami. */
+  const photos = collapsed ? collapsed.list : filtered
 
   // Foldery od najnowszego; rok albumu to rok jego najnowszego zdjęcia (jak w Picasie).
   const folders = useMemo(() => {
@@ -896,6 +907,7 @@ export default function App() {
   const selSet = useMemo(() => new Set(sel), [sel])
   const tile = (p: Photo, ratio43: boolean) => {
     const on = selSet.has(p.id)
+    const sb = collapsed?.badges.get(p.id)
     return (
       <button
         key={p.id}
@@ -918,10 +930,10 @@ export default function App() {
         onDragEnd={() => { setDragIds(null); setDropOver(null) }}
         onDragOver={reorderMode && dragIds ? (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move' } : undefined}
         onDrop={reorderMode && dragIds ? (e) => { e.preventDefault(); dropOnPhoto(p.id) } : undefined}
-        aria-label={`${p.name}, ocena ${p.rating}${p.favorite ? ', ulubione' : ''}${flagOf(p) === 1 ? ', wybrane' : flagOf(p) === -1 ? ', odrzucone' : ''}${labelOf(p) ? `, etykieta ${LABELS[labelOf(p) - 1].name}` : ''}`}
+        aria-label={`${p.name}, ocena ${p.rating}${p.favorite ? ', ulubione' : ''}${sb?.leader ? `, stos ${sb.count} zdjęć` : ''}${flagOf(p) === 1 ? ', wybrane' : flagOf(p) === -1 ? ', odrzucone' : ''}${labelOf(p) ? `, etykieta ${LABELS[labelOf(p) - 1].name}` : ''}`}
         aria-pressed={on}
         className={`bare group relative overflow-hidden text-left ${ratio43 ? 'aspect-[4/3]' : 'h-full w-full'}`}
-        style={{ borderRadius: 'var(--r-card)', boxShadow: on ? '0 0 0 3px var(--accent)' : 'var(--elev-1)', opacity: flagOf(p) === -1 && !on ? 0.5 : 1, contentVisibility: 'auto', containIntrinsicSize: `${size}px ${Math.round(size * 0.75)}px` }}
+        style={{ borderRadius: 'var(--r-card)', boxShadow: on ? '0 0 0 3px var(--accent)' : sb?.open ? '0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent)' : 'var(--elev-1)', opacity: flagOf(p) === -1 && !on ? 0.5 : 1, contentVisibility: 'auto', containIntrinsicSize: `${size}px ${Math.round(size * 0.75)}px` }}
       >
         <Thumb photo={p} />
         <div className="absolute inset-x-0 bottom-0 flex items-center justify-between p-2 opacity-0 transition group-hover:opacity-100" style={{ background: 'linear-gradient(transparent, rgba(0,0,0,.65))' }}>
@@ -929,6 +941,16 @@ export default function App() {
             {Array.from({ length: p.rating }).map((_, k) => <Star key={k} size={13} fill="currentColor" />)}
           </span>
         </div>
+        {sb?.leader && (
+          <span role="button" tabIndex={0} aria-label={sb.open ? `Zwiń stos ${sb.count} zdjęć` : `Rozwiń stos ${sb.count} zdjęć`} title={sb.kind === 'pair' ? 'RAW + JPEG: kliknij, żeby pokazać oba pliki' : 'Seria zdjęć: kliknij, żeby pokazać wszystkie'}
+            className="absolute left-2 bottom-2 flex items-center gap-1"
+            style={{ padding: '2px 8px', borderRadius: 99, background: 'rgba(0,0,0,.62)', color: '#fff', fontSize: 12, fontWeight: 650, cursor: 'pointer', zIndex: 2 }}
+            onClick={(e) => { e.stopPropagation(); toggleStack(p.id) }}
+            onDoubleClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); toggleStack(p.id) } }}>
+            <Copy size={12} /> {sb.open ? 'Zwiń' : sb.kind === 'pair' ? 'RAW+JPEG' : `×${sb.count}`}
+          </span>
+        )}
         {(flagOf(p) !== 0 || labelOf(p) !== 0) && (
           <span className="absolute bottom-2 right-2 flex items-center gap-1" aria-hidden>
             {labelOf(p) !== 0 && <span style={{ width: 15, height: 15, borderRadius: '50%', background: LABELS[labelOf(p) - 1].css, border: '1.5px solid #fff', boxShadow: '0 1px 3px rgba(0,0,0,.5)' }} />}
@@ -1232,6 +1254,13 @@ export default function App() {
                     {memories.length > 1 && <Chip onClick={() => openMemory(memories.flatMap((m) => m.ids), dayLabel(today))} label="Wszystkie zdjęcia z tego dnia">Wszystkie</Chip>}
                   </div>
                   <button className="ico" aria-label="Ukryj wspomnienia do jutra" title="Ukryj do jutra" onClick={dismissMemories}><X size={16} /></button>
+                </div>
+              )}
+              {mode === 'library' && !person && stackTotal > 0 && (
+                <div className="chips" style={{ marginTop: 10 }}>
+                  <Chip on={stacksOn} onClick={() => setStacksOn(!stacksOn)} label={stacksOn ? 'Pokaż wszystkie zdjęcia osobno' : 'Zwiń serie zdjęć i pary RAW + JPEG w stosy'}>
+                    <Copy size={13} /> {stacksOn ? `Stosy włączone (${stackTotal})` : `Stosy: ${stackTotal} ${pl(stackTotal, 'seria lub para', 'serie lub pary', 'serii lub par')}`}
+                  </Chip>
                 </div>
               )}
               {!faceView && !railOn && years.length > 1 && (

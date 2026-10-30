@@ -80,6 +80,11 @@ const photos = Array.from({ length: PHOTO_N }, (_, i) => {
     color: i % 12,
   }
 })
+// Przykładowe stosy do podglądu: para RAW + JPEG i seria trzech zdjęć (te same: folder, aparat i czas z sekundą różnicy).
+for (const [i, name, taken] of [[10, "IMG_5000.ARW", "2026-01-05 09:00:00"], [11, "IMG_5000.jpg", "2026-01-05 09:00:00"], [12, "IMG_5101.jpg", "2026-01-05 09:10:00"], [13, "IMG_5102.jpg", "2026-01-05 09:10:01"], [14, "IMG_5103.jpg", "2026-01-05 09:10:02"]] as [number, string, string][]) {
+  const p = photos[i]
+  p.path = `C:\\Zdjecia\\${FOLDERS[0]}\\${name}`; p.name = name; p.taken = taken; p.camera = "Canon EOS R6"
+}
 
 const faceCards = (personId: number) =>
   Array.from({ length: 26 }, (_, k) => ({ face: personId * 100 + k, photo: ((personId * 7 + k * 3) % PHOTO_N) + 1, unsure: k < 5 && personId % 2 === 1 }))
