@@ -130,7 +130,7 @@ export default function App() {
   const [sort, setSort] = useState<Sort>('date-desc')
   // Przeciąganie zdjęć: na album (pasek na dole) albo, w albumie z własną kolejnością, na inne zdjęcie.
   const [dragIds, setDragIds] = useState<number[] | null>(null)
-  const [dropOver, setDropOver] = useState<number | 'new' | null>(null)
+  const [dropOver, setDropOver] = useState<number | string | null>(null)
   const [albumPos, setAlbumPos] = useState<Map<number, number>>(new Map())
   const [activeTags, setActiveTags] = useState<string[]>([])
   const [tagDlg, setTagDlg] = useState(false)
@@ -900,6 +900,24 @@ export default function App() {
     if (!ids.length) return
     try { await addToAlbum(a.id, ids); await afterAlbumChange(); say(`Dodano do albumu „${a.name}”: ${ids.length}`, 'ok') }
     catch (e) { say(`Błąd albumu: ${e}`, 'err') }
+  }
+  /** Upuszczenie przeciąganych zdjęć na folder z paska na dole: po potwierdzeniu pliki są przenoszone na dysku (zablokowane foldery i zajęte nazwy obsługuje przenoszenie). */
+  const dropOnFolder = (dir: string) => {
+    const ids = (dragIds ?? []).filter((i) => i >= 0)
+    setDragIds(null); setDropOver(null)
+    const moving = all.filter((p) => ids.includes(p.id) && dirOf(p.path) !== dir)
+    if (!moving.length) { say('Te zdjęcia już są w tym folderze', 'ok'); return }
+    setConfirm({
+      text: `Przenieść ${moving.length} ${pl(moving.length, 'zdjęcie', 'zdjęcia', 'zdjęć')} (${sizeText(moving)}) do folderu „${folderName(dir)}”? Pliki zmienią miejsce na dysku razem z plikami XMP i edycją.`,
+      yes: 'Przenieś',
+      run: async () => {
+        try {
+          const r = await movePhotos(moving.map((p) => p.id), dir, false)
+          await reload()
+          say(r.errors.length ? `Przeniesiono ${r.done}, błędy: ${r.errors.length} (${r.errors[0]})` : `Przeniesiono do „${folderName(dir)}”: ${r.done}`, r.errors.length ? 'err' : 'ok')
+        } catch (e) { say(`Błąd: ${e}`, 'err'); await reload() }
+      },
+    })
   }
   const dropOnNewAlbum = () => {
     const ids = (dragIds ?? []).filter((i) => i >= 0)
@@ -1713,7 +1731,8 @@ export default function App() {
       <UpdateDialog u={updater} />
 
       {dragIds && !reorderMode && (mode === 'library' || mode === 'favs') && (
-        <div className="glass fixed inset-x-3 z-[1500] flex items-center gap-2 overflow-x-auto p-3" style={{ bottom: 'calc(12px + var(--sab))', borderRadius: 'var(--r-lg)' }} role="region" aria-label="Upuść zdjęcia na album">
+        <div className="glass fixed inset-x-3 z-[1500] flex flex-col gap-2 p-3" style={{ bottom: 'calc(12px + var(--sab))', borderRadius: 'var(--r-lg)' }} role="region" aria-label="Upuść zdjęcia na album lub folder">
+          <div className="flex items-center gap-2 overflow-x-auto" style={{ width: '100%', flexWrap: 'nowrap' }}>
           <span style={{ fontSize: 13, color: 'var(--muted)', whiteSpace: 'nowrap' }}>Upuść na album ({dragIds.length}):</span>
           {visibleAlbums.map((a) => (
             <span key={a.id} className={`chip${dropOver === a.id ? ' on' : ''}`} style={{ flex: 'none' }}
@@ -1729,6 +1748,23 @@ export default function App() {
             onDrop={(e) => { e.preventDefault(); dropOnNewAlbum() }}>
             <Plus size={14} /> Nowy album…
           </span>
+          </div>
+          {(() => {
+            const targets = [...folders].filter(([d]) => !locked.includes(d)).sort((a, b) => folderName(a[0]).localeCompare(folderName(b[0]), 'pl', { numeric: true })).slice(0, 40)
+            return targets.length > 0 && (
+              <div className="flex items-center gap-2 overflow-x-auto" style={{ width: '100%', flexWrap: 'nowrap' }}>
+                <span style={{ fontSize: 13, color: 'var(--muted)', whiteSpace: 'nowrap' }}>Przenieś do folderu:</span>
+                {targets.map(([dir]) => (
+                  <span key={dir} className={`chip${dropOver === `dir:${dir}` ? ' on' : ''}`} style={{ flex: 'none' }} title={dir}
+                    onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDropOver(`dir:${dir}`) }}
+                    onDragLeave={() => setDropOver((c) => (c === `dir:${dir}` ? null : c))}
+                    onDrop={(e) => { e.preventDefault(); dropOnFolder(dir) }}>
+                    <FolderOpen size={14} /> {folderName(dir)}
+                  </span>
+                ))}
+              </div>
+            )
+          })()}
         </div>
       )}
       {moveFaces && person?.id !== undefined && (

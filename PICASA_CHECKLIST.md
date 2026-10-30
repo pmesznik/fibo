@@ -109,6 +109,7 @@ Lista powstała z pamięci o Picasie 3, z przeglądu FIBO i z oficjalnego podrę
 - [ ] **Wersja angielska interfejsu** (przełącznik języka). P3 T L
 - [x] **Suwak wielkości miniatur** z zapamiętaniem oraz tryby wyświetlania (siatka, lista z danymi). P3 T S Częściowo: suwak z zapamiętaniem gotowy, widoku listy nie ma.
 - [x] **Pasek stanu z liczbą zaznaczonych i rozmiarem**. P4 T S Gotowe pod tytułem widoku.
+- [x] **Przeciąganie zdjęć na foldery**: pasek „Przenieś do folderu” pod paskiem albumów podczas przeciągania; po upuszczeniu program pyta o potwierdzenie i przenosi pliki (z XMP i edycją), pomijając foldery zablokowane.
 - [x] **Przeciąganie zdjęć na albumy** w menu bocznym. P3 T M Gotowe jako pasek albumów na dole podczas przeciągania (nie w menu bocznym).
 - [ ] **Przeciągnij i upuść plików z Eksploratora** do FIBO (dodanie folderu). P3 T M, uwaga: wymaga ponownego włączenia obsługi upuszczania w oknie
 - [ ] **Praca z wieloma biblioteka** (profile, np. rodzinna i służbowa). P4 T L
