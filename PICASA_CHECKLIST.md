@@ -37,7 +37,7 @@ Lista powstała z pamięci o Picasie 3, z przeglądu FIBO i z oficjalnego podrę
 - [x] Mapa z globusem, pinezki w kolorach, skupiska, dzień i noc z animacją
 - [x] Ręczne ustawianie lokalizacji (klik na mapie albo współrzędne)
 - [x] **Chipy osób w podglądzie zdjęcia** (kto jest na tym zdjęciu) i ręczne przypisanie twarzy do osoby. P1 T M Gotowe: znaczki osób, przejście do zdjęć osoby oraz poprawianie błędnego rozpoznania („To inna osoba”).
-- [ ] **Twarze, których nie znaleziono**: ręczne zaznaczenie twarzy na zdjęciu. P3 T M
+- [x] **Twarze, których nie znaleziono**: ręczne zaznaczenie twarzy na zdjęciu. P3 T M Gotowe jako „Dodaj twarz” w podglądzie: ramka rysowana myszą i wybór osoby.
 - [x] **„Zdjęcia osoby A i osoby B razem”** (przecięcie osób). P3 T S Gotowe: przycisk „Razem z…” w widoku osoby.
 - [ ] **Nazwy miejsc** (miasto, kraj) z lokalnego słownika współrzędnych, szukanie po miejscu. P3 T L
 - [x] **Eksport tras / lokalizacji** do pliku GPX lub KML. P4 T S Gotowe w oknie eksportu (GPX).

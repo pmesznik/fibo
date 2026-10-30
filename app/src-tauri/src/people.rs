@@ -64,6 +64,8 @@ pub fn init_schema(conn: &Connection) -> rusqlite::Result<()> {
     let _ = conn.execute("ALTER TABLE faces ADD COLUMN rejected INTEGER NOT NULL DEFAULT 0", []);
     // Migracja: pewność przypisania twarzy do osoby (podobieństwo do środka osoby, 0-1); NULL = jeszcze nie policzona.
     let _ = conn.execute("ALTER TABLE faces ADD COLUMN conf REAL", []);
+    // Migracja: twarz zaznaczona ręcznie przez użytkownika ramką na zdjęciu. Automatyczna analiza jej nie usuwa, nawet gdy detektor jej nie widzi.
+    let _ = conn.execute("ALTER TABLE faces ADD COLUMN added INTEGER NOT NULL DEFAULT 0", []);
     // „To nie ta osoba”: twarz wraca do nierozpoznanych, ale nie może znowu trafić do tej jednej osoby (do innych może).
     conn.execute_batch("CREATE TABLE IF NOT EXISTS face_not (face_id INTEGER NOT NULL, person_id INTEGER NOT NULL, PRIMARY KEY (face_id, person_id));")?;
     Ok(())
@@ -247,13 +249,13 @@ fn box_iou(a: (f32, f32, f32, f32), b: (f32, f32, f32, f32)) -> f32 {
 /// ręczne poprawki, odrzucenie i wyłączenia „to nie ta osoba”, więc ponowna analiza (także po zmianie modelu) niczego nie gubi.
 /// Pozostałym twarzom osoby przydziela potem grupowanie.
 fn store_faces(conn: &Connection, thumbs: &Path, photo_id: i64, modified: i64, found: Vec<NewFace>) -> Result<usize, String> {
-    struct Old { id: i64, rect: (f32, f32, f32, f32), person: Option<i64>, manual: i64, rejected: i64 }
+    struct Old { id: i64, rect: (f32, f32, f32, f32), person: Option<i64>, manual: i64, rejected: i64, added: i64 }
     let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
     let old: Vec<Old> = {
-        let mut stmt = tx.prepare("SELECT id, x, y, w, h, person_id, manual, rejected FROM faces WHERE photo_id = ?1").map_err(|e| e.to_string())?;
+        let mut stmt = tx.prepare("SELECT id, x, y, w, h, person_id, manual, rejected, added FROM faces WHERE photo_id = ?1").map_err(|e| e.to_string())?;
         let rows = stmt
             .query_map([photo_id], |r| {
-                Ok(Old { id: r.get(0)?, rect: (r.get::<_, f64>(1)? as f32, r.get::<_, f64>(2)? as f32, r.get::<_, f64>(3)? as f32, r.get::<_, f64>(4)? as f32), person: r.get(5)?, manual: r.get(6)?, rejected: r.get(7)? })
+                Ok(Old { id: r.get(0)?, rect: (r.get::<_, f64>(1)? as f32, r.get::<_, f64>(2)? as f32, r.get::<_, f64>(3)? as f32, r.get::<_, f64>(4)? as f32), person: r.get(5)?, manual: r.get(6)?, rejected: r.get(7)?, added: r.get(8)? })
             })
             .map_err(|e| e.to_string())?
             .filter_map(Result::ok)
@@ -288,8 +290,13 @@ fn store_faces(conn: &Connection, thumbs: &Path, photo_id: i64, modified: i64, f
             bars.push((n, v));
         }
     }
-    tx.execute("DELETE FROM face_not WHERE face_id IN (SELECT id FROM faces WHERE photo_id = ?1)", [photo_id]).map_err(|e| e.to_string())?;
-    tx.execute("DELETE FROM faces WHERE photo_id = ?1", [photo_id]).map_err(|e| e.to_string())?;
+    // Ręcznie zaznaczone twarze, których detektor nie znalazł w tym miejscu, zostają razem z osobą i wyłączeniami.
+    let kept: Vec<bool> = old.iter().enumerate().map(|(o, f)| f.added != 0 && !taken[o]).collect();
+    for (o, f) in old.iter().enumerate().filter(|(o, _)| !kept[*o]) {
+        let _ = o;
+        tx.execute("DELETE FROM face_not WHERE face_id = ?1", [f.id]).map_err(|e| e.to_string())?;
+        tx.execute("DELETE FROM faces WHERE id = ?1", [f.id]).map_err(|e| e.to_string())?;
+    }
     let mut new_ids = Vec::with_capacity(found.len());
     for (n, f) in found.iter().enumerate() {
         let sealed = seal_embedding(&f.emb)?;
@@ -313,13 +320,139 @@ fn store_faces(conn: &Connection, thumbs: &Path, photo_id: i64, modified: i64, f
     tx.execute("INSERT OR REPLACE INTO face_scan (photo_id, scanned_mod) VALUES (?1, ?2)", params![photo_id, modified]).map_err(|e| e.to_string())?;
     tx.commit().map_err(|e| e.to_string())?;
     // Pliki ruszamy dopiero po udanym zapisie w bazie. Numery twarzy mogą wrócić, więc stare wycinki usuwamy przed zapisem nowych.
-    for o in &old {
-        let _ = fs::remove_file(crops_dir(thumbs).join(format!("{}.jpg", o.id)));
+    for (o, f) in old.iter().enumerate().filter(|(o, _)| !kept[*o]) {
+        let _ = o;
+        let _ = fs::remove_file(crops_dir(thumbs).join(format!("{}.jpg", f.id)));
     }
     for (f, id) in found.iter().zip(&new_ids) {
         let _ = f.crop.save_with_format(crops_dir(thumbs).join(format!("{id}.jpg")), image::ImageFormat::Jpeg);
     }
     Ok(found.len())
+}
+
+/// Twarz zaznaczona ręcznie: wektor, jakość i wycinek policzone z ramki użytkownika.
+struct ManualFace {
+    emb: Vec<f32>,
+    quality: f32,
+    crop: RgbImage,
+}
+
+/// Zapisuje ręcznie zaznaczoną twarz (ramka w ułamkach zdjęcia) jako osobę wskazaną przez użytkownika albo nową. Twarz ma znacznik ręcznej poprawki,
+/// więc grupowanie jej nie rusza. Odmawia, gdy w tym miejscu jest już twarz albo wskazana osoba jest już na tym zdjęciu.
+fn add_manual_core(conn: &Connection, thumbs: &Path, photo_id: i64, rect: (f32, f32, f32, f32), person: Option<i64>, mf: ManualFace) -> Result<i64, String> {
+    let exists: bool = conn.query_row("SELECT 1 FROM photos WHERE id = ?1 AND hidden = 0", [photo_id], |_| Ok(())).is_ok();
+    if !exists {
+        return Err("Nie ma takiego zdjęcia".into());
+    }
+    let mut stmt = conn.prepare("SELECT x, y, w, h, person_id FROM faces WHERE photo_id = ?1").map_err(|e| e.to_string())?;
+    let faces: Vec<((f32, f32, f32, f32), Option<i64>)> = stmt
+        .query_map([photo_id], |r| Ok(((r.get::<_, f64>(0)? as f32, r.get::<_, f64>(1)? as f32, r.get::<_, f64>(2)? as f32, r.get::<_, f64>(3)? as f32), r.get(4)?)))
+        .map_err(|e| e.to_string())?
+        .filter_map(Result::ok)
+        .collect();
+    drop(stmt);
+    if faces.iter().any(|(b, _)| box_iou(*b, rect) > 0.5) {
+        return Err("W tym miejscu jest już twarz. Jeśli jest źle rozpoznana, użyj „To nie…”".into());
+    }
+    if let Some(p) = person {
+        if conn.query_row("SELECT 1 FROM people WHERE id = ?1", [p], |_| Ok(())).is_err() {
+            return Err("Nie ma takiej osoby".into());
+        }
+        if faces.iter().any(|(_, fp)| *fp == Some(p)) {
+            return Err("Ta osoba jest już zaznaczona na tym zdjęciu".into());
+        }
+    }
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    let target = match person {
+        Some(p) => p,
+        None => {
+            tx.execute("INSERT INTO people (name) VALUES (NULL)", []).map_err(|e| e.to_string())?;
+            tx.last_insert_rowid()
+        }
+    };
+    let sealed = seal_embedding(&mf.emb)?;
+    tx.execute(
+        "INSERT INTO faces (photo_id, person_id, x, y, w, h, score, quality, manual, added, emb) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1.0, ?7, 1, 1, ?8)",
+        params![photo_id, target, rect.0, rect.1, rect.2, rect.3, mf.quality, sealed],
+    )
+    .map_err(|e| e.to_string())?;
+    let face_id = tx.last_insert_rowid();
+    tx.commit().map_err(|e| e.to_string())?;
+    let _ = fs::create_dir_all(crops_dir(thumbs));
+    let _ = mf.crop.save_with_format(crops_dir(thumbs).join(format!("{face_id}.jpg")), image::ImageFormat::Jpeg);
+    Ok(target)
+}
+
+/// Wektor twarzy z ramki użytkownika. Punkty twarzy bierzemy z detektora, jeśli widzi twarz w tej ramce; inaczej z typowych proporcji twarzy w ramce.
+fn manual_face_from_image(engine: &Engine, img: &RgbImage, rect: (f32, f32, f32, f32)) -> Result<ManualFace, String> {
+    let (iw, ih) = (img.width() as f32, img.height() as f32);
+    let (bx, by, bw, bh) = (rect.0 * iw, rect.1 * ih, rect.2 * iw, rect.3 * ih);
+    if bw < 16.0 || bh < 16.0 {
+        return Err("Ramka jest za mała, zaznacz większą twarz".into());
+    }
+    // Detektor na wycinku z zapasem: znajduje punkty (oczy, nos, usta) dokładniej niż zgadywanie z ramki.
+    let (px, py) = (bw * 0.5, bh * 0.5);
+    let (cx0, cy0) = ((bx - px).max(0.0) as u32, (by - py).max(0.0) as u32);
+    let (cx1, cy1) = (((bx + bw + px).min(iw)) as u32, ((by + bh + py).min(ih)) as u32);
+    let region = image::imageops::crop_imm(img, cx0, cy0, (cx1 - cx0).max(1), (cy1 - cy0).max(1)).to_image();
+    let mut det: Option<Detection> = engine
+        .detect(&region, 0.3)?
+        .into_iter()
+        .map(|mut d| {
+            d.x += cx0 as f32;
+            d.y += cy0 as f32;
+            for p in d.lm.iter_mut() {
+                p.0 += cx0 as f32;
+                p.1 += cy0 as f32;
+            }
+            d
+        })
+        .filter(|d| box_iou((d.x, d.y, d.w, d.h), (bx, by, bw, bh)) >= 0.3)
+        .max_by(|a, b| box_iou((a.x, a.y, a.w, a.h), (bx, by, bw, bh)).total_cmp(&box_iou((b.x, b.y, b.w, b.h), (bx, by, bw, bh))));
+    if det.is_none() {
+        det = Some(Detection {
+            x: bx,
+            y: by,
+            w: bw,
+            h: bh,
+            score: 0.6,
+            lm: [(bx + 0.32 * bw, by + 0.40 * bh), (bx + 0.68 * bw, by + 0.40 * bh), (bx + 0.5 * bw, by + 0.58 * bh), (bx + 0.35 * bw, by + 0.78 * bh), (bx + 0.65 * bw, by + 0.78 * bh)],
+        });
+    }
+    let d = det.unwrap();
+    let aligned = align(img, &d.lm);
+    let emb = engine.embed_tta(&aligned)?;
+    let quality = face_quality(&d, &aligned);
+    // Wycinek pokazujemy z ramki użytkownika, żeby kafelek osoby pokazywał to, co zaznaczył.
+    let crop = crop_face(img, &Detection { x: bx, y: by, w: bw, h: bh, score: 1.0, lm: d.lm });
+    Ok(ManualFace { emb, quality, crop })
+}
+
+/// Dodaje twarz zaznaczoną ramką na zdjęciu (x, y, w, h w ułamkach zdjęcia po obrocie z EXIF) i przypisuje ją osobie (`person`) albo nowej osobie.
+/// Działa tylko po włączeniu rozpoznawania twarzy; to jedno zdjęcie, więc nie startuje analizy całej biblioteki. Zwraca numer osoby.
+#[tauri::command]
+pub async fn add_manual_face(app: tauri::AppHandle, photo_id: i64, x: f32, y: f32, w: f32, h: f32, person: Option<i64>) -> Result<i64, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        if ![x, y, w, h].iter().all(|v| v.is_finite()) || x < 0.0 || y < 0.0 || w < 0.01 || h < 0.01 || x + w > 1.001 || y + h > 1.001 {
+            return Err("Nieprawidłowa ramka".into());
+        }
+        let state = app.state::<AppState>();
+        let path: String = {
+            let conn = state.db.lock().map_err(|e| e.to_string())?;
+            if !enabled(&conn) {
+                return Err("Rozpoznawanie twarzy jest wyłączone. Włącz je w zakładce Osoby".into());
+            }
+            conn.query_row("SELECT path FROM photos WHERE id = ?1 AND hidden = 0 AND video = 0", [photo_id], |r| r.get(0)).map_err(|_| "Nie ma takiego zdjęcia".to_string())?
+        };
+        let rect = (x, y.min(1.0), w.min(1.0 - x), h.min(1.0 - y));
+        let img = load_oriented(Path::new(&path))?;
+        let engine = load_engine(&app)?;
+        let mf = manual_face_from_image(&engine, &img, rect)?;
+        let conn = state.db.lock().map_err(|e| e.to_string())?;
+        add_manual_core(&conn, &state.thumbs, photo_id, rect, person, mf)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Dzień (liczba dni od 1970) z tekstu daty „RRRR-MM-DD…” albo „RRRR:MM:DD…”.
@@ -1719,6 +1852,36 @@ mod tests {
         assert_eq!(fs::read_dir(crops_dir(&tmp)).unwrap().count(), 3);
         assert_eq!(n("SELECT COUNT(*) FROM faces"), 3);
         assert_eq!(n("SELECT COUNT(*) FROM people"), 1);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn manual_faces_are_added_checked_and_survive_reanalysis() {
+        let (c, tmp) = lib_with_photos(2);
+        store_faces(&c, &tmp, 1, 5, vec![new_face(unit(0), 0.9)]).unwrap();
+        regroup(&c).unwrap();
+        let known: i64 = c.query_row("SELECT person_id FROM faces WHERE photo_id = 1", [], |r| r.get(0)).unwrap();
+        let mf = |i: usize| ManualFace { emb: unit(i), quality: 0.5, crop: RgbImage::new(8, 8) };
+        // Ramka na istniejącej twarzy (new_face ma ramkę 0.1,0.1,0.2,0.2) jest odrzucona.
+        let existing: (f32, f32, f32, f32) = c.query_row("SELECT x, y, w, h FROM faces WHERE photo_id = 1", [], |r| Ok((r.get::<_, f64>(0)? as f32, r.get::<_, f64>(1)? as f32, r.get::<_, f64>(2)? as f32, r.get::<_, f64>(3)? as f32))).unwrap();
+        assert!(add_manual_core(&c, &tmp, 1, existing, None, mf(3)).is_err());
+        // Ta sama osoba nie może być na zdjęciu dwa razy.
+        assert!(add_manual_core(&c, &tmp, 1, (0.6, 0.6, 0.2, 0.2), Some(known), mf(3)).is_err());
+        // Nowa osoba i istniejąca osoba na innym zdjęciu.
+        let fresh = add_manual_core(&c, &tmp, 1, (0.6, 0.6, 0.2, 0.2), None, mf(3)).unwrap();
+        assert_ne!(fresh, known);
+        let on2 = add_manual_core(&c, &tmp, 2, (0.2, 0.2, 0.3, 0.3), Some(known), mf(0)).unwrap();
+        assert_eq!(on2, known);
+        assert!(add_manual_core(&c, &tmp, 2, (0.2, 0.2, 0.3, 0.3), Some(9999), mf(0)).is_err(), "nieistniejąca osoba");
+        let n = |sql: &str| -> i64 { c.query_row(sql, [], |r| r.get(0)).unwrap() };
+        assert_eq!(n("SELECT COUNT(*) FROM faces WHERE added = 1 AND manual = 1"), 2);
+        // Grupowanie i ponowna analiza (która nie widzi ręcznych twarzy) niczego nie zabierają.
+        regroup(&c).unwrap();
+        store_faces(&c, &tmp, 1, 6, vec![new_face(unit(0), 0.9)]).unwrap();
+        store_faces(&c, &tmp, 2, 6, vec![]).unwrap();
+        assert_eq!(n("SELECT COUNT(*) FROM faces WHERE photo_id = 1"), 2, "twarz z detektora i ręczna");
+        assert_eq!(n("SELECT COUNT(*) FROM faces WHERE photo_id = 2 AND person_id = (SELECT person_id FROM faces WHERE photo_id = 1 AND added = 0)"), 1);
+        assert_eq!(fs::read_dir(crops_dir(&tmp)).unwrap().count(), 3, "wycinki ręcznych twarzy zostały");
     }
 
     #[cfg(windows)]

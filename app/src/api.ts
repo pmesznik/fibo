@@ -192,6 +192,7 @@ export const deleteEdit = (id: number) => invoke('delete_edit', { id })
 export const listEditHistory = (id: number) => invoke<EditVersion[]>('list_edit_history', { id })
 export const getEditVersion = (id: number, version: number) => invoke<string>('get_edit_version', { id, version })
 
+export const addManualFace = (photoId: number, x: number, y: number, w: number, h: number, person: number | null) => invoke<number>('add_manual_face', { photoId, x, y, w, h, person })
 export type OrganizePlan = {
   moves: { id: number; name: string; from_dir: string; to_dir: string; rel: string; file_date: boolean }[]
   in_place: number

@@ -27,6 +27,8 @@ i poproś o kontakt). Najnowsza wydana wersja jest jedyną wspieraną.
 - **Porządkowanie według daty** przenosi tylko zdjęcia znane FIBO, wskazane przez użytkownika, i tylko do folderu wybranego przez niego. Cel każdego przeniesienia jest sprawdzany
   (musi leżeć wewnątrz folderu docelowego, bez `..`), pliki nie są nadpisywane, zablokowane foldery są pomijane, a plan jest do wglądu przed zmianą. Dziennik ostatnich 5 partii
   w bazie służy do cofania i cofanie odmawia ruchu, gdy zdjęcie zmieniło miejsce albo dawne miejsce jest zajęte. Nic nie wychodzi z komputera.
+- **Ręczne zaznaczanie twarzy** (przycisk „Dodaj twarz” w podglądzie) działa tylko po włączeniu rozpoznawania twarzy i tylko na jednym zdjęciu. Ramka jest sprawdzana (ułamki 0 do 1,
+  minimalny rozmiar), wektor liczą te same dołączone, sprawdzane modele lokalnie i trafia do bazy zaszyfrowany jak pozostałe. Nic nie wychodzi z komputera.
 - **Edycja nieniszcząca** zapisuje tylko przepis edycji (tekst JSON do 256 KB: korekty, efekty, napisy, ustawienia RAW) w bazie i, gdy zapis metadanych jest
   włączony, w pliku `<zdjęcie>.fibo.json` obok zdjęcia (poza zablokowanymi folderami). Plik zdjęcia pozostaje nietknięty. Przepis jest tylko sprawdzany
   jako JSON, a nie wykonywany. Pliki `.fibo.json` innych autorów są wczytywane tylko przy znaczniku `fibo_edit` i limicie rozmiaru.

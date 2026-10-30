@@ -2,10 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   X, ChevronLeft, ChevronRight, Star, Heart, Play, Pause, Maximize, Undo2, Redo2,
   RotateCcw, RotateCw, FlipHorizontal, FlipVertical, Eye, Wand2, Save, CopyPlus, History,
-  ZoomIn, ZoomOut, Compare, Sliders, Sparkles, Info, Tag, Crop as CropIcon, Trash2, Sun, Palette, Aperture, Pencil, Zap, Plus,
+  ZoomIn, ZoomOut, Compare, Sliders, Sparkles, Info, Tag, Crop as CropIcon, Trash2, Sun, Palette, Aperture, Pencil, Zap, Users, Plus,
 } from './FiboIcons'
 import { decodeBitmap } from './imageDecode'
-import { pickFile, readAudio, hasOriginal, photoPeople, readImage, restoreOriginal, saveEdit, setCaption, setPersonCover, photoExif, listPeople, reassignPersonFaces, type Person, setFavorite, setRating, setFlag, setLabel, videoUrl, developRaw, isRawName, RAW_NEUTRAL, getEdit, saveEditRecipe, putEditThumbnail, deleteEdit, listEditHistory, getEditVersion, type EditVersion, type RawParams, type Photo, type PhotoPerson } from './api'
+import { pickFile, readAudio, hasOriginal, photoPeople, addManualFace, readImage, restoreOriginal, saveEdit, setCaption, setPersonCover, photoExif, listPeople, reassignPersonFaces, type Person, setFavorite, setRating, setFlag, setLabel, videoUrl, developRaw, isRawName, RAW_NEUTRAL, getEdit, saveEditRecipe, putEditThumbnail, deleteEdit, listEditHistory, getEditVersion, type EditVersion, type RawParams, type Photo, type PhotoPerson } from './api'
 import { FaceImg } from './People'
 import { copyEdit, deletePreset, getClip, loadPresets, savePreset, type Preset } from './editor/batch'
 import { Thumb } from './Thumb'
@@ -250,6 +250,10 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
   // Opis zdjęcia (zapis po opuszczeniu pola) i osoby rozpoznane na zdjęciu.
   const [captionDraft, setCaptionDraft] = useState('')
   const [people, setPeople] = useState<PhotoPerson[]>([])
+  /** Ręczne zaznaczanie twarzy: tryb rysowania ramki, ramka w trakcie rysowania i wybór osoby po jej narysowaniu (ułamki zdjęcia). */
+  const [tagMode, setTagMode] = useState(false)
+  const [tagBox, setTagBox] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null)
+  const [tagPick, setTagPick] = useState<{ x: number; y: number; w: number; h: number; options: Person[] } | null>(null)
   const [reassign, setReassign] = useState<{ from: PhotoPerson; options: Person[] } | null>(null)
   const [exifRows, setExifRows] = useState<[string, string][]>([])
   useEffect(() => { setCaptionDraft(photo?.caption ?? '') }, [photo?.id, photo?.caption])
@@ -492,6 +496,45 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
   }
   const strip = useMemo(() => photos.slice(Math.max(0, index - 12), index + 13), [photos, index])
 
+  const startTagging = () => {
+    if (JSON.stringify(edit.geo) !== JSON.stringify(EMPTY_EDIT.geo)) { say('Przed zaznaczaniem twarzy cofnij obrót, odbicie i kadrowanie, żeby ramka pasowała do zdjęcia', 'err'); return }
+    setRedEyeMode(false); setNeutralMode(false); setRetouchMode(false); setCenterFor(null)
+    setZoom(1); setPan({ x: 0, y: 0 }); setTagBox(null); setTagMode(true)
+  }
+  const tagFrac = (e: React.PointerEvent) => {
+    const r = canvasRef.current?.getBoundingClientRect()
+    if (!r || r.width < 1 || r.height < 1) return { x: 0, y: 0 }
+    return { x: Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), y: Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)) }
+  }
+  const tagDown = (e: React.PointerEvent) => {
+    const p = tagFrac(e)
+    e.currentTarget.setPointerCapture(e.pointerId)
+    setTagBox({ x0: p.x, y0: p.y, x1: p.x, y1: p.y })
+  }
+  const tagMove = (e: React.PointerEvent) => {
+    if (!tagBox) return
+    const p = tagFrac(e)
+    setTagBox({ ...tagBox, x1: p.x, y1: p.y })
+  }
+  const tagUp = async () => {
+    if (!tagBox) return
+    const b = { x: Math.min(tagBox.x0, tagBox.x1), y: Math.min(tagBox.y0, tagBox.y1), w: Math.abs(tagBox.x1 - tagBox.x0), h: Math.abs(tagBox.y1 - tagBox.y0) }
+    setTagBox(null)
+    if (b.w < 0.02 || b.h < 0.02) { say('Przeciągnij myszą od jednego rogu twarzy do drugiego', 'err'); return }
+    try { setTagPick({ ...b, options: (await listPeople()).filter((o) => !o.ignored) }) } catch (e) { say(`Błąd: ${e}`, 'err') }
+  }
+  const tagSave = async (person: number | null) => {
+    const p = tagPick
+    if (!p || !photo) return
+    setTagPick(null)
+    say('Dodaję twarz…', 'ok')
+    try {
+      await addManualFace(photo.id, p.x, p.y, p.w, p.h, person)
+      setPeople(await photoPeople(photo.id)); setTagMode(false)
+      say('Dodano twarz do osoby', 'ok')
+    } catch (e) { say(`${e}`, 'err') }
+  }
+
   if (!photo) return null
   const slidersFx = edit.fx.filter((f) => EFFECTS.find((e) => e.id === f.id)?.slider)
 
@@ -523,6 +566,17 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
             transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: 'center center',
           }}
         />
+        {tagMode && (() => {
+          const r = canvasRef.current?.getBoundingClientRect()
+          if (!r) return null
+          const b = tagBox && { x: Math.min(tagBox.x0, tagBox.x1), y: Math.min(tagBox.y0, tagBox.y1), w: Math.abs(tagBox.x1 - tagBox.x0), h: Math.abs(tagBox.y1 - tagBox.y0) }
+          return (
+            <div role="application" aria-label="Zaznacz twarz na zdjęciu przeciągając myszą" onPointerDown={tagDown} onPointerMove={tagMove} onPointerUp={tagUp} onPointerCancel={() => setTagBox(null)}
+              style={{ position: 'fixed', left: r.left, top: r.top, width: r.width, height: r.height, cursor: 'crosshair', touchAction: 'none', zIndex: 4, outline: '2px dashed var(--accent)', outlineOffset: -2 }}>
+              {b && <div style={{ position: 'absolute', left: `${b.x * 100}%`, top: `${b.y * 100}%`, width: `${b.w * 100}%`, height: `${b.h * 100}%`, border: '2px solid #fff', boxShadow: '0 0 0 1px rgba(0,0,0,.6), 0 0 0 9999px rgba(0,0,0,.35)', borderRadius: 6 }} />}
+            </div>
+          )
+        })()}
         {compare && (
           <div className="chip on" style={{ position: 'absolute', left: '50%', bottom: 'calc(112px + var(--sab))', transform: 'translateX(-50%)', background: 'var(--panel)', pointerEvents: 'none' }}>Oryginał (bez zmian)</div>
         )}
@@ -541,6 +595,38 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
       )}
 
       {music && <audio ref={audioRef} src={music.url} loop />}
+      {tagMode && !tagPick && (
+        <div className="chip glass" role="status" style={{ position: 'absolute', left: '50%', top: 'calc(84px + var(--sat))', transform: 'translateX(-50%)', zIndex: 5, gap: 10 }}>
+          Zaznacz twarz: przeciągnij ramkę od rogu do rogu
+          <button className="text" onClick={() => { setTagMode(false); setTagBox(null) }}>Anuluj</button>
+        </div>
+      )}
+      {tagPick && (
+        <>
+          <div className="fixed inset-0 z-[1700]" style={{ background: 'rgba(0,0,0,.45)' }} onClick={() => setTagPick(null)} />
+          <div className="glass fixed left-1/2 top-1/2 z-[1800] flex max-h-[85vh] w-[min(92vw,460px)] -translate-x-1/2 -translate-y-1/2 flex-col" style={{ borderRadius: 'var(--r-lg)' }} role="dialog" aria-label="Kto jest na zaznaczonej twarzy">
+            <div className="dr-head" style={{ paddingBottom: 0 }}>
+              <span>Kto to jest?</span>
+              <button className="ico" aria-label="Zamknij" onClick={() => setTagPick(null)}><X size={22} /></button>
+            </div>
+            <div style={{ padding: '4px 16px 8px', color: 'var(--muted)', fontSize: 13 }}>Wskaż osobę dla zaznaczonej twarzy. Program zapamięta ją i użyje przy rozpoznawaniu kolejnych zdjęć.</div>
+            <div className="sheet-body" style={{ padding: '0 16px 16px' }}>
+              <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(88px, 1fr))' }}>
+                <button className="bare text-center" aria-label="Nowa osoba" onClick={() => tagSave(null)}>
+                  <div style={{ width: 64, height: 64, margin: '0 auto', borderRadius: '50%', display: 'grid', placeItems: 'center', background: 'var(--tonal)', fontSize: 28 }}>+</div>
+                  <div style={{ fontSize: 13, marginTop: 4 }}>Nowa osoba</div>
+                </button>
+                {tagPick.options.map((o) => (
+                  <button key={o.id} className="bare text-center" aria-label={o.name ?? 'Nieznana osoba'} onClick={() => tagSave(o.id)}>
+                    <div style={{ width: 64, height: 64, margin: '0 auto', borderRadius: '50%', overflow: 'hidden', background: 'var(--tonal)' }}>{o.cover !== null && <FaceImg id={o.cover} size={64} />}</div>
+                    <div className="truncate" style={{ fontSize: 13, marginTop: 4 }}>{o.name ?? 'Nieznana osoba'}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
       {reassign && (
         <>
           <div className="fixed inset-0 z-[1700]" style={{ background: 'rgba(0,0,0,.45)' }} onClick={() => setReassign(null)} />
@@ -572,9 +658,12 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
           {photo.caption}
         </div>
       )}
-      {people.length > 0 && onOpenPerson && (
+      {onOpenPerson && !photo.video && photo.id >= 0 && (
         <div className="flex gap-2" role="group" aria-label="Osoby na zdjęciu"
           style={{ position: 'absolute', left: 12, bottom: 'calc(112px + var(--sab))', maxWidth: `calc(100% - ${sheet ? 420 : 24}px)`, flexWrap: 'wrap', zIndex: 3 }}>
+          <button className={`chip glass${tagMode ? ' on' : ''}`} style={{ gap: 6 }} aria-pressed={tagMode} title="Zaznacz twarz, której program nie wykrył, i wskaż, kto to jest" onClick={() => (tagMode ? setTagMode(false) : startTagging())}>
+            <Users size={14} /> Dodaj twarz
+          </button>
           {people.map((p) => (
             <button key={p.id} className="chip glass" style={{ paddingLeft: 4, gap: 6 }} aria-label={`Pokaż zdjęcia: ${p.name ?? 'Nieznana osoba'}`} title="Pokaż wszystkie zdjęcia tej osoby"
               onClick={() => onOpenPerson(p.id, p.name)}>

@@ -12,7 +12,7 @@
 <link rel="alternate" hreflang="pl" href="../pl/">
 <link rel="stylesheet" href="../assets/site.css">
 </head>
-<body data-lang="en" data-repo="pmesznik/fibo" data-version="0.4.40">
+<body data-lang="en" data-repo="pmesznik/fibo" data-version="0.4.41">
 <a class="skip" href="#docs">Documentation</a>
 <header class="top">
   <div class="wrap bar">
@@ -223,6 +223,7 @@
         <li><strong>Names stay in the FIBO database</strong> and never go into photo files or XMP.</li>
         <li>For each person you can <em>name</em>, <em>pick a cover</em> (the face shown in the list: the <em>Change cover</em> button on the person, or <em>Cover</em> next to the person chip in the viewer), <em>merge</em> (when one person ended up in two groups): drag one person onto another and click <em>Confirm</em> or <em>ignore</em> them. Click a person to see their photos.</li>
         <li><strong>Accuracy and speed.</strong> Photos are analysed on several threads at once and faces are searched at a higher resolution, so small background faces are found too (about 40% more than before on test photos). A face vector is averaged with its mirror image, and every face gets a quality score (sharpness, size, head pose). Weak faces do not create people: they join confident ones or stay ungrouped.</li>
+        <li><strong>Faces the program missed.</strong> In the photo viewer, <em>Add face</em> lets you draw a box around a face and pick the person (existing or new). It affects only that one photo and does not start library analysis. Such a face is treated as manually corrected: grouping leaves it alone and re-analysis does not remove it.</li>
         <li><strong>Grouping precision.</strong> Two faces from one photo never end up in one person (this separates siblings in group photos). Grouping is hierarchical, so it does not depend on photo order. Named people and manually corrected faces are anchored: automatic grouping leaves them alone, and new matching faces may join them. The <em>Regroup</em> and <em>Re-analyse</em> buttons in the People tab refresh the result without losing names.</li>
         <li><strong>Delete face data</strong> removes people, vectors and face crops and turns the feature off. Your photos are untouched.</li>
       </ul></section>
