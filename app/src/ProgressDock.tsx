@@ -3,7 +3,7 @@ import { listen } from '@tauri-apps/api/event'
 import { CalendarDays, Search, Check, Copy, Download, Images, Pause, RefreshCw, RotateCw, Save, Users, Wand2, X } from './FiboIcons'
 import { facesStop, inTauri, type FacesProgress } from './api'
 
-type Kind = 'scan' | 'faces' | 'dups' | 'backup' | 'colors' | 'rotate' | 'export' | 'gallery' | 'pdf' | 'gif' | 'import' | 'check' | 'refresh' | 'sidecar' | 'paste' | 'calendar' | 'clip' | 'raw'
+type Kind = 'scan' | 'faces' | 'dups' | 'backup' | 'colors' | 'rotate' | 'export' | 'gallery' | 'pdf' | 'gif' | 'import' | 'check' | 'refresh' | 'sidecar' | 'paste' | 'calendar' | 'clip' | 'raw' | 'organize'
 type Job = {
   kind: Kind
   done: number
@@ -46,6 +46,7 @@ const META: Record<Kind, { title: string; unit: [string, string, string]; Icon: 
   refresh: { title: 'Odświeżanie danych zdjęć', unit: PHOTOS, Icon: RefreshCw },
   sidecar: { title: 'Zapis metadanych do plików XMP', unit: PHOTOS, Icon: Save },
   paste: { title: 'Wklejanie edycji do zdjęć', unit: PHOTOS, Icon: Wand2 },
+  organize: { title: 'Porządkowanie zdjęć w folderach', unit: PHOTOS, Icon: Copy },
   raw: { title: 'Wywoływanie zdjęcia RAW', unit: PHOTOS, Icon: Images },
   clip: { title: 'Indeksowanie zdjęć do szukania po treści', unit: PHOTOS, Icon: Search },
   calendar: { title: 'Tworzenie kalendarza', unit: ['strona', 'strony', 'stron'], Icon: CalendarDays },

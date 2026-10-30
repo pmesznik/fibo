@@ -26,6 +26,7 @@ mod edits;
 mod faces;
 mod gallery;
 mod locks;
+mod organize;
 mod pdf;
 mod people;
 mod secure;
@@ -143,6 +144,7 @@ fn open_db(path: &Path) -> rusqlite::Result<Connection> {
     people::init_schema(&conn)?;
     clip::init_schema(&conn)?;
     edits::init_schema(&conn)?;
+    organize::init_schema(&conn)?;
     locks::init_schema(&conn)?;
     // Albumy inteligentne: nazwa i zapisane filtry (JSON); zawartość liczy się na bieżąco z biblioteki.
     conn.execute_batch("CREATE TABLE IF NOT EXISTS smart_albums (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE COLLATE NOCASE, filters TEXT NOT NULL);")?;
@@ -1723,14 +1725,68 @@ fn move_file(src: &Path, dst: &Path) -> Result<(), String> {
     fs::remove_file(src).map_err(|e| e.to_string())
 }
 
-/// Plik XMP (własny albo cudzy) należy do zdjęcia, więc idzie razem z nim.
+/// Pliki towarzyszące zdjęciu idą razem z nim: XMP (własny albo cudzy), plik z edycją nieniszczącą (`.fibo.json`) oraz, przy przenoszeniu,
+/// kopia oryginału z folderu `.originals` (bez niej „Przywróć oryginał” przestałby działać).
 fn carry_sidecar(src_photo: &Path, dst_photo: &Path, copy: bool) {
-    let s = xmp_path(src_photo);
-    if !s.exists() {
-        return;
+    let carry = |s: PathBuf, d: PathBuf| {
+        if s.exists() {
+            let _ = if copy { fs::copy(&s, &d).map(|_| ()).map_err(|e| e.to_string()) } else { move_file(&s, &d) };
+        }
+    };
+    carry(xmp_path(src_photo), xmp_path(dst_photo));
+    carry(edits::sidecar_path(src_photo), edits::sidecar_path(dst_photo));
+    if !copy {
+        if let (Some(sd), Some(dd), Some(sn), Some(dn)) = (src_photo.parent(), dst_photo.parent(), src_photo.file_name(), dst_photo.file_name()) {
+            let backup = sd.join(ORIGINALS_DIR).join(sn);
+            if backup.is_file() {
+                let target = dd.join(ORIGINALS_DIR).join(dn);
+                if fs::create_dir_all(dd.join(ORIGINALS_DIR)).is_ok() {
+                    let _ = move_file(&backup, &target);
+                }
+            }
+        }
     }
-    let d = xmp_path(dst_photo);
-    let _ = if copy { fs::copy(&s, &d).map(|_| ()).map_err(|e| e.to_string()) } else { move_file(&s, &d) };
+}
+
+/// Zapisuje w bazie nowe miejsce zdjęcia po przeniesieniu pliku.
+fn relocate_in_db(state: &AppState, id: i64, target: &Path, dest: &Path) -> Result<(), String> {
+    let new_name = target.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    // Nieaktualny wiersz o tej ścieżce (pliku już nie ma) nie może zablokować przeniesienia.
+    conn.execute("DELETE FROM photos WHERE path = ?1 AND id != ?2", params![target.to_string_lossy(), id]).map_err(|e| e.to_string())?;
+    conn.execute("UPDATE photos SET path = ?2, folder = ?3, name = ?4 WHERE id = ?1", params![id, target.to_string_lossy(), dest.to_string_lossy(), new_name]).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Przenosi zdjęcie do folderu `dest`. Zajęta nazwa dostaje końcówkę _1, _2 (nic nie jest nadpisywane), a zablokowany folder odrzuca przeniesienie.
+/// Zwraca (skąd, dokąd) albo None, gdy zdjęcie już tam leży.
+pub(crate) fn move_photo_to(state: &AppState, id: i64, dest: &Path) -> Result<Option<(PathBuf, PathBuf)>, String> {
+    let (path, _, _) = photo_path(state, id)?;
+    let src = PathBuf::from(&path);
+    locks::ensure_unlocked_state(state, &src)?;
+    if src.parent() == Some(dest) {
+        return Ok(None);
+    }
+    let name = src.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    let target = unique_target(dest, &name);
+    move_file(&src, &target)?;
+    carry_sidecar(&src, &target, false);
+    relocate_in_db(state, id, &target, dest)?;
+    Ok(Some((src, target)))
+}
+
+/// Przenosi zdjęcie dokładnie pod wskazaną ścieżkę (do cofania przeniesień). Zajętej ścieżki nie nadpisuje.
+pub(crate) fn move_photo_exact(state: &AppState, id: i64, target: &Path) -> Result<(), String> {
+    let (path, _, _) = photo_path(state, id)?;
+    let src = PathBuf::from(&path);
+    locks::ensure_unlocked_state(state, &src)?;
+    if target.exists() {
+        return Err("miejsce docelowe jest zajęte".into());
+    }
+    let dest = target.parent().ok_or("brak folderu")?;
+    move_file(&src, target)?;
+    carry_sidecar(&src, target, false);
+    relocate_in_db(state, id, target, dest)
 }
 
 /// Zmienia nazwę pliku zdjęcia (rozszerzenie zostaje). Zwraca nową nazwę z rozszerzeniem.
@@ -1778,38 +1834,25 @@ fn move_photos_blocking(state: &AppState, ids: &[i64], dest: &Path, copy: bool) 
     }
     let mut rep = MoveReport::default();
     for &id in ids {
+        if !copy {
+            let (path, _, _) = photo_path(state, id)?;
+            match move_photo_to(state, id, dest) {
+                Ok(Some(_)) => rep.done += 1,
+                Ok(None) => {} // już tam jest
+                Err(e) => rep.errors.push(format!("{path}: {e}")),
+            }
+            continue;
+        }
         let (path, taken, camera) = photo_path(state, id)?;
         let src = PathBuf::from(&path);
-        if !copy {
-            if let Err(e) = locks::ensure_unlocked_state(state, &src) {
-                rep.errors.push(format!("{path}: {e}"));
-                continue;
-            }
-        }
         let name = src.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-        if src.parent() == Some(dest) && !copy {
-            continue; // już tam jest
-        }
         let target = unique_target(dest, &name);
-        let result = if copy { fs::copy(&src, &target).map(|_| ()).map_err(|e| e.to_string()) } else { move_file(&src, &target) };
-        if let Err(e) = result {
+        if let Err(e) = fs::copy(&src, &target) {
             rep.errors.push(format!("{name}: {e}"));
             continue;
         }
-        carry_sidecar(&src, &target, copy);
-        if copy {
-            reindex(state, &target, taken, camera)?;
-        } else {
-            let new_name = target.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-            let conn = state.db.lock().map_err(|e| e.to_string())?;
-            // Nieaktualny wiersz o tej ścieżce (pliku już nie ma) nie może zablokować przeniesienia.
-            conn.execute("DELETE FROM photos WHERE path = ?1 AND id != ?2", params![target.to_string_lossy(), id]).map_err(|e| e.to_string())?;
-            conn.execute(
-                "UPDATE photos SET path = ?2, folder = ?3, name = ?4 WHERE id = ?1",
-                params![id, target.to_string_lossy(), dest.to_string_lossy(), new_name],
-            )
-            .map_err(|e| e.to_string())?;
-        }
+        carry_sidecar(&src, &target, true);
+        reindex(state, &target, taken, camera)?;
         rep.done += 1;
     }
     Ok(rep)
@@ -2787,6 +2830,96 @@ mod tests {
     }
 
     #[test]
+    fn organizing_moves_by_date_checks_first_and_undo_restores_everything() {
+        let dir = std::env::temp_dir().join("mz-organize-test");
+        let _ = fs::remove_dir_all(&dir);
+        let lib = dir.join("Chaos");
+        let dest = dir.join("Porzadek");
+        fs::create_dir_all(lib.join(ORIGINALS_DIR)).unwrap();
+        fs::create_dir_all(&dest).unwrap();
+        let st = AppState { db: Mutex::new(open_db(&dir.join("t.db")).unwrap()), thumbs: dir.join("thumbs"), sidecar: AtomicBool::new(true) };
+        let names = ["a.jpg", "b.jpg", "c.jpg"];
+        for n in names {
+            image::RgbImage::new(8, 8).save(lib.join(n)).unwrap();
+        }
+        // Towarzysze zdjęcia a.jpg: XMP, edycja nieniszcząca i kopia oryginału.
+        fs::write(xmp_path(&lib.join("a.jpg")), b"<x/>").unwrap();
+        fs::write(edits::sidecar_path(&lib.join("a.jpg")), b"{\"fibo_edit\":1,\"recipe\":{}}").unwrap();
+        fs::write(lib.join(ORIGINALS_DIR).join("a.jpg"), b"oryginal").unwrap();
+        scan_blocking(&st, lib.to_str().unwrap(), &|_| {}).unwrap();
+        let id = |n: &str| -> i64 { st.db.lock().unwrap().query_row("SELECT id FROM photos WHERE name = ?1", [n], |r| r.get(0)).unwrap() };
+        {
+            let c = st.db.lock().unwrap();
+            c.execute("UPDATE photos SET taken = '2023-07-14 10:00:00' WHERE name = 'a.jpg'", []).unwrap();
+            c.execute("UPDATE photos SET taken = '2022-01-02 10:00:00' WHERE name = 'b.jpg'", []).unwrap();
+            c.execute("UPDATE photos SET taken = NULL, modified = 1700000000 WHERE name = 'c.jpg'", []).unwrap();
+        }
+        let ids: Vec<i64> = names.iter().map(|n| id(n)).collect();
+        // Podgląd niczego nie rusza.
+        let plan = { let c = st.db.lock().unwrap(); organize::plan_core(&c, &ids, &dest, organize::Pattern::YearMonth).unwrap() };
+        assert_eq!(plan.moves.len(), 3);
+        assert_eq!(plan.file_dates, 1, "c.jpg nie ma daty wykonania");
+        let mut rels: Vec<String> = plan.moves.iter().map(|m| m.rel.clone()).collect();
+        rels.sort();
+        assert_eq!(rels, vec!["2022/01", "2023/07", "2023/11"]);
+        assert!(lib.join("a.jpg").exists() && !dest.join("2023").exists(), "plan nie zmienia dysku");
+        // Zablokowany folder blokuje całość i jest wyjaśniony.
+        st.db.lock().unwrap().execute("INSERT INTO locked_folders (path) VALUES (?1)", [lib.to_string_lossy().to_string()]).unwrap();
+        let locked = { let c = st.db.lock().unwrap(); organize::plan_core(&c, &ids, &dest, organize::Pattern::Year).unwrap() };
+        assert!(locked.moves.is_empty() && locked.skipped.len() == 3 && locked.skipped[0].1.contains("zablokowany"));
+        st.db.lock().unwrap().execute("DELETE FROM locked_folders", []).unwrap();
+        // Przeniesienie.
+        let rep = organize::apply_core(&st, &plan, &dest).unwrap();
+        assert_eq!((rep.done, rep.errors.len()), (3, 0), "{:?}", rep.errors);
+        let a = dest.join("2023").join("07").join("a.jpg");
+        assert!(a.exists() && !lib.join("a.jpg").exists());
+        assert!(xmp_path(&a).exists() && edits::sidecar_path(&a).exists(), "XMP i edycja jadą ze zdjęciem");
+        assert!(dest.join("2023").join("07").join(ORIGINALS_DIR).join("a.jpg").exists(), "kopia oryginału też");
+        let path_of = |n: &str| -> String { st.db.lock().unwrap().query_row("SELECT path FROM photos WHERE name = ?1", [n], |r| r.get(0)).unwrap() };
+        assert_eq!(path_of("a.jpg"), a.to_string_lossy());
+        // Drugi przebieg nie ma już nic do zrobienia.
+        let again = { let c = st.db.lock().unwrap(); organize::plan_core(&c, &ids, &dest, organize::Pattern::YearMonth).unwrap() };
+        assert_eq!((again.moves.len(), again.in_place), (0, 3));
+        // Cofnięcie przywraca wszystko, łącznie z towarzyszami, i sprząta puste foldery.
+        let last = organize::last_batch(&st.db.lock().unwrap()).unwrap();
+        assert_eq!((last.batch, last.count), (rep.batch, 3));
+        let undo = organize::undo_core(&st, last.batch).unwrap();
+        assert_eq!((undo.done, undo.errors.len()), (3, 0), "{:?}", undo.errors);
+        assert!(lib.join("a.jpg").exists() && xmp_path(&lib.join("a.jpg")).exists() && edits::sidecar_path(&lib.join("a.jpg")).exists());
+        assert!(lib.join(ORIGINALS_DIR).join("a.jpg").exists());
+        assert!(!dest.join("2023").exists(), "puste foldery po porządkowaniu znikają");
+        assert_eq!(path_of("a.jpg"), lib.join("a.jpg").to_string_lossy());
+        assert!(organize::last_batch(&st.db.lock().unwrap()).is_none());
+    }
+
+    #[test]
+    fn organizing_never_overwrites_and_undo_refuses_when_things_changed() {
+        let dir = std::env::temp_dir().join("mz-organize-test2");
+        let _ = fs::remove_dir_all(&dir);
+        let (lib, dest) = (dir.join("L"), dir.join("D"));
+        fs::create_dir_all(&lib).unwrap();
+        fs::create_dir_all(dest.join("2023")).unwrap();
+        fs::write(dest.join("2023").join("a.jpg"), b"cudzy plik o tej samej nazwie").unwrap();
+        let st = AppState { db: Mutex::new(open_db(&dir.join("t.db")).unwrap()), thumbs: dir.join("thumbs"), sidecar: AtomicBool::new(false) };
+        image::RgbImage::new(8, 8).save(lib.join("a.jpg")).unwrap();
+        scan_blocking(&st, lib.to_str().unwrap(), &|_| {}).unwrap();
+        let id: i64 = st.db.lock().unwrap().query_row("SELECT id FROM photos", [], |r| r.get(0)).unwrap();
+        st.db.lock().unwrap().execute("UPDATE photos SET taken = '2023-05-05 10:00:00'", []).unwrap();
+        let plan = { let c = st.db.lock().unwrap(); organize::plan_core(&c, &[id], &dest, organize::Pattern::Year).unwrap() };
+        let rep = organize::apply_core(&st, &plan, &dest).unwrap();
+        assert_eq!(rep.done, 1);
+        assert_eq!(fs::read(dest.join("2023").join("a.jpg")).unwrap(), b"cudzy plik o tej samej nazwie", "cudzego pliku nie nadpisano");
+        assert!(dest.join("2023").join("a_1.jpg").exists());
+        // Dawne miejsce zajęte w międzyczasie: cofnięcie niczego nie nadpisuje.
+        fs::write(lib.join("a.jpg"), b"nowy").unwrap();
+        let undo = organize::undo_core(&st, rep.batch).unwrap();
+        assert_eq!((undo.done, undo.errors.len()), (0, 1));
+        assert!(undo.errors[0].contains("zajęte"));
+        assert_eq!(fs::read(lib.join("a.jpg")).unwrap(), b"nowy");
+        assert!(dest.join("2023").join("a_1.jpg").exists());
+    }
+
+    #[test]
     fn original_backup_is_complete_and_edits_are_atomic() {
         let dir = std::env::temp_dir().join("mz-atomic-test");
         let _ = fs::remove_dir_all(&dir);
@@ -3711,7 +3844,7 @@ fn main() {
             app.manage(AppState { db: Mutex::new(db), thumbs, sidecar: AtomicBool::new(sidecar) });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![list_roots, remove_root, rescan_roots, list_albums, create_album, rename_album, set_album_hidden, put_thumbnail, set_credits, color::index_colors, get_skip_gif_png, set_skip_gif_png, detect_cards, rotate::rotate_photos, list_album_order, set_album_order, open_photo_external, delete_album, add_to_album, remove_from_album, rename_photo, move_photos, get_sidecar_enabled, set_sidecar_enabled, export_sidecars, import_sidecars, scan_folder, refresh_library, find_duplicates, trash_photos, export_photos, set_location, rename_batch, import_photos, gallery::export_gallery, gallery::export_gpx, gallery::export_gif, pdf::export_pdf, check::check_files, list_smart, save_smart, delete_smart, gallery::rename_folder, locks::list_locked, locks::set_folder_locked, set_date, shift_dates, set_caption, photo_exif, list_props, set_props, people::photo_people, people::reassign_person_faces, backup::backup_library, photos_backup::backup_photos, backup::restore_library, hide_photos, hidden_count, restore_hidden, people::faces_status, people::set_faces_enabled, people::faces_start, people::faces_stop, people::faces_regroup, people::faces_reanalyze, people::faces_delete_all, people::list_people, people::person_photos, people::person_faces, people::set_person_cover, people::rename_person, people::merge_people, people::merge_suggestions, people::person_face_cards, people::photo_face_stats, calendar::save_calendar_pdf, people::confirm_faces, people::move_faces, people::reject_person_in_photos, people::move_person_faces, people::reject_faces, people::delete_person, people::restore_rejected_faces, people::ignore_person, list_photos, thumbnail, thumbnail_data, people::face_crop, edits::get_edit, edits::save_edit_recipe, edits::put_edit_thumbnail, edits::delete_edit, edits::list_edit_history, edits::get_edit_version, set_rating, set_flag, set_label, rawdev::develop_raw, clip::clip_status, clip::clip_start, clip::clip_stop, clip::clip_search, set_favorite, add_tag, remove_tag, delete_tag, save_edit, save_collage, read_image, read_audio, has_original, restore_original])
+        .invoke_handler(tauri::generate_handler![list_roots, remove_root, rescan_roots, list_albums, create_album, rename_album, set_album_hidden, put_thumbnail, set_credits, color::index_colors, get_skip_gif_png, set_skip_gif_png, detect_cards, rotate::rotate_photos, list_album_order, set_album_order, open_photo_external, delete_album, add_to_album, remove_from_album, rename_photo, move_photos, get_sidecar_enabled, set_sidecar_enabled, export_sidecars, import_sidecars, scan_folder, refresh_library, find_duplicates, trash_photos, export_photos, set_location, rename_batch, import_photos, gallery::export_gallery, gallery::export_gpx, gallery::export_gif, pdf::export_pdf, check::check_files, list_smart, save_smart, delete_smart, gallery::rename_folder, locks::list_locked, locks::set_folder_locked, set_date, shift_dates, set_caption, photo_exif, list_props, set_props, people::photo_people, people::reassign_person_faces, backup::backup_library, photos_backup::backup_photos, backup::restore_library, hide_photos, hidden_count, restore_hidden, people::faces_status, people::set_faces_enabled, people::faces_start, people::faces_stop, people::faces_regroup, people::faces_reanalyze, people::faces_delete_all, people::list_people, people::person_photos, people::person_faces, people::set_person_cover, people::rename_person, people::merge_people, people::merge_suggestions, people::person_face_cards, people::photo_face_stats, calendar::save_calendar_pdf, people::confirm_faces, people::move_faces, people::reject_person_in_photos, people::move_person_faces, people::reject_faces, people::delete_person, people::restore_rejected_faces, people::ignore_person, list_photos, thumbnail, thumbnail_data, people::face_crop, organize::organize_plan, organize::organize_apply, organize::organize_last, organize::organize_undo, edits::get_edit, edits::save_edit_recipe, edits::put_edit_thumbnail, edits::delete_edit, edits::list_edit_history, edits::get_edit_version, set_rating, set_flag, set_label, rawdev::develop_raw, clip::clip_status, clip::clip_start, clip::clip_stop, clip::clip_search, set_favorite, add_tag, remove_tag, delete_tag, save_edit, save_collage, read_image, read_audio, has_original, restore_original])
         .run(tauri::generate_context!())
         .expect("błąd uruchomienia aplikacji");
 

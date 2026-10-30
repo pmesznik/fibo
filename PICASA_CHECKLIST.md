@@ -181,7 +181,7 @@ Szukanie i porządkowanie:
 - [ ] **Widok kalendarza** (miesiące z miniaturami). P3 T M
 - [ ] **Zwierzęta domowe** jako osobna kategoria osób. P4 T L
 - [ ] **Prywatny, zablokowany album** (ukryty po haśle). P3 T M
-- [ ] **Organizator plików**: przenoszenie zdjęć do folderów według daty, ze sprawdzeniem i cofaniem. P3 T M
+- [x] **Organizator plików**: przenoszenie zdjęć do folderów według daty, ze sprawdzeniem i cofaniem. P3 T M
 
 Edycja:
 - [x] **Edycja nieniszcząca**: zapis historii zmian obok zdjęcia (XMP) z możliwością cofnięcia po latach. P2 T L

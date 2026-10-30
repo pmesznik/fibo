@@ -131,6 +131,8 @@ function respond(cmd: string, args: Record<string, unknown> = {}): unknown | Pro
     case 'save_calendar_pdf': return 'C:\\Zdjecia\\Kalendarz_2027.pdf'
     case 'clip_status': return { models_ok: true, running: false, indexed: 90, total: 96, concepts: 134 }
     case 'clip_search': return { ids: photos.slice(2, 14).map((p) => p.id), scores: [], matched: ['plaża'], unknown: [], indexed: 90 }
+    case 'organize_plan': return { moves: photos.slice(0, 5).map((p) => ({ id: p.id, name: p.name, from_dir: 'C:\\Zdjecia', to_dir: 'D:\\Porzadek\\2024\\07', rel: '2024/07', file_date: false })), in_place: 1, skipped: [], file_dates: 0 }
+    case 'organize_last': return null
     case 'get_sidecar_enabled': return true
     case 'get_skip_gif_png': return false
     case 'hidden_count': return 0

@@ -192,6 +192,18 @@ export const deleteEdit = (id: number) => invoke('delete_edit', { id })
 export const listEditHistory = (id: number) => invoke<EditVersion[]>('list_edit_history', { id })
 export const getEditVersion = (id: number, version: number) => invoke<string>('get_edit_version', { id, version })
 
+export type OrganizePlan = {
+  moves: { id: number; name: string; from_dir: string; to_dir: string; rel: string; file_date: boolean }[]
+  in_place: number
+  skipped: [string, string][]
+  file_dates: number
+}
+export type OrganizeReport = { batch: number; done: number; errors: string[] }
+export const organizePlan = (ids: number[], dest: string, pattern: string) => invoke<OrganizePlan>('organize_plan', { ids, dest, pattern })
+export const organizeApply = (ids: number[], dest: string, pattern: string) => invoke<OrganizeReport>('organize_apply', { ids, dest, pattern })
+export const organizeLast = () => invoke<{ batch: number; count: number } | null>('organize_last')
+export const organizeUndo = (batch: number) => invoke<OrganizeReport>('organize_undo', { batch })
+
 export const readImage = (id: number) => invoke<ArrayBuffer>('read_image', { id })
 
 /** Miniatura jako Blob (bajty przez IPC); wywołujący tworzy i zwalnia adres blob:. */

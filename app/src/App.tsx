@@ -37,6 +37,7 @@ import { durationLabel } from './api'
 import { CompareView } from './CompareView'
 import { EventsDialog } from './EventsDialog'
 import { ContentSearch } from './ContentSearch'
+import { OrganizerDialog } from './OrganizerDialog'
 import { collapseStacks, findStacks, stackCount } from './stacks'
 import {
   Images, FolderOpen, Users, MapPin, Heart, Star, Plus, Play, Maximize2, X,
@@ -98,6 +99,7 @@ export default function App() {
   const [compareOpen, setCompareOpen] = useState(false)
   const [eventsOpen, setEventsOpen] = useState(false)
   const [contentOpen, setContentOpen] = useState(false)
+  const [organizeOpen, setOrganizeOpen] = useState(false)
   const [original, setOriginal] = useState(() => { try { return localStorage.getItem('grid-original') !== '0' } catch { return true } })
   const selected = sel.length === 1 ? sel[0] : null
   const setSelected = (id: number | null) => { setSel(id === null ? [] : [id]); setAnchor(id) }
@@ -1041,6 +1043,7 @@ export default function App() {
                 { icon: Play, label: 'Pokaz slajdów', fn: slideshow, on: false },
                 { icon: ListChecks, label: selectMode ? 'Zaznaczanie włączone' : 'Zaznaczanie wielu', fn: () => { setSelectMode((v) => !v); setDrawer(false) }, on: selectMode },
                 { icon: LayoutDashboard, label: chosen.length > 1 ? `Kolaż (${chosen.length})` : 'Kolaż', fn: () => { setDrawer(false); startCollage() }, on: false },
+                { icon: FolderOpen, label: 'Porządkuj według daty', fn: () => { setDrawer(false); setOrganizeOpen(true) }, on: false },
                 { icon: SearchIcon, label: 'Szukaj po treści zdjęć', fn: () => { setDrawer(false); setContentOpen(true) }, on: false },
                 { icon: CalendarDays, label: 'Wydarzenia i podróże', fn: () => { setDrawer(false); setEventsOpen(true) }, on: false },
                 { icon: CalendarDays, label: 'Kalendarz', fn: () => { setDrawer(false); setCalOpen(true) }, on: false },
@@ -1731,6 +1734,10 @@ export default function App() {
       {moveFaces && person?.id !== undefined && (
         <MoveFacesDialog personId={person.id} personName={person.name} photoIds={moveFaces} say={say} onClose={() => setMoveFaces(null)}
           onDone={(ids) => { dropFromPerson(ids); setSel([]) }} />
+      )}
+      {organizeOpen && (
+        <OrganizerDialog say={say} selected={sel.filter((i) => i >= 0)} visible={filtered.filter((p) => p.id >= 0).map((p) => p.id)}
+          onClose={() => setOrganizeOpen(false)} onDone={() => { reload(); reloadRoots() }} />
       )}
       {contentOpen && <ContentSearch say={say} onClose={() => setContentOpen(false)} onResults={openRanked} />}
       {eventsOpen && (
