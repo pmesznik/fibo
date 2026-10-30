@@ -84,6 +84,9 @@ const photos = Array.from({ length: PHOTO_N }, (_, i) => {
 for (let k = 0; k < 12; k++) { const p = photos[30 + k]; p.taken = `2025-08-10 ${String(10 + Math.floor(k / 3)).padStart(2, '0')}:${String((k % 3) * 20).padStart(2, '0')}:00` }
 for (let k = 0; k < 13; k++) { const p = photos[50 + k] as unknown as { taken: string; lat: number; lon: number }; p.taken = `2024-07-${12 + Math.floor(k / 5)} ${String(8 + (k % 5) * 3).padStart(2, '0')}:00:00`; p.lat = 50.06 + k * 0.001; p.lon = 19.94 }
 
+// Przykładowe zdjęcie RAW (do podglądu panelu „Wywoływanie RAW”).
+for (const i of [23]) { const p = photos[i] as unknown as { name: string; path: string }; p.name = `DSC_${i}.ARW`; p.path = `C:\Zdjecia\${FOLDERS[0]}\DSC_${i}.ARW` }
+
 // Przykładowe filmy (bez odtwarzania: w podglądzie przeglądarkowym nie ma protokołu programu).
 for (const i of [20, 21]) { const p = photos[i] as unknown as { video: boolean; duration: number; name: string; path: string }; p.video = true; p.duration = i === 20 ? 42 : 3725; p.name = `MOV_${i}.mp4`; p.path = `C:\\Zdjecia\\${FOLDERS[0]}\\MOV_${i}.mp4` }
 
@@ -109,6 +112,7 @@ function respond(cmd: string, args: Record<string, unknown> = {}): unknown | Pro
       const id = Number(args.id)
       return canvasJpeg(1600, 1067, (c) => scene(c, 1600, 1067, id))
     }
+    case 'develop_raw': { const id = Number(args.id); return canvasJpeg(1600, 1067, (c) => scene(c, 1600, 1067, id + 7)) }
     case 'face_crop': return canvasJpeg(128, 128, (c) => face(c, 128, Number(args.id)))
     case 'list_albums': return [{ id: 1, name: 'Wakacje', count: 32, hidden: false }, { id: 2, name: 'Rodzina', count: 12, hidden: false }, { id: 3, name: 'Prywatny', count: 5, hidden: true }]
     case 'list_roots': return ['C:\\Zdjecia']

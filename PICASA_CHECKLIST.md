@@ -188,7 +188,7 @@ Edycja:
 - [ ] **Krzywe, HSL, histogram na żywo**, dehaze, klarowność. P3 T M
 - [ ] **Maski lokalne** (pędzel, gradient liniowy i radialny) z osobnymi korektami. P3 T L
 - [ ] **Usuwanie obiektów** (wypełnianie tła), automatyczne prostowanie horyzontu. P4 T L
-- [ ] **Wywoływanie RAW**: ekspozycja, balans bieli, odzyskiwanie świateł (dziś RAW ma tylko podgląd). P2 T L
+- [x] **Wywoływanie RAW**: ekspozycja, balans bieli, odzyskiwanie świateł (dziś RAW ma tylko podgląd). P2 T L
 - [ ] **Korekta obiektywu** (dystorsja, winietowanie, aberracja chromatyczna). P4 T L
 - [ ] **Łączenie zdjęć**: panorama, HDR, stos ostrości. P4 T L
 - [ ] **Znak wodny tekstowy** (dziś tylko logo). P3 T S

@@ -5,7 +5,7 @@ import {
   ZoomIn, ZoomOut, Compare, Sliders, Sparkles, Info, Tag, Crop as CropIcon, Trash2, Sun, Palette, Aperture, Pencil, Zap, Plus,
 } from './FiboIcons'
 import { decodeBitmap } from './imageDecode'
-import { pickFile, readAudio, hasOriginal, photoPeople, readImage, restoreOriginal, saveEdit, setCaption, setPersonCover, photoExif, listPeople, reassignPersonFaces, type Person, setFavorite, setRating, setFlag, setLabel, videoUrl, type Photo, type PhotoPerson } from './api'
+import { pickFile, readAudio, hasOriginal, photoPeople, readImage, restoreOriginal, saveEdit, setCaption, setPersonCover, photoExif, listPeople, reassignPersonFaces, type Person, setFavorite, setRating, setFlag, setLabel, videoUrl, developRaw, isRawName, RAW_NEUTRAL, type RawParams, type Photo, type PhotoPerson } from './api'
 import { FaceImg } from './People'
 import { copyEdit, deletePreset, getClip, loadPresets, savePreset, type Preset } from './editor/batch'
 import { Thumb } from './Thumb'
@@ -107,6 +107,10 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
   const [undo, setUndo] = useState<EditState[]>([])
   const [redo, setRedo] = useState<EditState[]>([])
   const [sheet, setSheet] = useState(false)
+  /** Wywoływanie RAW: ustawienia suwaków, trwające wywołanie i to, czy edytor pracuje na własnym wywołaniu (a nie na podglądzie z aparatu). */
+  const [rawP, setRawP] = useState<RawParams>(RAW_NEUTRAL)
+  const [rawBusy, setRawBusy] = useState(false)
+  const [rawApplied, setRawApplied] = useState(false)
   /** Efekt, któremu użytkownik właśnie wskazuje środek (kliknięciem na zdjęciu). */
   const [centerFor, setCenterFor] = useState<string | null>(null)
   const [tab, setTab] = useState<Tab>('basic')
@@ -152,6 +156,7 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
   useEffect(() => {
     if (!photo) return
     let dead = false
+    setRawP(RAW_NEUTRAL); setRawApplied(false)
     releaseBitmap(); setBitmap(null); setLoadError(null); setEdit(EMPTY_EDIT); setUndo([]); setRedo([]); setRedEyeMode(false); setSelText(null)
     setZoom(1); setPan({ x: 0, y: 0 }); setCompare(false)
     // Film odtwarza okno aplikacji, więc nie ma obrazu do wczytania ani edycji.
@@ -399,6 +404,26 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
     change((s) => ({ ...s, redeye: [...s.redeye, { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height, r: 0.025 }] }))
   }
 
+  /** Wywołuje RAW z ustawieniami z suwaków i podstawia wynik jako źródło edycji (inne poprawki zostają na wierzchu). */
+  const developNow = async (params: RawParams) => {
+    if (!photo || rawBusy) return
+    setRawBusy(true)
+    try {
+      const buf = await developRaw(photo.id, params)
+      const b = await decodeBitmap(buf, 'raw.jpg')
+      releaseBitmap(); bmpRef.current = b; setBitmap(b); setRawApplied(true)
+      say('Wywołano zdjęcie RAW. Zapis tworzy nową kopię JPG obok pliku RAW', 'ok')
+    } catch (e) { say(`Nie udało się wywołać RAW: ${e}`, 'err') } finally { setRawBusy(false) }
+  }
+  /** Wraca do podglądu zapisanego przez aparat w pliku. */
+  const backToCamera = async () => {
+    if (!photo || rawBusy) return
+    setRawBusy(true)
+    try {
+      const b = await decodeBitmap(await readImage(photo.id), photo.name)
+      releaseBitmap(); bmpRef.current = b; setBitmap(b); setRawApplied(false); setRawP(RAW_NEUTRAL)
+    } catch (e) { say(`Błąd: ${e}`, 'err') } finally { setRawBusy(false) }
+  }
   const fxAmount = (fid: string) => edit.fx.find((f) => f.id === fid)?.amount
   const toggleFx = (fid: string) => {
     const has = fxAmount(fid) !== undefined
@@ -561,6 +586,23 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
             <>
               <h2 className="sec-h" style={{ margin: '4px 2px 0' }}>Podstawowe poprawki</h2>
               <div style={{ color: 'var(--muted)', fontSize: 13, margin: '0 2px 4px' }}>Szybkie korekty i kadrowanie</div>
+              {isRawName(photo.name) && (
+                <Sec id="b-raw" icon={<Aperture size={17} />} title="Wywoływanie RAW" hint={rawApplied ? 'Własne wywołanie' : 'Podgląd z aparatu'} defaultOpen>
+                  <div style={{ color: 'var(--muted)', fontSize: 12.5, marginBottom: 4 }}>
+                    Program wywołuje zdjęcie z surowych danych matrycy: niższa ekspozycja odsłania szczegóły w światłach, które aparat obciął w swoim JPEG.
+                  </div>
+                  <Slider label="Ekspozycja (EV)" value={rawP.exposure} min={-3} max={3} onStart={() => {}} onChange={(v) => setRawP((p) => ({ ...p, exposure: Math.round(v * 20) / 20 }))} />
+                  <Slider label="Temperatura barwowa" value={rawP.temp} min={-100} max={100} onStart={() => {}} onChange={(v) => setRawP((p) => ({ ...p, temp: Math.round(v) }))} />
+                  <Slider label="Odcień (zieleń, magenta)" value={rawP.tint} min={-100} max={100} onStart={() => {}} onChange={(v) => setRawP((p) => ({ ...p, tint: Math.round(v) }))} />
+                  <Slider label="Odzyskiwanie świateł" value={rawP.highlights} min={0} max={100} onStart={() => {}} onChange={(v) => setRawP((p) => ({ ...p, highlights: Math.round(v) }))} />
+                  <div className="chips" style={{ marginTop: 8 }}>
+                    <button className="chip on" disabled={rawBusy} onClick={() => developNow(rawP)}>{rawBusy ? 'Wywołuję…' : 'Wywołaj RAW'}</button>
+                    {rawApplied && <button className="chip" disabled={rawBusy} onClick={backToCamera}>Wróć do podglądu aparatu</button>}
+                    {(rawP.exposure !== 0 || rawP.temp !== 0 || rawP.tint !== 0 || rawP.highlights !== 0) && <button className="chip" disabled={rawBusy} onClick={() => setRawP(RAW_NEUTRAL)}>Wyzeruj suwaki</button>}
+                  </div>
+                  <div style={{ color: 'var(--muted)', fontSize: 12.5, marginTop: 6 }}>Wywołanie trwa kilka sekund. Suwaki działają po kliknięciu „Wywołaj RAW”, a pozostałe poprawki nakładają się na wynik.</div>
+                </Sec>
+              )}
               <Sec id="b-one" icon={<Zap size={17} />} title="Jedno kliknięcie" hint="Automatyczne poprawki" defaultOpen>
                 <div className="chips">
                   {ONE_CLICK.map((fid) => <Chip key={fid} on={fxAmount(fid) !== undefined} onClick={() => toggleFx(fid)}>{fxLabel(fid)}</Chip>)}

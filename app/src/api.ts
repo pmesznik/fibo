@@ -172,6 +172,13 @@ export const photoFaceStats = () => invoke<[number, number, number][]>('photo_fa
 export const saveCalendarPdf = (body: ArrayBuffer, dest: string, name: string, paper: string, landscape: boolean) =>
   invoke<string>('save_calendar_pdf', body, { headers: { dest: encodeURIComponent(dest), name, size: paper, landscape: landscape ? '1' : '0' } })
 
+export type RawParams = { exposure: number; temp: number; tint: number; highlights: number }
+export const RAW_NEUTRAL: RawParams = { exposure: 0, temp: 0, tint: 0, highlights: 0 }
+/** Czy plik jest zdjęciem RAW aparatu (po rozszerzeniu): tylko takie można wywołać od nowa z surowych danych. */
+export const isRawName = (name: string) => /\.(3fr|ari|arw|bay|cap|cr2|cr3|crw|dcr|dcs|dng|erf|fff|gpr|iiq|k25|kdc|mdc|mef|mos|mrw|nef|nrw|orf|pef|ptx|raf|raw|rw2|rwl|sr2|srf|srw|x3f)$/i.test(name)
+/** Wywołuje zdjęcie RAW z własną ekspozycją i balansem bieli; zwraca JPEG jako źródło dla edytora. */
+export const developRaw = (id: number, params: RawParams) => invoke<ArrayBuffer>('develop_raw', { id, params })
+
 export const readImage = (id: number) => invoke<ArrayBuffer>('read_image', { id })
 
 /** Miniatura jako Blob (bajty przez IPC); wywołujący tworzy i zwalnia adres blob:. */
