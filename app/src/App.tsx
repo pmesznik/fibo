@@ -1305,6 +1305,11 @@ export default function App() {
                   <ChevronLeft size={15} /> Osoby
                 </button>
               )}
+              {!person && mode === 'library' && (albumId !== null || folder) && (
+                <button className="chip" style={{ marginBottom: 8 }} aria-label="Wróć do albumów i folderów" onClick={() => { setAlbumId(null); setFolder(null); setMode('albums') }}>
+                  <ChevronLeft size={15} /> Albumy
+                </button>
+              )}
               {person?.memory && (
                 <button className="chip" style={{ marginBottom: 8 }} aria-label="Wróć do biblioteki" onClick={() => setPerson(null)}>
                   <ChevronLeft size={15} /> Biblioteka
@@ -1347,10 +1352,11 @@ export default function App() {
                   {years.map((y) => <Chip key={y} onClick={() => jumpToYear(y)}>{y}</Chip>)}
                 </div>
               )}
-              {(query || folder || albumId !== null || person || trayView || minStars > 0 || kindFilter !== '' || flagFilter !== '' || labelFilter !== null || color !== null || dateFrom || dateTo || missing || activeTags.length > 0) && (
+              {(query || placeFilter !== null || folder || albumId !== null || person || trayView || minStars > 0 || kindFilter !== '' || flagFilter !== '' || labelFilter !== null || color !== null || dateFrom || dateTo || missing || activeTags.length > 0) && (
                 <div className="chips" style={{ marginTop: 10 }}>
                   {activeTags.map((t) => <Chip key={t} on onClick={() => toggleTagFilter(t)} label={`Usuń filtr tagu ${t}`}><Tag size={13} /> {t} <X size={13} /></Chip>)}
                   {query && <Chip on onClick={() => setQuery('')} label="Usuń szukanie"><SearchIcon size={13} /> {query} <X size={13} /></Chip>}
+                  {placeFilter !== null && <Chip on onClick={() => setPlaceFilter(null)} label="Usuń filtr miejsca"><MapPin size={13} /> {placeFilter} <X size={13} /></Chip>}
                   {albumId !== null && <Chip on onClick={() => setAlbumId(null)} label="Pokaż całą bibliotekę"><FolderOpen size={13} /> Album: {albums.find((a) => a.id === albumId)?.name ?? '…'} <X size={13} /></Chip>}
                   {(query.trim() || minStars > 0 || dateFrom || dateTo || missing || activeTags.length > 0) && <Chip onClick={saveSmartAlbum} label="Zapisz filtry jako album inteligentny"><Star size={13} /> Zapisz jako album inteligentny</Chip>}
                   {trayView && <Chip on onClick={() => setTrayView(false)} label="Pokaż całą bibliotekę"><ListChecks size={13} /> Taca <X size={13} /></Chip>}
