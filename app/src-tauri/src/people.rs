@@ -466,9 +466,9 @@ pub struct Progress {
     error: Option<String>,
 }
 
-/// Liczba wątków analizy: zostawiamy rdzenie dla reszty programu, ale nie więcej niż 8 (pamięć).
+/// Liczba wątków analizy: połowa rdzeni (model jest ciężki, a program ma zostać responsywny), ale nie więcej niż 6.
 fn worker_count() -> usize {
-    std::thread::available_parallelism().map(|n| n.get()).unwrap_or(2).saturating_sub(2).clamp(1, 8)
+    std::thread::available_parallelism().map(|n| n.get()).unwrap_or(2).div_ceil(2).saturating_sub(0).clamp(1, 6)
 }
 
 /// Analizuje zdjęcia, które jeszcze nie były analizowane (lub zmieniły się od ostatniego razu), równolegle na kilku wątkach,
@@ -1681,5 +1681,68 @@ mod tests {
         assert!(unsure(&c).is_empty(), "po zatwierdzeniu twarz nie jest już niepewna");
         // Odrzucenie zostawia osobę bez tej twarzy.
         assert_eq!(reject_faces_core(&c, &[face]).unwrap(), 1);
+    }
+}
+
+/// Narzędzie do dostrajania progów: czyta KOPIĘ lokalnej bazy (FIBO_TUNE_DB) i na twarzach osób z nazwą liczy, jak dobrze próg odróżnia
+/// „ta sama osoba” od „inna osoba” (każda twarz kontra środek swojej osoby bez niej samej i kontra środki pozostałych). Nic nie wychodzi z komputera.
+#[cfg(test)]
+mod tuning {
+    use super::*;
+
+    #[test]
+    #[ignore]
+    fn tune_report() {
+        let Ok(path) = std::env::var("FIBO_TUNE_DB") else { return };
+        let conn = Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap();
+        let mut stmt = conn.prepare("SELECT f.person_id, f.emb, COALESCE(f.quality, 0.6) FROM faces f JOIN people p ON p.id = f.person_id WHERE p.name IS NOT NULL AND p.ignored = 0 AND f.rejected = 0").unwrap();
+        let rows: Vec<(i64, Vec<f32>, f32)> = stmt
+            .query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, Vec<u8>>(1)?, r.get::<_, f64>(2)? as f32)))
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter_map(|(p, b, q)| open_embedding(&b).ok().map(|e| (p, e, q)))
+            .collect();
+        let dim = rows.first().map(|r| r.1.len()).unwrap_or(0);
+        let rows: Vec<_> = rows.into_iter().filter(|r| r.1.len() == dim).collect();
+        let mut by: HashMap<i64, Vec<usize>> = HashMap::new();
+        for (i, r) in rows.iter().enumerate() {
+            by.entry(r.0).or_default().push(i);
+        }
+        let people: Vec<i64> = by.iter().filter(|(_, v)| v.len() >= 3).map(|(k, _)| *k).collect();
+        eprintln!("wymiar wektora: {dim}, twarze osob z nazwa: {}, osob (>=3 twarze): {}", rows.len(), people.len());
+        let sum = |ids: &[usize], skip: Option<usize>| -> Vec<f32> {
+            let mut c = vec![0.0f32; dim];
+            for &i in ids {
+                if Some(i) != skip {
+                    for (a, b) in c.iter_mut().zip(&rows[i].1) { *a += b; }
+                }
+            }
+            normalize(&mut c);
+            c
+        };
+        let centers: HashMap<i64, Vec<f32>> = people.iter().map(|p| (*p, sum(&by[p], None))).collect();
+        let mut own: Vec<f32> = Vec::new();
+        let mut other: Vec<f32> = Vec::new(); // najlepsza inna osoba
+        for p in &people {
+            for &i in &by[p] {
+                let c = sum(&by[p], Some(i));
+                own.push(cosine(&rows[i].1, &c));
+                let best = people.iter().filter(|o| *o != p).map(|o| cosine(&rows[i].1, &centers[o])).fold(-1.0f32, f32::max);
+                other.push(best);
+            }
+        }
+        let q = |v: &mut Vec<f32>, p: f32| { v.sort_by(|a, b| a.total_cmp(b)); v[((v.len() as f32 - 1.0) * p) as usize] };
+        let mut o = own.clone();
+        let mut x = other.clone();
+        eprintln!("swoja osoba (kwantyle 1%,5%,10%,50%): {:.3} {:.3} {:.3} {:.3}", q(&mut o, 0.01), q(&mut o, 0.05), q(&mut o, 0.10), q(&mut o, 0.50));
+        eprintln!("najlepsza inna osoba (50%,90%,99%,99.9%): {:.3} {:.3} {:.3} {:.3}", q(&mut x, 0.5), q(&mut x, 0.9), q(&mut x, 0.99), q(&mut x, 0.999));
+        eprintln!("prog | swoje dolaczone | cudze falszywie dolaczone");
+        let mut t = 0.20f32;
+        while t <= 0.70 {
+            let good = own.iter().filter(|s| **s >= t).count() as f32 / own.len() as f32;
+            let bad = other.iter().filter(|s| **s >= t).count() as f32 / other.len() as f32;
+            eprintln!("{t:.2} | {:5.1}% | {:5.2}%", good * 100.0, bad * 100.0);
+            t += 0.05;
+        }
     }
 }

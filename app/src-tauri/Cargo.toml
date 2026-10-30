@@ -1,6 +1,6 @@
 [package]
 name = "fibo"
-version = "0.4.25"
+version = "0.4.26"
 edition = "2021"
 license = "GPL-2.0-or-later"
 

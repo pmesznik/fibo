@@ -156,6 +156,10 @@ details.sec > .sec-body { padding:0 14px 14px; }
 .pd-fill::after { content: ''; position: absolute; inset: 0; background: linear-gradient(110deg, transparent 30%, rgba(255,255,255,.55) 50%, transparent 70%); transform: translateX(-100%); animation: pd-shine 1.6s linear infinite; }
 .pd-fill.pd-done { background: var(--ok, #2e9d5b); }
 .pd-fill.pd-done::after { animation: none; }
+.pd-fill.pd-halted { background: #e0900f; }
+.pd-fill.pd-halted::after { animation: none; }
+.pd-card.pd-halt { border-color: #e0900f; box-shadow: 0 0 0 1px color-mix(in srgb, #e0900f 55%, transparent), var(--elev-2, 0 10px 30px rgba(0,0,0,.3)); }
+.pd-card.pd-halt .pd-count b, .pd-card.pd-halt .pd-pct { color: #e0900f; }
 .pd-indet { animation: pd-slide 1.3s ease-in-out infinite alternate; transition: none; }
 .pd-main { display: flex; align-items: baseline; gap: 10px; margin-top: 12px; }
 .pd-pct { font: 700 34px/1 system-ui; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }

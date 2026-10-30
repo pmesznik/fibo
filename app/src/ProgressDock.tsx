@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { listen } from '@tauri-apps/api/event'
-import { CalendarDays, Check, Copy, Download, Images, RefreshCw, RotateCw, Save, Users, Wand2, X } from './FiboIcons'
+import { CalendarDays, Check, Copy, Download, Images, Pause, RefreshCw, RotateCw, Save, Users, Wand2, X } from './FiboIcons'
 import { facesStop, inTauri, type FacesProgress } from './api'
 
 type Kind = 'scan' | 'faces' | 'dups' | 'backup' | 'colors' | 'rotate' | 'export' | 'gallery' | 'pdf' | 'gif' | 'import' | 'check' | 'refresh' | 'sidecar' | 'paste' | 'calendar'
@@ -12,6 +12,10 @@ type Job = {
   grouping: boolean
   finished: boolean
   error: string | null
+  /** Kliknięto „Wstrzymaj”, program jeszcze kończy bieżące zdjęcia. */
+  stopping: boolean
+  /** Zadanie zakończyło się przed końcem, bo je wstrzymano. */
+  stopped: boolean
   start: number
   /** Punkty pomiarowe (czas, zrobione) z ostatnich sekund do liczenia prędkości. */
   pts: { t: number; d: number }[]
@@ -95,6 +99,7 @@ function SpeedChart({ values, id }: { values: number[]; id: string }) {
 }
 
 function Card({ job, min, compact, onMin, onStop }: { job: Job; min: boolean; compact: boolean; onMin: () => void; onStop?: () => void }) {
+  const halted = job.finished && job.stopped
   const { title, unit, Icon } = META[job.kind]
   const pct = job.total > 0 ? Math.min(100, (job.done / job.total) * 100) : 0
   const left = job.total - job.done
@@ -102,24 +107,24 @@ function Card({ job, min, compact, onMin, onStop }: { job: Job; min: boolean; co
   const waiting = Date.now() - job.start < 2500 || job.pts.length < 3
   const staged = !!job.label && job.total > 0 && job.done >= job.total
   const indeterminate = job.grouping || job.total === 0 || staged
-  const status = job.finished ? (job.error ? 'Przerwano' : 'Gotowe') : job.grouping ? 'Grupowanie osób…' : staged ? job.label : null
+  const status = job.finished ? (halted ? 'Wstrzymano' : job.error ? 'Przerwano' : 'Gotowe') : job.stopping ? 'Wstrzymuję…' : job.grouping ? 'Grupowanie osób…' : staged ? job.label : null
 
   return (
-    <div className={`glass pd-card${compact ? ' pd-compact' : ''}`} role="status" aria-live="polite" aria-label={`${title}: ${Math.round(pct)}%`}>
+    <div className={`glass pd-card${compact ? ' pd-compact' : ''}${halted || job.stopping ? ' pd-halt' : ''}`} role="status" aria-live="polite" aria-label={`${title}: ${Math.round(pct)}%`}>
       <div className="pd-head">
-        <span className="pd-ico" style={{ color: job.finished && !job.error ? 'var(--ok, #2e9d5b)' : 'var(--accent)' }}>{job.finished && !job.error ? <Check size={18} /> : <Icon size={18} />}</span>
+        <span className="pd-ico" style={{ color: halted || job.stopping ? '#e0900f' : job.finished && !job.error ? 'var(--ok, #2e9d5b)' : 'var(--accent)' }}>{halted || job.stopping ? <Pause size={18} /> : job.finished && !job.error ? <Check size={18} /> : <Icon size={18} />}</span>
         <span className="pd-title">{title}</span>
         <button className="ico pd-btn" aria-label={min ? 'Rozwiń okno postępu' : 'Zwiń okno postępu'} title={min ? 'Rozwiń' : 'Zwiń'} onClick={onMin}>{min ? '▴' : '▾'}</button>
       </div>
 
       <div className="pd-bar" aria-hidden>
-        <div className={`pd-fill${indeterminate && !job.finished ? ' pd-indet' : ''}${job.finished ? ' pd-done' : ''}`} style={{ width: indeterminate && !job.finished ? '38%' : `${job.finished && !job.error ? 100 : pct}%` }} />
+        <div className={`pd-fill${indeterminate && !job.finished && !job.stopping ? ' pd-indet' : ''}${halted || job.stopping ? ' pd-halted' : job.finished ? ' pd-done' : ''}`} style={{ width: indeterminate && !job.finished && !job.stopping ? '38%' : `${job.finished && !job.error && !halted ? 100 : pct}%` }} />
       </div>
 
       {!min && (
         <>
           <div className="pd-main">
-            <span className="pd-pct">{job.finished && !job.error ? 100 : Math.floor(pct)}<small>%</small></span>
+            <span className="pd-pct">{job.finished && !job.error && !halted ? 100 : Math.floor(pct)}<small>%</small></span>
             <span className="pd-count">
               {job.total > 0 ? `${fmt(job.done)} z ${fmt(job.total)} ${pl(job.total, unit[0], unit[1], unit[2])}` : (job.label ?? (job.done > 0 ? fmt(job.done) : 'Przygotowuję…'))}
               {status && <b>{job.total > 0 ? ' · ' : ''}{status}</b>}
@@ -128,8 +133,8 @@ function Card({ job, min, compact, onMin, onStop }: { job: Job; min: boolean; co
 
           {job.finished ? (
             <div className="pd-sum">
-              {job.error ? job.error : `Zrobione w ${dur((job.doneAt ?? Date.now()) - job.start)}`}
-              {job.kind === 'faces' && !job.error && ` · znaleziono ${fmt(job.faces)} ${pl(job.faces, 'twarz', 'twarze', 'twarzy')}`}
+              {halted ? `Wstrzymano po ${dur((job.doneAt ?? Date.now()) - job.start)}. To, co policzono, zostało zapisane. Uruchom ponownie, żeby wznowić od tego miejsca.` : job.error ? job.error : `Zrobione w ${dur((job.doneAt ?? Date.now()) - job.start)}`}
+              {job.kind === 'faces' && !job.error && !halted && ` · znaleziono ${fmt(job.faces)} ${pl(job.faces, 'twarz', 'twarze', 'twarzy')}`}
             </div>
           ) : (
             <>
@@ -139,7 +144,7 @@ function Card({ job, min, compact, onMin, onStop }: { job: Job; min: boolean; co
                 <div><span>Pozostało</span><b>{job.grouping ? 'chwila' : indeterminate ? '…' : waiting ? 'liczę…' : eta(sec)}</b></div>
                 {job.kind === 'faces' ? <div><span>Twarze</span><b>{fmt(job.faces)}</b></div> : <div><span>Upłynęło</span><b>{dur(Date.now() - job.start)}</b></div>}
               </div>
-              {onStop && <button className="wide pd-stop" onClick={onStop}><X size={15} /> Wstrzymaj (można wznowić)</button>}
+              {onStop && <button className="wide pd-stop" disabled={job.stopping} onClick={onStop}><X size={15} /> {job.stopping ? 'Wstrzymuję, chwileczkę…' : 'Wstrzymaj (można wznowić)'}</button>}
             </>
           )}
         </>
@@ -164,7 +169,7 @@ export function ProgressDock() {
         let j = all[kind]
         // Nowe zadanie (inny rozmiar albo licznik cofnięty) zaczyna pomiar od zera.
         if (!j || j.finished || total !== j.total || done < j.done) {
-          j = { kind, done: 0, total, faces: 0, grouping: false, finished: false, error: null, start: now, pts: [], rate: 0, history: [], doneAt: null, label: null }
+          j = { kind, done: 0, total, faces: 0, grouping: false, finished: false, error: null, stopping: false, stopped: false, start: now, pts: [], rate: 0, history: [], doneAt: null, label: null }
         }
         const pts = [...j.pts, { t: now, d: done }].filter((p) => now - p.t <= 12000)
         let { rate, history } = j
@@ -184,9 +189,10 @@ export function ProgressDock() {
     const finish = (kind: Kind, extra: Partial<Job> = {}) => {
       setJobs((all) => {
         const j = all[kind]
-        return j ? { ...all, [kind]: { ...j, ...extra, finished: true, grouping: false, doneAt: Date.now() } } : all
+        return j ? { ...all, [kind]: { ...j, ...extra, finished: true, grouping: false, stopping: false, doneAt: Date.now() } } : all
       })
-      timers.current[kind] = window.setTimeout(() => setJobs((all) => { const { [kind]: _drop, ...rest } = all; return rest }), 6000)
+      // Wstrzymane zadanie zostaje na ekranie dłużej, żeby było widać, że naprawdę stanęło.
+      timers.current[kind] = window.setTimeout(() => setJobs((all) => { const { [kind]: _drop, ...rest } = all; return rest }), extra.stopped ? 20000 : 6000)
     }
 
     // Ogólne zadania z programu i z interfejsu: { kind, done, total, finished, label }.
@@ -209,7 +215,7 @@ export function ProgressDock() {
         const p = e.payload
         if (p.total === 0 && !p.finished) return
         touch('faces', p.done, p.total, { faces: p.faces, grouping: !!p.grouping })
-        if (p.finished) finish('faces', { error: p.error })
+        if (p.finished) finish('faces', { error: p.error, stopped: !p.error && p.total > 0 && p.done < p.total })
       }),
     ]
     const t = window.setInterval(() => tick((n) => n + 1), 1000)
@@ -221,7 +227,7 @@ export function ProgressDock() {
   if (!shown.length) return null
   return (
     <div className="pd-dock">
-      {shown.map((j) => <Card key={j.kind} job={j} min={min} compact={shown.length > 1} onMin={() => setMin((m) => !m)} onStop={j.kind === 'faces' && !j.finished ? () => { facesStop().catch(() => {}) } : undefined} />)}
+      {shown.map((j) => <Card key={j.kind} job={j} min={min} compact={shown.length > 1} onMin={() => setMin((m) => !m)} onStop={j.kind === 'faces' && !j.finished ? () => { setJobs((all) => (all.faces ? { ...all, faces: { ...all.faces, stopping: true } } : all)); facesStop().catch(() => {}) } : undefined} />)}
     </div>
   )
 }

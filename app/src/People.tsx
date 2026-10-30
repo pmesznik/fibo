@@ -114,7 +114,7 @@ export function People({ say, ask, onOpenPerson, onChanged }: {
             <li>Zdjęcia, twarze i imiona nie są nigdzie wysyłane. Modele rozpoznawania są dołączone do programu i nic się nie pobiera.</li>
             <li>Wektory twarzy są w bazie zaszyfrowane kluczem Twojego konta Windows.</li>
             <li>Imiona zostają tylko w bazie FIBO i nie trafiają do plików zdjęć ani do plików XMP.</li>
-            <li>Analiza działa w tle i można ją wstrzymać. Wszystkie dane twarzy usuniesz jednym przyciskiem.</li>
+            <li>Analiza uruchamia się tylko wtedy, gdy ją włączysz tym przyciskiem (sama nie startuje), działa w tle i można ją wstrzymać. Wszystkie dane twarzy usuniesz jednym przyciskiem.</li>
           </ul>
           {!st.models_ok && <p role="alert" style={{ color: 'var(--err)', fontSize: 14 }}>Ta wersja programu nie zawiera modeli rozpoznawania twarzy.</p>}
           <button className="primary" disabled={!st.models_ok} onClick={enable}>Włącz rozpoznawanie twarzy</button>
