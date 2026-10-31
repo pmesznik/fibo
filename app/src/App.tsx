@@ -21,7 +21,7 @@ import { Duplicates } from './Duplicates'
 import { UpdateDialog, useUpdater } from './Updater'
 import { exportSidecars, getSidecarEnabled, importSidecars, setSidecarEnabled } from './api'
 import {
-  addToAlbum, createAlbum, deleteAlbum, setAlbumHidden, listAlbumOrder, setAlbumOrder, listAlbums, fillPlaces, addDropped, watchRoots, thumbCacheInfo, thumbCacheClear, listRoots, movePhotos, removeFromAlbum, removeRoot,
+  addToAlbum, createAlbum, deleteAlbum, setAlbumHidden, listAlbumOrder, setAlbumOrder, listAlbums, fillPlaces, mergePhotos, addDropped, watchRoots, thumbCacheInfo, thumbCacheClear, listRoots, movePhotos, removeFromAlbum, removeRoot,
   renameAlbum, renamePhoto, rescanRoots, trashPhotos, listSmart, saveSmart, deleteSmart, type SmartAlbum, listLocked, setFolderLocked, revealInExplorer, openPhotoExternal, findDuplicates, indexColors, rejectPersonInPhotos, rotatePhotos, getSkipGifPng, setSkipGifPng, detectCards, listPeople, listProps, renameFolder, type Prop, type Person, personPhotos, importPhotos, backupLibrary, backupPhotos, restoreLibrary, pickFile, hidePhotos, hiddenCount, restoreHidden, type Album,
 } from './api'
 import { AlbumPicker, PromptDialog } from './Dialogs'
@@ -974,6 +974,25 @@ export default function App() {
     catch (e) { say(`Błąd albumu: ${e}`, 'err') }
   }
   /** Upuszczenie przeciąganych zdjęć na folder z paska na dole: po potwierdzeniu pliki są przenoszone na dysku (zablokowane foldery i zajęte nazwy obsługuje przenoszenie). */
+  /** Łączy zaznaczone zdjęcia (2 do 9) w HDR albo stos ostrości; wynik to nowy plik obok pierwszego zdjęcia, oryginały zostają. */
+  const askMerge = (mode: 'hdr' | 'focus') => {
+    const ids = realIds()
+    setMenu(null)
+    if (ids.length < 2 || ids.length > 9) { say('Zaznacz od 2 do 9 zdjęć tej samej sceny', 'err'); return }
+    const what = mode === 'hdr' ? 'HDR (fuzja ekspozycji)' : 'stos ostrości'
+    setConfirm({
+      text: `Połączyć ${ids.length} ${pl(ids.length, 'zdjęcie', 'zdjęcia', 'zdjęć')} w ${what}? Powstanie nowy plik JPEG obok pierwszego zdjęcia (do 2800 px dłuższego boku), a oryginały zostaną bez zmian. Zdjęcia powinny przedstawiać tę samą scenę, najlepiej ze statywu. Program wyrówna niewielkie przesunięcia, ale nie obrót ani zmianę skali. To może potrwać kilkanaście sekund.`,
+      yes: 'Połącz',
+      run: async () => {
+        try {
+          const r = await mergePhotos(ids, mode)
+          await reload()
+          const big = r.shifts.some(([x, y]) => Math.abs(x) > 40 || Math.abs(y) > 40)
+          say(big ? 'Połączono, ale zdjęcia były mocno przesunięte względem siebie, więc wynik może mieć rozmyte krawędzie. Nowy plik jest obok pierwszego zdjęcia' : 'Połączono. Nowy plik jest obok pierwszego zdjęcia', big ? 'err' : 'ok')
+        } catch (e) { say(`Błąd łączenia: ${e}`, 'err') }
+      },
+    })
+  }
   const dropOnFolder = (dir: string, dragged: number[] | null = dragIds) => {
     const ids = (dragged ?? []).filter((i) => i >= 0)
     setDragIds(null); setDropOver(null)
@@ -1374,22 +1393,19 @@ export default function App() {
       <main className="h-full overflow-y-auto" onScroll={syncTimeline} style={{ padding: `calc(82px + var(--sat)) ${railOn ? 58 : 20}px 100px 20px` }}>
         {(mode === 'library' || mode === 'favs') && (
           <>
+            {/* Przycisk powrotu przykleja się pod paskiem górnym, więc jest widoczny także po przewinięciu długiej listy twarzy lub zdjęć. */}
+            {(() => {
+              const back = person && !person.memory ? { label: 'Osoby', aria: 'Wróć do listy osób', fn: () => { setPerson(null); setMode('people') } }
+                : person?.memory ? { label: 'Biblioteka', aria: 'Wróć do biblioteki', fn: () => setPerson(null) }
+                : mode === 'library' && (albumId !== null || folder) ? { label: 'Albumy', aria: 'Wróć do albumów i folderów', fn: () => { setAlbumId(null); setFolder(null); setMode('albums') } }
+                : null
+              return back && (
+                <div style={{ position: 'sticky', top: 10, zIndex: 6, width: 'fit-content', marginBottom: 8, marginTop: -4 }}>
+                  <button className="chip glass" style={{ minHeight: 38, fontWeight: 600 }} aria-label={back.aria} onClick={back.fn}><ChevronLeft size={16} /> {back.label}</button>
+                </div>
+              )
+            })()}
             <div style={{ marginBottom: 14 }}>
-              {person && !person.memory && (
-                <button className="chip" style={{ marginBottom: 8 }} aria-label="Wróć do listy osób" onClick={() => { setPerson(null); setMode('people') }}>
-                  <ChevronLeft size={15} /> Osoby
-                </button>
-              )}
-              {!person && mode === 'library' && (albumId !== null || folder) && (
-                <button className="chip" style={{ marginBottom: 8 }} aria-label="Wróć do albumów i folderów" onClick={() => { setAlbumId(null); setFolder(null); setMode('albums') }}>
-                  <ChevronLeft size={15} /> Albumy
-                </button>
-              )}
-              {person?.memory && (
-                <button className="chip" style={{ marginBottom: 8 }} aria-label="Wróć do biblioteki" onClick={() => setPerson(null)}>
-                  <ChevronLeft size={15} /> Biblioteka
-                </button>
-              )}
               <h1 style={{ margin: 0, font: '700 22px/1.2 system-ui' }}>{mode === 'favs' ? 'Ulubione' : person ? person.name : albumId !== null ? (albums.find((a) => a.id === albumId)?.name ?? 'Album') : folder ? folderName(folder) : 'Biblioteka'}</h1>
               <div style={{ color: 'var(--muted)', fontSize: 13 }}>{subtitle}</div>
               {(() => {
@@ -1727,6 +1743,12 @@ export default function App() {
               </>
             )}
             <button className="text menu-item" role="menuitem" onClick={() => { setMenu(null); setCreditIds(realIds()) }}><Pencil size={18} /> Autor, prawa i opis (IPTC)…</button>
+            {sel.length >= 2 && sel.length <= 9 && (
+              <>
+                <button className="text menu-item" role="menuitem" onClick={() => askMerge('hdr')}><Wand2 size={18} /> Połącz w HDR…</button>
+                <button className="text menu-item" role="menuitem" onClick={() => askMerge('focus')}><Wand2 size={18} /> Połącz w stos ostrości…</button>
+              </>
+            )}
             <button className="text menu-item" role="menuitem" title="Bez utraty jakości (JPEG): zmienia tylko znacznik orientacji" onClick={() => rotateSelected(true)}><RotateCw size={18} /> Obróć w prawo</button>
             <button className="text menu-item" role="menuitem" title="Bez utraty jakości (JPEG): zmienia tylko znacznik orientacji" onClick={() => rotateSelected(false)}><RotateCcw size={18} /> Obróć w lewo</button>
             <button className="text menu-item" role="menuitem" onClick={pasteEditSelected}><Wand2 size={18} /> Wklej edycję…</button>

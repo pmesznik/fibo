@@ -22,6 +22,9 @@ import {
 import { detectHorizonAngle } from './editor/geom'
 import { MAX_DABS, type Dab } from './editor/inpaint'
 
+/** Najwięcej znaczników osób widocznych od razu (przy zdjęciach grupowych reszta jest pod „+N więcej”). */
+const PEOPLE_SHOWN = 6
+
 type Tab = 'basic' | 'tune' | 'fx' | 'info'
 
 const ASPECTS: { label: string; v: number | null }[] = [
@@ -270,6 +273,9 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
   const [tagMode, setTagMode] = useState(false)
   const [tagBox, setTagBox] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null)
   const [tagPick, setTagPick] = useState<{ x: number; y: number; w: number; h: number; options: Person[] } | null>(null)
+  /** Znaczniki osób: ile pokazać od razu, rozwinięcie reszty i otwarte menu osoby. */
+  const [showAllPeople, setShowAllPeople] = useState(false)
+  const [personMenu, setPersonMenu] = useState<number | null>(null)
   const [reassign, setReassign] = useState<{ from: PhotoPerson; options: Person[] } | null>(null)
   const [exifRows, setExifRows] = useState<[string, string][]>([])
   useEffect(() => { setCaptionDraft(photo?.caption ?? '') }, [photo?.id, photo?.caption])
@@ -277,6 +283,7 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
     let dead = false
     setPeople([]); setExifRows([])
     if (photo && photo.id >= 0) photoExif(photo.id).then((v) => { if (!dead) setExifRows(v) }).catch(() => {})
+    setShowAllPeople(false); setPersonMenu(null)
     if (photo && photo.id >= 0) photoPeople(photo.id).then((v) => { if (!dead) setPeople(v) }).catch(() => {})
     return () => { dead = true }
   }, [photo?.id])
@@ -377,7 +384,8 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
       if (e.key === 'ArrowLeft' && !onRange) go(-1)
       else if (e.key === 'ArrowRight' && !onRange) go(1)
       else if (e.key === 'Escape') {
-        if (centerFor) setCenterFor(null)
+        if (personMenu !== null) setPersonMenu(null)
+        else if (centerFor) setCenterFor(null)
         else if (inkTool) setInkTool(null)
         else if (eraseMode) setEraseMode(false)
         else if (redEyeMode) setRedEyeMode(false)
@@ -784,25 +792,33 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
           <button className={`chip glass${tagMode ? ' on' : ''}`} style={{ gap: 6 }} aria-pressed={tagMode} title="Zaznacz twarz, której program nie wykrył, i wskaż, kto to jest" onClick={() => (tagMode ? setTagMode(false) : startTagging())}>
             <Users size={14} /> Dodaj twarz
           </button>
-          {people.map((p) => (
-            <button key={p.id} className="chip glass" style={{ paddingLeft: 4, gap: 6 }} aria-label={`Pokaż zdjęcia: ${p.name ?? 'Nieznana osoba'}`} title="Pokaż wszystkie zdjęcia tej osoby"
-              onClick={() => onOpenPerson(p.id, p.name)}>
-              <span style={{ width: 26, height: 26, borderRadius: '50%', overflow: 'hidden', display: 'inline-block', background: 'var(--tonal)' }}><FaceImg id={p.face} size={26} /></span>
-              {p.name ?? 'Nieznana osoba'}
+          {(showAllPeople ? people : people.slice(0, PEOPLE_SHOWN)).map((p) => {
+            const label = p.name ?? 'Nieznana osoba'
+            return (
+              <span key={p.id} style={{ position: 'relative', display: 'inline-flex' }}>
+                <button className={`chip glass${personMenu === p.id ? ' on' : ''}`} style={{ paddingLeft: 3, gap: 5, minHeight: 32, fontSize: 13, maxWidth: 150 }} aria-haspopup="menu" aria-expanded={personMenu === p.id}
+                  aria-label={`${label}: pokaż menu osoby`} title={`${label}: kliknij, żeby zobaczyć zdjęcia tej osoby, poprawić rozpoznanie albo ustawić okładkę`}
+                  onClick={() => setPersonMenu(personMenu === p.id ? null : p.id)}>
+                  <span style={{ width: 22, height: 22, borderRadius: '50%', overflow: 'hidden', display: 'inline-block', background: 'var(--tonal)', flex: 'none' }}><FaceImg id={p.face} size={22} /></span>
+                  <span className="truncate">{label}</span>
+                </button>
+                {personMenu === p.id && (
+                  <div className="glass" role="menu" aria-label={`Działania dla: ${label}`} style={{ position: 'absolute', left: 0, bottom: 'calc(100% + 6px)', zIndex: 5, minWidth: 220, padding: 6, borderRadius: 'var(--r-md)', display: 'grid', gap: 2 }}>
+                    <button className="text menu-item" role="menuitem" onClick={() => { setPersonMenu(null); onOpenPerson(p.id, p.name) }}><Users size={16} /> Pokaż zdjęcia: {label}</button>
+                    <button className="text menu-item" role="menuitem" title="Źle rozpoznana twarz: przenieś ją do innej osoby"
+                      onClick={async () => { setPersonMenu(null); try { setReassign({ from: p, options: (await listPeople()).filter((o) => o.id !== p.id && !o.ignored) }) } catch (e) { say(`Błąd: ${e}`, 'err') } }}><Pencil size={16} /> To nie ta osoba…</button>
+                    <button className="text menu-item" role="menuitem" title="Ta twarz będzie okładką osoby na liście"
+                      onClick={async () => { setPersonMenu(null); try { await setPersonCover(p.id, p.face); say(`Okładka osoby „${label}” zmieniona`, 'ok') } catch (e) { say(`Błąd: ${e}`, 'err') } }}><Star size={16} /> Ustaw jako okładkę</button>
+                  </div>
+                )}
+              </span>
+            )
+          })}
+          {people.length > PEOPLE_SHOWN && (
+            <button className="chip glass" style={{ minHeight: 32, fontSize: 13 }} aria-expanded={showAllPeople} onClick={() => setShowAllPeople((v) => !v)}>
+              {showAllPeople ? 'Mniej' : `+${people.length - PEOPLE_SHOWN} więcej`}
             </button>
-          ))}
-          {people.map((p) => (
-            <button key={`r${p.id}`} className="chip glass" style={{ gap: 6 }} aria-label={`To nie jest ${p.name ?? 'ta osoba'}: wskaż właściwą osobę`} title="Źle rozpoznana twarz: przenieś ją do innej osoby"
-              onClick={async () => { try { setReassign({ from: p, options: (await listPeople()).filter((o) => o.id !== p.id && !o.ignored) }) } catch (e) { say(`Błąd: ${e}`, 'err') } }}>
-              <Pencil size={13} /> To nie {p.name ?? 'ta osoba'}
-            </button>
-          ))}
-          {people.map((p) => (
-            <button key={`c${p.id}`} className="chip glass" style={{ gap: 6 }} aria-label={`Ustaw tę twarz jako okładkę osoby ${p.name ?? 'Nieznana osoba'}`} title={`Ustaw tę twarz jako okładkę: ${p.name ?? 'Nieznana osoba'}`}
-              onClick={async () => { try { await setPersonCover(p.id, p.face); say(`Okładka osoby „${p.name ?? 'Nieznana osoba'}” zmieniona`, 'ok') } catch (e) { say(`Błąd: ${e}`, 'err') } }}>
-              <Star size={13} /> Okładka: {p.name ?? 'Nieznana osoba'}
-            </button>
-          ))}
+          )}
         </div>
       )}
 

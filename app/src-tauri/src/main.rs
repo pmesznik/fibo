@@ -32,6 +32,7 @@ mod cache;
 mod watcher;
 mod quality;
 mod ocr;
+mod merge;
 mod pdf;
 mod people;
 mod secure;
@@ -740,14 +741,14 @@ async fn thumbnail_data(state: State<'_, AppState>, id: i64) -> Result<tauri::ip
     Ok(tauri::ipc::Response::new(fs::read(path).map_err(|e| e.to_string())?))
 }
 
-fn photo_path(state: &AppState, id: i64) -> Result<(String, Option<String>, Option<String>), String> {
+pub(crate) fn photo_path(state: &AppState, id: i64) -> Result<(String, Option<String>, Option<String>), String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     conn.query_row("SELECT path, taken, camera FROM photos WHERE id = ?1", [id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
         .map_err(|e| e.to_string())
 }
 
 /// Wpisuje plik do biblioteki; dane z EXIF oryginału zostają, bo edytor je gubi przy zapisie.
-fn reindex(state: &AppState, path: &Path, taken: Option<String>, camera: Option<String>) -> Result<i64, String> {
+pub(crate) fn reindex(state: &AppState, path: &Path, taken: Option<String>, camera: Option<String>) -> Result<i64, String> {
     let mut row = build_row(path).ok_or("nie można odczytać zapisanego pliku")?;
     row.exif.taken = row.exif.taken.or(taken);
     row.exif.camera = row.exif.camera.or(camera);
@@ -1840,7 +1841,7 @@ fn valid_stem(s: &str) -> Result<String, String> {
 }
 
 /// Ścieżka w `dir` o danej nazwie; gdy zajęta, dopisuje _1, _2 itd.
-fn unique_target(dir: &Path, name: &str) -> PathBuf {
+pub(crate) fn unique_target(dir: &Path, name: &str) -> PathBuf {
     let first = dir.join(name);
     if !first.exists() {
         return first;
@@ -2413,7 +2414,7 @@ fn export_format(format: &str) -> Result<&'static str, String> {
     }
 }
 
-fn encode_export(img: &image::DynamicImage, ext: &str, quality: u8, target: &Path) -> Result<(), String> {
+pub(crate) fn encode_export(img: &image::DynamicImage, ext: &str, quality: u8, target: &Path) -> Result<(), String> {
     let result = (|| -> Result<(), String> {
         let file = File::create(target).map_err(|e| e.to_string())?;
         let mut w = std::io::BufWriter::new(file);
@@ -2989,6 +2990,30 @@ mod tests {
         assert_eq!(label_number("red"), 1);
         assert_eq!(label_number(" Blue "), 4);
         assert_eq!(label_number("Purple"), 0);
+    }
+
+    #[test]
+    fn merging_photos_creates_a_new_library_file_next_to_the_first_and_leaves_originals() {
+        let dir = std::env::temp_dir().join("mz-merge-test");
+        let state = test_state(&dir);
+        let shots = dir.join("seria");
+        fs::create_dir_all(&shots).unwrap();
+        let scene = |x: u32, y: u32| -> f32 { let tex = (((x / 4).wrapping_mul(73856093) ^ (y / 4).wrapping_mul(19349663)) % 100) as f32 / 200.0 + 0.25; (if x < 80 { 0.5 } else { 0.9 }) * tex * 1.6 };
+        for (name, gain, dx) in [("a.jpg", 0.8f32, 0i32), ("b.jpg", 2.0, 3)] {
+            image::RgbImage::from_fn(160, 100, |x, y| { let v = (scene((x as i32 + dx).clamp(0, 159) as u32, y) * gain).clamp(0.0, 1.0).powf(0.8); image::Rgb([(v * 255.0) as u8; 3]) }).save(shots.join(name)).unwrap();
+        }
+        scan_blocking(&state, &shots.to_string_lossy(), &|_| {}).unwrap();
+        let (a, b) = (photo_id(&state, "a.jpg"), photo_id(&state, "b.jpg"));
+        let before = fs::read(shots.join("a.jpg")).unwrap();
+        let rep = merge::merge_blocking(&state, &[a, b], merge::Mode::Hdr).unwrap();
+        assert!(Path::new(&rep.path).exists() && rep.path.ends_with("a_HDR.jpg"));
+        assert_eq!(rep.shifts[1], (-3, 0), "wykryte przesunięcie drugiego ujęcia");
+        let n: i64 = state.db.lock().unwrap().query_row("SELECT COUNT(*) FROM photos", [], |r| r.get(0)).unwrap();
+        assert_eq!(n, 3, "nowe zdjęcie jest w bibliotece");
+        assert_eq!(fs::read(shots.join("a.jpg")).unwrap(), before, "oryginał nietknięty");
+        assert!(merge::merge_blocking(&state, &[a], merge::Mode::Hdr).is_err());
+        let again = merge::merge_blocking(&state, &[a, b], merge::Mode::Focus).unwrap();
+        assert!(again.path.ends_with("a_stos.jpg"));
     }
 
     #[test]
@@ -4026,7 +4051,7 @@ fn main() {
             app.manage(AppState { db: Mutex::new(db), thumbs, sidecar: AtomicBool::new(sidecar) });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![list_roots, remove_root, rescan_roots, list_albums, create_album, rename_album, set_album_hidden, put_thumbnail, set_credits, color::index_colors, get_skip_gif_png, set_skip_gif_png, detect_cards, rotate::rotate_photos, list_album_order, set_album_order, open_photo_external, delete_album, add_to_album, remove_from_album, rename_photo, move_photos, get_sidecar_enabled, set_sidecar_enabled, export_sidecars, import_sidecars, scan_folder, refresh_library, find_duplicates, trash_photos, export_photos, set_location, rename_batch, import_photos, gallery::export_gallery, gallery::export_gpx, gallery::export_gif, pdf::export_pdf, check::check_files, list_smart, save_smart, delete_smart, gallery::rename_folder, locks::list_locked, locks::set_folder_locked, set_date, shift_dates, set_caption, photo_exif, list_props, set_props, people::photo_people, people::add_manual_face, people::reassign_person_faces, backup::backup_library, photos_backup::backup_photos, backup::restore_library, hide_photos, hidden_count, restore_hidden, people::faces_status, people::set_faces_enabled, people::faces_start, people::faces_stop, people::faces_regroup, people::faces_reanalyze, people::faces_delete_all, people::list_people, people::person_photos, people::person_faces, people::set_person_cover, people::rename_person, people::merge_people, people::merge_suggestions, people::person_face_cards, people::photo_face_stats, calendar::save_calendar_pdf, people::confirm_faces, people::move_faces, people::reject_person_in_photos, people::move_person_faces, people::reject_faces, people::delete_person, people::restore_rejected_faces, people::ignore_person, list_photos, thumbnail, thumbnail_data, people::face_crop, places::fill_places, ocr::ocr_status, ocr::ocr_start, ocr::ocr_stop, ocr::ocr_search, clip::clip_suggest_tags, quality::quality_scan, add_dropped, watcher::watch_roots, set_iptc, cache::thumb_cache_info, cache::thumb_cache_clear, watermark::save_watermark_text, organize::organize_plan, organize::organize_apply, organize::organize_last, organize::organize_undo, edits::get_edit, edits::save_edit_recipe, edits::put_edit_thumbnail, edits::delete_edit, edits::list_edit_history, edits::get_edit_version, set_rating, set_flag, set_label, rawdev::develop_raw, clip::clip_status, clip::clip_start, clip::clip_stop, clip::clip_search, set_favorite, add_tag, remove_tag, delete_tag, save_edit, save_collage, read_image, read_audio, has_original, restore_original])
+        .invoke_handler(tauri::generate_handler![list_roots, remove_root, rescan_roots, list_albums, create_album, rename_album, set_album_hidden, put_thumbnail, set_credits, color::index_colors, get_skip_gif_png, set_skip_gif_png, detect_cards, rotate::rotate_photos, list_album_order, set_album_order, open_photo_external, delete_album, add_to_album, remove_from_album, rename_photo, move_photos, get_sidecar_enabled, set_sidecar_enabled, export_sidecars, import_sidecars, scan_folder, refresh_library, find_duplicates, trash_photos, export_photos, set_location, rename_batch, import_photos, gallery::export_gallery, gallery::export_gpx, gallery::export_gif, pdf::export_pdf, check::check_files, list_smart, save_smart, delete_smart, gallery::rename_folder, locks::list_locked, locks::set_folder_locked, set_date, shift_dates, set_caption, photo_exif, list_props, set_props, people::photo_people, people::add_manual_face, people::reassign_person_faces, backup::backup_library, photos_backup::backup_photos, backup::restore_library, hide_photos, hidden_count, restore_hidden, people::faces_status, people::set_faces_enabled, people::faces_start, people::faces_stop, people::faces_regroup, people::faces_reanalyze, people::faces_delete_all, people::list_people, people::person_photos, people::person_faces, people::set_person_cover, people::rename_person, people::merge_people, people::merge_suggestions, people::person_face_cards, people::photo_face_stats, calendar::save_calendar_pdf, people::confirm_faces, people::move_faces, people::reject_person_in_photos, people::move_person_faces, people::reject_faces, people::delete_person, people::restore_rejected_faces, people::ignore_person, list_photos, thumbnail, thumbnail_data, people::face_crop, places::fill_places, merge::merge_photos, ocr::ocr_status, ocr::ocr_start, ocr::ocr_stop, ocr::ocr_search, clip::clip_suggest_tags, quality::quality_scan, add_dropped, watcher::watch_roots, set_iptc, cache::thumb_cache_info, cache::thumb_cache_clear, watermark::save_watermark_text, organize::organize_plan, organize::organize_apply, organize::organize_last, organize::organize_undo, edits::get_edit, edits::save_edit_recipe, edits::put_edit_thumbnail, edits::delete_edit, edits::list_edit_history, edits::get_edit_version, set_rating, set_flag, set_label, rawdev::develop_raw, clip::clip_status, clip::clip_start, clip::clip_stop, clip::clip_search, set_favorite, add_tag, remove_tag, delete_tag, save_edit, save_collage, read_image, read_audio, has_original, restore_original])
         .run(tauri::generate_context!())
         .expect("błąd uruchomienia aplikacji");
 

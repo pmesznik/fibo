@@ -191,7 +191,7 @@ Edycja:
 - [x] **Usuwanie obiektów** (wypełnianie tła), automatyczne prostowanie horyzontu. P4 T L Gotowe: „Usuwanie obiektów” w zakładce Podstawy (zamalowujesz obiekt, a program wypełnia go fragmentami otoczenia; działa najlepiej na jednolitym lub powtarzalnym tle) oraz przycisk „Prostuj horyzont automatycznie”.
 - [x] **Wywoływanie RAW**: ekspozycja, balans bieli, odzyskiwanie świateł (dziś RAW ma tylko podgląd). P2 T L
 - [x] **Korekta obiektywu** (dystorsja, winietowanie, aberracja chromatyczna). P4 T L Gotowe jako ręczne suwaki w zakładce Dostrajanie (bez bazy profili obiektywów).
-- [ ] **Łączenie zdjęć**: panorama, HDR, stos ostrości. P4 T L
+- [x] **Łączenie zdjęć**: panorama, HDR, stos ostrości. P4 T L Częściowo: HDR (fuzja ekspozycji) i stos ostrości gotowe (menu zdjęcia przy 2 do 9 zaznaczonych, wyrównanie przesunięć, wynik jako nowy JPEG obok pierwszego zdjęcia). Panoramy świadomie pominięte.
 - [x] **Znak wodny tekstowy** (dziś tylko logo). P3 T S Gotowe: w eksporcie przełącznik „Logo z pliku” i „Tekst” (do 80 znaków, 4 kolory, położenie, rozmiar, krycie).
 - [x] **Konwersja wsadowa formatów** (np. HEIC lub RAW do JPEG, PNG, WebP) z wyborem jakości. P2 T S
 
