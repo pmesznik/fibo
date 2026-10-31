@@ -16,9 +16,10 @@ import { TagEditor, type TagCount } from './TagEditor'
 import { pl } from './pl'
 import { flagOf, labelOf, nextMark } from './marks'
 import {
-  EFFECTS, EMPTY_EDIT, ZERO_ADJUST, isEdited, renderEdit, renderGeometry, MAX_SPOTS, neutralFromSample, MAX_TEXTS, MAX_TEXT_LEN, type TextItem,
-  type Adjust, type EditState, type EffectInst,
+  EFFECTS, EMPTY_EDIT, ZERO_ADJUST, MAX_INK, MAX_INK_POINTS, isEdited, renderEdit, renderGeometry, MAX_SPOTS, neutralFromSample, MAX_TEXTS, MAX_TEXT_LEN, type TextItem,
+  type Adjust, type EditState, type EffectInst, type Ink,
 } from './editor/effects'
+import { detectHorizonAngle } from './editor/geom'
 
 type Tab = 'basic' | 'tune' | 'fx' | 'info'
 
@@ -121,6 +122,11 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
   const [redEyeMode, setRedEyeMode] = useState(false)
   const [neutralMode, setNeutralMode] = useState(false)
   const [retouchMode, setRetouchMode] = useState(false)
+  /** Rysowanie: wybrane narzędzie (null = wyłączone), kolor i grubość. */
+  const [inkTool, setInkTool] = useState<Ink['kind'] | null>(null)
+  const [inkColor, setInkColor] = useState('#ff3030')
+  const [inkWidth, setInkWidth] = useState(0.008)
+  const inking = useRef(false)
   const [retouchSize, setRetouchSize] = useState(2)
   const [playing, setPlaying] = useState(autoplay)
   // Muzyka do pokazu slajdów: plik z dysku trafia do odtwarzacza jako blob (bez sieci), gra w pętli tylko podczas pokazu.
@@ -366,6 +372,7 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
       else if (e.key === 'ArrowRight' && !onRange) go(1)
       else if (e.key === 'Escape') {
         if (centerFor) setCenterFor(null)
+        else if (inkTool) setInkTool(null)
         else if (redEyeMode) setRedEyeMode(false)
         else if (neutralMode) setNeutralMode(false)
         else if (retouchMode) setRetouchMode(false)
@@ -428,6 +435,7 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
         geo: { ...EMPTY_EDIT.geo, ...(e.geo ?? {}) }, adj: { ...ZERO_ADJUST, ...(e.adj ?? {}) },
         fx: Array.isArray(e.fx) ? e.fx : [], redeye: Array.isArray(e.redeye) ? e.redeye : [], texts: Array.isArray(e.texts) ? e.texts : [], spots: Array.isArray(e.spots) ? e.spots : [],
         neutral: e.neutral ?? null,
+        ink: Array.isArray(e.ink) ? e.ink.filter((k) => k && ['arrow', 'line', 'rect', 'ellipse', 'pen'].includes(k.kind) && Array.isArray(k.pts) && k.pts.length >= 2 && typeof k.color === 'string' && Number.isFinite(k.width)).slice(0, MAX_INK).map((k) => ({ ...k, pts: k.pts.slice(0, MAX_INK_POINTS) })) : undefined,
         curves: e.curves ? { rgb: cleanPoints(e.curves.rgb), r: cleanPoints(e.curves.r), g: cleanPoints(e.curves.g), b: cleanPoints(e.curves.b) } : undefined,
         hsl: e.hsl ? cleanHsl(e.hsl) : undefined,
       }
@@ -502,6 +510,54 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
   }
   const strip = useMemo(() => photos.slice(Math.max(0, index - 12), index + 13), [photos, index])
 
+  const inkFrac = (e: React.PointerEvent): [number, number] => {
+    const r = canvasRef.current?.getBoundingClientRect()
+    if (!r || r.width < 1 || r.height < 1) return [0, 0]
+    const q = (n: number) => Math.round(Math.min(1, Math.max(0, n)) * 10000) / 10000
+    return [q((e.clientX - r.left) / r.width), q((e.clientY - r.top) / r.height)]
+  }
+  const inkDown = (e: React.PointerEvent) => {
+    if (!inkTool || (edit.ink?.length ?? 0) >= MAX_INK) return
+    snap()
+    const p = inkFrac(e)
+    inking.current = true
+    e.currentTarget.setPointerCapture(e.pointerId)
+    setEdit((s) => ({ ...s, ink: [...(s.ink ?? []), { kind: inkTool, color: inkColor, width: inkWidth, pts: [p, p] }] }))
+  }
+  const inkMove = (e: React.PointerEvent) => {
+    if (!inking.current) return
+    const p = inkFrac(e)
+    setEdit((s) => {
+      const list = [...(s.ink ?? [])]
+      const last = list[list.length - 1]
+      if (!last) return s
+      list[list.length - 1] = { ...last, pts: last.kind === 'pen' ? [...last.pts, p].slice(0, MAX_INK_POINTS) : [last.pts[0], p] }
+      return { ...s, ink: list }
+    })
+  }
+  const inkUp = () => {
+    if (!inking.current) return
+    inking.current = false
+    // Rysunek bez długości (samo kliknięcie) nie zostaje.
+    setEdit((s) => {
+      const list = [...(s.ink ?? [])]
+      const last = list[list.length - 1]
+      if (last && Math.hypot(last.pts[last.pts.length - 1][0] - last.pts[0][0], last.pts[last.pts.length - 1][1] - last.pts[0][1]) < 0.004 && last.kind !== 'pen') list.pop()
+      return { ...s, ink: list.length ? list : undefined }
+    })
+  }
+  const autoStraighten = () => {
+    if (!bitmap) return
+    const c = document.createElement('canvas')
+    const k = Math.min(1, 480 / Math.max(bitmap.width, bitmap.height))
+    c.width = Math.max(1, Math.round(bitmap.width * k)); c.height = Math.max(1, Math.round(bitmap.height * k))
+    const ctx = c.getContext('2d', { willReadFrequently: true })!
+    ctx.drawImage(bitmap, 0, 0, c.width, c.height)
+    const a = detectHorizonAngle({ d: ctx.getImageData(0, 0, c.width, c.height).data, w: c.width, h: c.height })
+    if (a === null) { say('Nie znalazłem wyraźnej poziomej linii (horyzontu). Wyprostuj ręcznie suwakiem', 'err'); return }
+    change((s) => ({ ...s, geo: { ...s.geo, angle: Math.max(-15, Math.min(15, a)) } }))
+    say(`Wyprostowano o ${a.toString().replace('.', ',')}°. Możesz to poprawić suwakiem`, 'ok')
+  }
   const startTagging = () => {
     if (JSON.stringify(edit.geo) !== JSON.stringify(EMPTY_EDIT.geo)) { say('Przed zaznaczaniem twarzy cofnij obrót, odbicie i kadrowanie, żeby ramka pasowała do zdjęcia', 'err'); return }
     setRedEyeMode(false); setNeutralMode(false); setRetouchMode(false); setCenterFor(null)
@@ -572,6 +628,14 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
             transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: 'center center',
           }}
         />
+        {inkTool && (() => {
+          const r = canvasRef.current?.getBoundingClientRect()
+          if (!r) return null
+          return (
+            <div role="application" aria-label="Rysowanie na zdjęciu: przeciągnij myszą" onPointerDown={inkDown} onPointerMove={inkMove} onPointerUp={inkUp} onPointerCancel={inkUp}
+              style={{ position: 'fixed', left: r.left, top: r.top, width: r.width, height: r.height, cursor: 'crosshair', touchAction: 'none', zIndex: 4, outline: '2px dashed var(--accent)', outlineOffset: -2 }} />
+          )
+        })()}
         {tagMode && (() => {
           const r = canvasRef.current?.getBoundingClientRect()
           if (!r) return null
@@ -791,6 +855,9 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
                   <button className="wide" onClick={() => change((s) => ({ ...s, redeye: [] }))}>Usuń poprawki oczu ({edit.redeye.length})</button>
                 )}
                 <Slider label="Prostowanie (°)" value={edit.geo.angle} min={-15} max={15} onStart={snap} onChange={(v) => live((s) => ({ ...s, geo: { ...s.geo, angle: v } }))} />
+                <button className="wide" onClick={autoStraighten} title="Szuka dominującej poziomej linii (horyzont, blat, krawędź) i obraca zdjęcie tak, żeby była równa"><Wand2 size={17} /> Prostuj horyzont automatycznie</button>
+                <Slider label="Perspektywa pionowa" value={edit.geo.persV} min={-100} max={100} onStart={snap} onChange={(v) => live((s) => ({ ...s, geo: { ...s.geo, persV: v } }))} />
+                <Slider label="Perspektywa pozioma" value={edit.geo.persH} min={-100} max={100} onStart={snap} onChange={(v) => live((s) => ({ ...s, geo: { ...s.geo, persH: v } }))} />
               </Sec>
               <Sec id="b-crop" icon={<CropIcon size={17} />} title="Kadrowanie" hint={edit.geo.aspect === null && edit.geo.zoom === 1 ? 'Bez kadrowania' : 'Przycięte'}>
                 <div className="chips">
@@ -907,6 +974,33 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
                     onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); (document.getElementById('preset-save') as HTMLButtonElement | null)?.click() } }} />
                   <button id="preset-save" className="chip" disabled={!presetName.trim()} onClick={() => { if (savePreset(presetName, edit)) { setPresets(loadPresets()); setPresetName(''); say('Zestaw zapisany', 'ok') } else say('Najpierw ustaw korekty, efekty lub napis') }}>Zapisz</button>
                 </div>
+              </Sec>
+              <Sec id="fx-ink" icon={<Pencil size={17} />} title="Rysowanie i strzałki" hint={edit.ink?.length ? `${edit.ink.length} ${pl(edit.ink.length, 'rysunek', 'rysunki', 'rysunków')}` : 'Bez rysunków'}>
+                <div className="chips" role="group" aria-label="Narzędzie rysowania">
+                  {([['arrow', 'Strzałka'], ['line', 'Linia'], ['rect', 'Prostokąt'], ['ellipse', 'Elipsa'], ['pen', 'Pędzel']] as [Ink['kind'], string][]).map(([k, l]) => (
+                    <button key={k} className={`chip${inkTool === k ? ' on' : ''}`} aria-pressed={inkTool === k}
+                      onClick={() => { setInkTool(inkTool === k ? null : k); setRedEyeMode(false); setNeutralMode(false); setRetouchMode(false); setCenterFor(null); setZoom(1); setPan({ x: 0, y: 0 }); setSheet(true) }}>{l}</button>
+                  ))}
+                </div>
+                {inkTool && <p style={{ margin: '8px 0 0', fontSize: 13, color: 'var(--muted)' }}>Przeciągnij myszą po zdjęciu. Esc kończy rysowanie. Rysunki są częścią edycji i można je cofnąć.</p>}
+                <label>Kolor</label>
+                <div className="chips" role="group" aria-label="Kolor rysunku">
+                  {[['#ff3030', 'Czerwony'], ['#ffd400', 'Żółty'], ['#2fd05a', 'Zielony'], ['#2f8cff', 'Niebieski'], ['#ffffff', 'Biały'], ['#111111', 'Czarny']].map(([c, l]) => (
+                    <button key={c} className={`chip${inkColor === c ? ' on' : ''}`} aria-pressed={inkColor === c} aria-label={l} title={l} onClick={() => setInkColor(c)}>
+                      <span aria-hidden style={{ width: 14, height: 14, borderRadius: '50%', background: c, border: '1px solid rgba(128,128,128,.6)', display: 'inline-block' }} />
+                    </button>
+                  ))}
+                </div>
+                <label>Grubość</label>
+                <div className="chips" role="group" aria-label="Grubość linii">
+                  {([[0.004, 'Cienka'], [0.008, 'Średnia'], [0.016, 'Gruba']] as [number, string][]).map(([w, l]) => <button key={w} className={`chip${inkWidth === w ? ' on' : ''}`} aria-pressed={inkWidth === w} onClick={() => setInkWidth(w)}>{l}</button>)}
+                </div>
+                {(edit.ink?.length ?? 0) > 0 && (
+                  <div className="chips" style={{ marginTop: 8 }}>
+                    <button className="chip" onClick={() => change((st) => { const l = (st.ink ?? []).slice(0, -1); return { ...st, ink: l.length ? l : undefined } })}>Cofnij ostatni rysunek</button>
+                    <button className="chip" onClick={() => change((st) => ({ ...st, ink: undefined }))}>Usuń wszystkie ({edit.ink!.length})</button>
+                  </div>
+                )}
               </Sec>
               <Sec id="fx-text" icon={<Pencil size={17} />} title="Tekst na zdjęciu" hint={edit.texts.length ? `${edit.texts.length} ${pl(edit.texts.length, 'napis', 'napisy', 'napisów')}` : 'Bez napisów'} defaultOpen={edit.texts.length > 0}>
                 <label htmlFor="new-text">Nowy napis</label>

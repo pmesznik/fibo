@@ -1,6 +1,7 @@
 // Silnik edycji zdjęć: geometria + korekty + efekty, wszystko na canvasie.
 // Własne implementacje inspirowane zestawem funkcji Picasy 3.
 
+import { arrowHead, warpPerspective } from './geom'
 import { applyClarity, applyCurves, applyDehaze, applyHsl, curvesAreIdentity, hslIsIdentity, type Curves, type Hsl } from './tone'
 
 export type Adjust = {
@@ -16,8 +17,10 @@ export const ZERO_ADJUST: Adjust = {
 export type Geometry = {
   rot: number; flipH: boolean; flipV: boolean; angle: number
   aspect: number | null; zoom: number; panX: number; panY: number
+  /** Poprawka perspektywy (od -100 do 100): pionowa prostuje zbiegające się pionowe linie, pozioma poziome. */
+  persV: number; persH: number
 }
-export const ZERO_GEO: Geometry = { rot: 0, flipH: false, flipV: false, angle: 0, aspect: null, zoom: 1, panX: 0, panY: 0 }
+export const ZERO_GEO: Geometry = { rot: 0, flipH: false, flipV: false, angle: 0, aspect: null, zoom: 1, panX: 0, panY: 0, persV: 0, persH: 0 }
 
 /** Ustawienia efektu poza siłą: środek (ułamki szerokości i wysokości kadru), rozmiar (1 = domyślny) i kolor (#rrggbb). */
 export type FxOptions = { cx?: number; cy?: number; size?: number; color?: string }
@@ -32,9 +35,17 @@ export type Neutral = { r: number; g: number; b: number }
 /** Retusz plamy (kurzu, skazy): środek i promień jako ułamki wymiarów zdjęcia (promień względem krótszego boku). */
 export type Spot = { x: number; y: number; r: number }
 export const MAX_SPOTS = 200
+/** Rysunek na zdjęciu: strzałka, linia, prostokąt, elipsa albo odręczna kreska. Punkty to ułamki szerokości i wysokości kadru, grubość to ułamek krótszego boku. */
+export type Ink = { kind: 'arrow' | 'line' | 'rect' | 'ellipse' | 'pen'; color: string; width: number; pts: [number, number][] }
+/** Limity: przepis edycji ma najwyżej 256 KB, więc rysunków jest do 60, a kreska odręczna ma do 200 punktów (współrzędne z czterema miejscami po przecinku). */
+export const MAX_INK = 60
+export const MAX_INK_POINTS = 200
+
 export type EditState = { geo: Geometry; adj: Adjust; fx: EffectInst[]; redeye: RedEye[]; texts: TextItem[]; neutral: Neutral | null; spots: Spot[]
   /** Krzywe tonalne i kolor według zakresów barw (brak = bez zmian). */
-  curves?: Curves; hsl?: Hsl }
+  curves?: Curves; hsl?: Hsl
+  /** Rysunki i strzałki (brak = bez rysunków). */
+  ink?: Ink[] }
 export const EMPTY_EDIT: EditState = { geo: ZERO_GEO, adj: ZERO_ADJUST, fx: [], redeye: [], texts: [], neutral: null, spots: [] }
 
 /** Zamalowuje plamę kolorem z jej otoczenia: mediana z pierścienia wokół plamy (osobno dla każdego kanału), z miękkim brzegiem. */
@@ -378,6 +389,14 @@ export function renderGeometry(src: Source, geo: Geometry, maxSide: number): HTM
   g.scale(fit, fit)
   const dw = sw * scale, dh = sh * scale
   g.drawImage(src, -dw / 2, -dh / 2, dw, dh)
+  // Poprawka perspektywy działa na już obróconym i wyprostowanym obrazie, przed kadrowaniem.
+  if (geo.persV || geo.persH) {
+    const ctx = a.getContext('2d')!
+    const id = ctx.getImageData(0, 0, W, H)
+    const out = warpPerspective({ d: id.data, w: W, h: H }, geo.persV, geo.persH)
+    ctx.setTransform(1, 0, 0, 1, 0, 0)
+    ctx.putImageData(new ImageData(new Uint8ClampedArray(out.d), W, H), 0, 0)
+  }
 
   // Kadrowanie: największy prostokąt w zadanych proporcjach, zbliżenie i przesunięcie.
   const ar = geo.aspect ?? W / H
@@ -417,6 +436,7 @@ export function applyColor(canvas: HTMLCanvasElement, st: EditState) {
 export function drawTexts(canvas: HTMLCanvasElement, texts: TextItem[]) {
   if (!texts.length) return
   const ctx = canvas.getContext('2d')!
+  ctx.setTransform(1, 0, 0, 1, 0, 0)
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
   ctx.lineJoin = 'round'
@@ -437,9 +457,41 @@ export function drawTexts(canvas: HTMLCanvasElement, texts: TextItem[]) {
   }
 }
 
+/** Rysuje rysunki i strzałki na gotowym kadrze (po napisach). Wartości z zewnątrz są ograniczane (liczba rysunków, punktów, grubość, kolor). */
+export function drawInk(canvas: HTMLCanvasElement, ink: Ink[] | undefined) {
+  if (!ink?.length) return
+  const ctx = canvas.getContext('2d')!
+  ctx.setTransform(1, 0, 0, 1, 0, 0) // kanwa z renderGeometry zachowuje przesunięcie i obrót z rysowania zdjęcia
+  const W = canvas.width, H = canvas.height, m = Math.min(W, H)
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round'
+  for (const k of ink.slice(0, MAX_INK)) {
+    const pts = k.pts.slice(0, MAX_INK_POINTS).filter((p) => Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1]))
+    if (pts.length < 2) continue
+    const lw = Math.max(1.5, Math.min(0.08, Math.max(0.001, k.width)) * m)
+    const col = /^#[0-9a-f]{6}$/i.test(k.color) ? k.color : '#ff3030'
+    const P = pts.map(([x, y]) => [x * W, y * H] as [number, number])
+    const a = P[0], b = P[P.length - 1]
+    ctx.save()
+    ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = lw
+    ctx.shadowColor = 'rgba(0,0,0,.45)'; ctx.shadowBlur = lw * 0.8
+    ctx.beginPath()
+    if (k.kind === 'pen') { ctx.moveTo(a[0], a[1]); for (const p of P.slice(1)) ctx.lineTo(p[0], p[1]) }
+    else if (k.kind === 'rect') ctx.rect(Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.abs(b[0] - a[0]), Math.abs(b[1] - a[1]))
+    else if (k.kind === 'ellipse') ctx.ellipse((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, Math.max(1, Math.abs(b[0] - a[0]) / 2), Math.max(1, Math.abs(b[1] - a[1]) / 2), 0, 0, Math.PI * 2)
+    else { ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]) }
+    ctx.stroke()
+    if (k.kind === 'arrow') {
+      const [p, q] = arrowHead(a, b, Math.max(lw * 4.5, 14))
+      ctx.beginPath(); ctx.moveTo(b[0], b[1]); ctx.lineTo(p[0], p[1]); ctx.lineTo(q[0], q[1]); ctx.closePath(); ctx.fill()
+    }
+    ctx.restore()
+  }
+}
+
 export function renderEdit(src: Source, st: EditState, maxSide: number): HTMLCanvasElement {
   const c = renderGeometry(src, st.geo, maxSide)
   applyColor(c, st)
   drawTexts(c, st.texts)
+  drawInk(c, st.ink)
   return c
 }

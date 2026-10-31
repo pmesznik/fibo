@@ -55,11 +55,11 @@ Lista powstała z pamięci o Picasie 3, z przeglądu FIBO i z oficjalnego podrę
 - [x] **Kadrowanie ręczne z ramką** i gotowe formaty wydruku 10x15, 13x18, A4 oraz obrót ramki. P3 T M Częściowo: gotowe formaty odbitek (9x13, 10x15, 13x18, A4 i inne) oraz „Obróć ramkę”; przeciąganie ramki myszą jeszcze nie.
 - [x] **Zastosuj te same zmiany do wielu zdjęć** (kopiuj i wklej edycję, edycja wsadowa). P1 T M Gotowe: kopiuj i wklej edycję, wsadowo jako kopie.
 - [x] **Obrót wielu zdjęć bez utraty jakości** (znacznik orientacji). P2 T S Gotowe: menu zdjęcia → „Obróć w prawo/w lewo (bez utraty jakości)” dla JPEG (oryginał trafia do .originals); inne formaty obracasz w edytorze.
-- [ ] **Poprawka perspektywy** (wyrównanie pionów). P4 T L
+- [x] **Poprawka perspektywy** (wyrównanie pionów). P4 T L Gotowe: suwaki „Perspektywa pionowa” i „pozioma” w sekcji „Obrót i odbicie”, bez czarnych rogów (zdjęcie jest lekko przybliżane).
 - [x] **Redukcja szumu**. P4 T M Gotowe w Efektach (nie rozmywa krawędzi).
 - [x] **Rozmycie / pogłębienie ostrości w obszarze** (maska radialna). P4 T M Gotowe jako „Rozmycie poza środkiem” w Efektach.
 - [x] **Znak wodny** (tekst lub obraz) przy eksporcie. P2 T M Gotowe jako logo (PNG, JPEG, WebP): położenie, rozmiar, krycie; dla jednego lub wielu zdjęć przy eksporcie. Znak tekstowy nie zrobiony.
-- [ ] **Rysowanie i strzałki** na zdjęciu. P4 T M
+- [x] **Rysowanie i strzałki** na zdjęciu. P4 T M Gotowe: zakładka „Efekty” → „Rysowanie i strzałki” (strzałka, linia, prostokąt, elipsa, pędzel; 6 kolorów, 3 grubości; cofanie ostatniego), zapisywane w edycji nieniszczącej.
 
 ## 4. Edytor: efekty
 - [x] Czarno-białe, sepia, ocieplenie, podbicie, negatyw, ziarno, zmiękczenie, poświata, Orton, miękki fokus
