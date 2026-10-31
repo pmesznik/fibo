@@ -9,7 +9,7 @@ import { CreditsDialog } from './CreditsDialog'
 import { PersonFacesView } from './PersonFacesView'
 import { TimelineRail } from './TimelineRail'
 import { CalendarMaker } from './CalendarMaker'
-import { MoveFacesDialog } from './MergePeople'
+import { MergeDialog, MoveFacesDialog } from './MergePeople'
 import { LocationDialog } from './LocationDialog'
 import { RenameDialog } from './RenameDialog'
 import { DateDialog } from './DateDialog'
@@ -210,6 +210,8 @@ export default function App() {
   const reloadLocked = useCallback(async () => { if (inTauri) setLocked(await listLocked()) }, [])
   useEffect(() => { reloadLocked() }, [reloadLocked])
   const [together, setTogether] = useState<Person[] | null>(null)
+  /** Scalanie osoby, którą właśnie przeglądasz, z inną (ta sama osoba rozpoznana jako dwie). */
+  const [mergeWith, setMergeWith] = useState<{ people: Person[]; a: Person } | null>(null)
   const [props, setPropsList] = useState<Prop[]>([])
   const [propsFor, setPropsFor] = useState<null | { kind: 'album' | 'folder'; id: string; title: string }>(null)
   const reloadProps = useCallback(async () => { if (inTauri) setPropsList(await listProps()) }, [])
@@ -878,7 +880,22 @@ export default function App() {
   const railOn = timelineMode === 'rail' && timelineAvailable
   const jumpToSection = (i: number) => { setTimelineIdx(i); document.getElementById(`g-${sections[i]?.key}`)?.scrollIntoView({ block: 'start' }) }
   // Po przejściu do innej zakładki, osoby, albumu albo folderu widok zaczyna się od góry (a nie od miejsca przewinięcia poprzedniego widoku).
-  useEffect(() => { document.querySelector('main')?.scrollTo({ top: 0 }) }, [mode, person?.id, albumId, folder])
+  // Wyjątek: powrót z widoku osoby na listę osób zostawia widoczną kartę tej osoby (zamiast skoku na górę), żeby łatwo było porządkować kolejne.
+  const peopleReturn = useRef<{ id: number; top: number } | null>(null)
+  useEffect(() => {
+    const ret = peopleReturn.current
+    if (mode === 'people' && !person && ret) {
+      peopleReturn.current = null
+      let tries = 0
+      const t = window.setInterval(() => {
+        const card = document.querySelector(`[data-drop="person:${ret.id}"]`)
+        if (card) { card.scrollIntoView({ block: 'center' }); window.clearInterval(t) }
+        else if (++tries > 25) { document.querySelector('main')?.scrollTo({ top: ret.top }); window.clearInterval(t) }
+      }, 60)
+      return () => window.clearInterval(t)
+    }
+    document.querySelector('main')?.scrollTo({ top: 0 })
+  }, [mode, person?.id, albumId, folder])
   const slideshow = () => {
     if (!photos.length) return say('Brak zdjęć do pokazu. Dodaj folder przyciskiem +.')
     setDrawer(false)
@@ -1458,6 +1475,7 @@ export default function App() {
                   {person?.id !== undefined && <Chip on={personFacesMode} onClick={() => setPersonFacesMode(true)} label="Pokaż twarze">Twarze</Chip>}
                   {person?.id !== undefined && <Chip on={!personFacesMode} onClick={() => setPersonFacesMode(false)} label="Pokaż zdjęcia">Zdjęcia</Chip>}
                   {person && <Chip onClick={slideshow} label="Pokaz zdjęć tej osoby"><Play size={13} /> Pokaz zdjęć</Chip>}
+                  {person && !person.memory && person.id !== undefined && <Chip onClick={async () => { try { const all = await listPeople(); const a = all.find((o) => o.id === person.id); if (a) setMergeWith({ people: all.filter((o) => !o.ignored || o.id === a.id), a }); else say('Nie znalazłem tej osoby', 'err') } catch (e) { say(`Błąd: ${e}`, 'err') } }} label="Scal tę osobę z inną"><Users size={13} /> Scal z inną osobą…</Chip>}
                   {person && !person.memory && <Chip onClick={async () => { try { setTogether((await listPeople()).filter((o) => !o.ignored)) } catch (e) { say(`Błąd: ${e}`, 'err') } }} label="Pokaż tylko zdjęcia razem z inną osobą"><Users size={13} /> Razem z…</Chip>}
                   {folder && <Chip on onClick={() => setFolder(null)} label="Usuń filtr folderu"><FolderOpen size={13} /> {folderName(folder)} <X size={13} /></Chip>}
                   {(dateFrom || dateTo) && <Chip on onClick={() => { setDateFrom(''); setDateTo('') }} label="Usuń filtr dat"><CalendarDays size={13} /> {dateFrom || '…'} – {dateTo || '…'} <X size={13} /></Chip>}
@@ -1602,7 +1620,7 @@ export default function App() {
 
         {mode === 'people' && (
           <People say={say} ask={setConfirm} onChanged={() => {}}
-            onOpenPerson={(name, ids, id) => { setPersonFacesMode(true); setPerson({ id, name, ids: new Set(ids) }); setAlbumId(null); setFolder(null); setMode('library') }} />
+            onOpenPerson={(name, ids, id) => { if (id !== undefined) peopleReturn.current = { id, top: document.querySelector('main')?.scrollTop ?? 0 }; setPersonFacesMode(true); setPerson({ id, name, ids: new Set(ids) }); setAlbumId(null); setFolder(null); setMode('library') }} />
         )}
       </main>
       {railOn && <TimelineRail sections={sections.map((x) => ({ key: x.key, title: x.title, year: x.year, count: x.items.length }))} active={Math.min(timelineIdx, sections.length - 1)} onJump={jumpToSection} />}
@@ -1816,6 +1834,10 @@ export default function App() {
           <button className="chip" title="Pomniejszone kopie do wysłania e-mailem (1024 px, bez lokalizacji)" onClick={() => { setExportSize(1024); setExportIds([...tray]) }}>E-mail</button>
           <button className="ico" aria-label="Wyczyść tacę" title="Wyczyść tacę" onClick={() => { setTray([]); setTrayView(false) }}><X size={18} /></button>
         </div>
+      )}
+      {mergeWith && (
+        <MergeDialog people={mergeWith.people} a={mergeWith.a} b={null} say={say} onClose={() => setMergeWith(null)}
+          onDone={() => { setMergeWith(null); setPerson(null); setMode('people'); say('Osoby scalone. Wróciłem do listy osób', 'ok') }} />
       )}
       {together && person && (
         <>
