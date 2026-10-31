@@ -171,7 +171,7 @@ Zasady FIBO zostają: wszystko lokalnie, nic do internetu, oryginały nietknięt
 
 Szukanie i porządkowanie:
 - [x] **Szukanie po treści zdjęcia** słowami („plaża”, „pies”, „tort”) lokalnym modelem rozpoznającym obrazy. P2 T L
-- [ ] **Automatyczne tagi** scen i obiektów z tego samego modelu (do zatwierdzenia przez użytkownika). P3 T L
+- [x] **Automatyczne tagi** scen i obiektów z tego samego modelu (do zatwierdzenia przez użytkownika). P3 T L Gotowe: menu → „Podpowiedzi tagów”: pojęcia pasujące do wielu zdjęć, przegląd i odznaczanie zdjęć, suwak ostrożności; tag dostają tylko zatwierdzone zdjęcia.
 - [ ] **Szukanie tekstu na zdjęciach** (paragony, tablice, dokumenty) lokalnym OCR. P3 T L
 - [x] **Wspomnienia i „tego dnia”**: zdjęcia z tego samego dnia w poprzednich latach, na starcie programu. P2 T S
 - [x] **Automatyczne wydarzenia i podróże** z dat i lokalizacji GPS, jako gotowe albumy do zatwierdzenia. P2 T M

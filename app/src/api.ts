@@ -93,6 +93,8 @@ export type ClipResult = { ids: number[]; scores: number[]; matched: string[]; u
 export const clipStatus = () => invoke<ClipStatus>('clip_status')
 export const clipStart = () => invoke<boolean>('clip_start')
 export const clipStop = () => invoke('clip_stop')
+export type TagSuggestion = { id: string; label: string; ids: number[]; scores: number[] }
+export const clipSuggestTags = (minScore: number) => invoke<TagSuggestion[]>('clip_suggest_tags', { minScore })
 export const clipSearch = (query: string) => invoke<ClipResult>('clip_search', { query })
 export const setFlag = (ids: number[], flag: number) => invoke('set_flag', { ids, flag })
 export const setLabel = (ids: number[], label: number) => invoke('set_label', { ids, label })

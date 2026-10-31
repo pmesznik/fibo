@@ -471,9 +471,98 @@ fn search_core(conn: &Connection, query: &str) -> Result<SearchResult, String> {
     Ok(res)
 }
 
+// ---------------------------------------------------------------------------------------------------------------------
+// Podpowiedzi tagów: pojęcia, które pasują do zdjęć. Użytkownik zatwierdza je pojęciami (z możliwością odznaczenia zdjęć), nic nie dopisuje się samo.
+
+#[derive(Serialize, Debug, PartialEq)]
+pub struct TagSuggestion {
+    pub id: String,
+    pub label: String,
+    pub ids: Vec<i64>,
+    pub scores: Vec<f32>,
+}
+
+/// Najwięcej zdjęć pokazywanych przy jednym pojęciu.
+const TAG_MAX_PHOTOS: usize = 300;
+/// Pojęcie pasuje do zdjęcia, gdy jest w pobliżu najlepszego pojęcia tego zdjęcia (różnica najwyżej tyle).
+const TAG_TIE: f32 = 0.025;
+/// Najmniej zdjęć, żeby pojęcie było warte podpowiedzi.
+const TAG_MIN_PHOTOS: usize = 3;
+
+/// Dla każdego zdjęcia bierzemy pojęcie o najwyższym podobieństwie i te, które są tuż za nim, o ile przekraczają `min_score`.
+/// `has_tag(zdjęcie, nazwa)` pozwala pominąć zdjęcia, które już mają taki tag.
+pub fn suggest_from(items: &[(i64, Vec<f32>)], concepts: &[(String, String, Vec<f32>)], min_score: f32, has_tag: &dyn Fn(i64, &str) -> bool) -> Vec<TagSuggestion> {
+    let mut per: Vec<Vec<(i64, f32)>> = vec![Vec::new(); concepts.len()];
+    for (id, v) in items {
+        let scores: Vec<f32> = concepts.iter().map(|c| dot(&c.2, v)).collect();
+        let best = scores.iter().copied().fold(f32::MIN, f32::max);
+        for (i, s) in scores.iter().enumerate() {
+            if *s >= min_score && *s >= best - TAG_TIE && !has_tag(*id, &concepts[i].1) {
+                per[i].push((*id, *s));
+            }
+        }
+    }
+    let mut out: Vec<TagSuggestion> = per
+        .into_iter()
+        .zip(concepts)
+        .filter(|(l, _)| l.len() >= TAG_MIN_PHOTOS)
+        .map(|(mut l, c)| {
+            l.sort_by(|a, b| b.1.total_cmp(&a.1));
+            l.truncate(TAG_MAX_PHOTOS);
+            TagSuggestion { id: c.0.clone(), label: c.1.clone(), ids: l.iter().map(|x| x.0).collect(), scores: l.iter().map(|x| x.1).collect() }
+        })
+        .collect();
+    out.sort_by(|a, b| b.ids.len().cmp(&a.ids.len()).then(a.label.cmp(&b.label)));
+    out
+}
+
+/// Podpowiedzi tagów dla zaindeksowanych zdjęć (zob. „Szukanie po treści”). `min_score` to najniższe podobieństwo (0,15 do 0,40).
+#[tauri::command]
+pub async fn clip_suggest_tags(app: tauri::AppHandle, min_score: f32) -> Result<Vec<TagSuggestion>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        if !(0.15..=0.4).contains(&min_score) {
+            return Err("Nieprawidłowy próg".to_string());
+        }
+        let state = app.state::<AppState>();
+        let (items, tagged): (Vec<(i64, Vec<f32>)>, std::collections::HashSet<(i64, String)>) = {
+            let conn = state.db.lock().map_err(|e| e.to_string())?;
+            let mut stmt = conn
+                .prepare("SELECT c.photo_id, c.v FROM clip_vec c JOIN photos p ON p.id = c.photo_id WHERE p.hidden = 0 AND p.video = 0 AND c.modified = p.modified")
+                .map_err(|e| e.to_string())?;
+            let items = stmt.query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, Vec<u8>>(1)?))).map_err(|e| e.to_string())?.filter_map(Result::ok).filter_map(|(id, b)| dequantize(&b).map(|v| (id, v))).collect();
+            let mut st2 = conn.prepare("SELECT pt.photo_id, t.name FROM photo_tags pt JOIN tags t ON t.id = pt.tag_id").map_err(|e| e.to_string())?;
+            let tagged = st2.query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?))).map_err(|e| e.to_string())?.filter_map(Result::ok).map(|(i, n)| (i, fold(&n))).collect();
+            (items, tagged)
+        };
+        let cs: Vec<(String, String, Vec<f32>)> = concepts().iter().filter(|c| c.vec.len() == DIM).map(|c| (c.id.clone(), c.label.clone(), c.vec.clone())).collect();
+        Ok(suggest_from(&items, &cs, min_score, &|id, label| tagged.contains(&(id, fold(label)))))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tag_suggestions_follow_the_best_concept_skip_existing_tags_and_need_enough_photos() {
+        let unit = |i: usize| { let mut v = vec![0.0f32; DIM]; v[i] = 1.0; v };
+        let mix = |i: usize, j: usize, k: f32| { let mut v = unit(i); v[j] = k; normalize(&mut v); v };
+        let concepts = vec![("beach".to_string(), "plaża".to_string(), unit(0)), ("dog".to_string(), "pies".to_string(), unit(1))];
+        // 1 do 4: plaża, 5 do 6: pies, 7: coś pośredniego, 8: nic (zbyt słabe).
+        let items: Vec<(i64, Vec<f32>)> = vec![(1, unit(0)), (2, unit(0)), (3, unit(0)), (4, unit(0)), (5, unit(1)), (6, unit(1)), (7, mix(0, 1, 0.95)), (8, unit(7))];
+        let none = |_: i64, _: &str| false;
+        let r = suggest_from(&items, &concepts, 0.3, &none);
+        assert_eq!(r.len(), 1, "pies ma za mało zdjęć (3 potrzebne: 5, 6 i niejednoznaczne 7)");
+        assert_eq!(r[0].label, "plaża");
+        assert!(r[0].ids.starts_with(&[1, 2, 3, 4]) && !r[0].ids.contains(&8));
+        // Zdjęcie, które ma już tag „plaża”, nie jest podpowiadane ponownie.
+        let has = |id: i64, label: &str| id == 1 && label == "plaża";
+        assert!(!suggest_from(&items, &concepts, 0.3, &has)[0].ids.contains(&1));
+        // Wyższy próg odrzuca zdjęcie pośrednie.
+        assert!(!suggest_from(&items, &concepts, 0.9, &none)[0].ids.contains(&7));
+    }
 
     #[test]
     fn folding_removes_polish_letters_and_case() {
