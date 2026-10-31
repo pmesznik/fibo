@@ -1,6 +1,6 @@
 [package]
 name = "fibo"
-version = "0.4.47"
+version = "0.4.48"
 edition = "2021"
 license = "GPL-2.0-or-later"
 
@@ -20,6 +20,8 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 rusqlite = { version = "0.32", features = ["bundled"] }
 walkdir = "2"
+# Natychmiastowe wykrywanie nowych plików w obserwowanych folderach (nasłuch systemu, bez odczytu zawartości).
+notify = { version = "8", default-features = false }
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp", "gif", "bmp", "tiff", "ico", "tga", "pnm", "dds", "hdr", "qoi", "exr"] }
 kamadak-exif = "0.6"
 trash = "5"

@@ -179,7 +179,6 @@ Poniższe pakiety są wkompilowane w program. Wyrażenie w drugiej kolumnie to l
 | infer | 0.22.0 | MIT |
 | inventory | 0.3.25 | MIT OR Apache-2.0 |
 | ipnet | 2.12.2 | MIT OR Apache-2.0 |
-| itertools | 0.13.0 | MIT OR Apache-2.0 |
 | itertools | 0.14.0 | MIT OR Apache-2.0 |
 | itertools | 0.15.0 | MIT OR Apache-2.0 |
 | itoa | 1.0.18 | MIT OR Apache-2.0 |
@@ -239,6 +238,8 @@ Poniższe pakiety są wkompilowane w program. Wyrażenie w drugiej kolumnie to l
 | no_std_io2 | 0.9.4 | Apache-2.0 OR MIT |
 | nom | 8.0.0 | MIT |
 | nom-language | 0.1.0 | MIT |
+| notify | 8.2.1 | CC0-1.0 |
+| notify-types | 2.2.0 | MIT OR Apache-2.0 |
 | num | 0.4.3 | MIT OR Apache-2.0 |
 | num-bigint | 0.4.8 | MIT OR Apache-2.0 |
 | num-complex | 0.4.6 | MIT OR Apache-2.0 |

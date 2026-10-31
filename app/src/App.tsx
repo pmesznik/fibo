@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { listen } from '@tauri-apps/api/event'
+import { getCurrentWebview } from '@tauri-apps/api/webview'
 import { MapView } from './MapView'
 import { People, FaceImg } from './People'
 import { ExportDialog } from './ExportDialog'
@@ -20,7 +21,7 @@ import { Duplicates } from './Duplicates'
 import { UpdateDialog, useUpdater } from './Updater'
 import { exportSidecars, getSidecarEnabled, importSidecars, setSidecarEnabled } from './api'
 import {
-  addToAlbum, createAlbum, deleteAlbum, setAlbumHidden, listAlbumOrder, setAlbumOrder, listAlbums, fillPlaces, thumbCacheInfo, thumbCacheClear, listRoots, movePhotos, removeFromAlbum, removeRoot,
+  addToAlbum, createAlbum, deleteAlbum, setAlbumHidden, listAlbumOrder, setAlbumOrder, listAlbums, fillPlaces, addDropped, watchRoots, thumbCacheInfo, thumbCacheClear, listRoots, movePhotos, removeFromAlbum, removeRoot,
   renameAlbum, renamePhoto, rescanRoots, trashPhotos, listSmart, saveSmart, deleteSmart, type SmartAlbum, listLocked, setFolderLocked, revealInExplorer, openPhotoExternal, findDuplicates, indexColors, rejectPersonInPhotos, rotatePhotos, getSkipGifPng, setSkipGifPng, detectCards, listPeople, listProps, renameFolder, type Prop, type Person, personPhotos, importPhotos, backupLibrary, backupPhotos, restoreLibrary, pickFile, hidePhotos, hiddenCount, restoreHidden, type Album,
 } from './api'
 import { AlbumPicker, PromptDialog } from './Dialogs'
@@ -39,6 +40,7 @@ import { EventsDialog } from './EventsDialog'
 import { ContentSearch } from './ContentSearch'
 import { OrganizerDialog } from './OrganizerDialog'
 import { LibraryCalendar } from './LibraryCalendar'
+import { beginPointerDrag, dragJustEnded } from './pointerDrag'
 import { collapseStacks, findStacks, stackCount } from './stacks'
 import {
   Images, FolderOpen, Users, MapPin, Heart, Star, Plus, Play, Maximize2, X,
@@ -102,6 +104,8 @@ export default function App() {
   const [contentOpen, setContentOpen] = useState(false)
   const [organizeOpen, setOrganizeOpen] = useState(false)
   const [dayViewOpen, setDayViewOpen] = useState(false)
+  /** Pliki przeciągane z Eksploratora nad oknem (pokazujemy podpowiedź „Upuść”). */
+  const [fileDragOver, setFileDragOver] = useState(false)
   const [cacheInfo, setCacheInfo] = useState<{ files: number; bytes: number } | null>(null)
   const mb = (b: number) => (b >= 1073741824 ? `${(b / 1073741824).toFixed(1)} GB` : `${(b / 1048576).toFixed(1)} MB`).replace('.', ',')
   const reloadCache = () => { thumbCacheInfo().then(setCacheInfo).catch(() => {}) }
@@ -250,6 +254,38 @@ export default function App() {
   }, [reload, reloadAlbums, say])
 
   // Automatycznie: krótko po starcie, po powrocie do okna (najwyżej raz na 30 s) i co 5 minut.
+  // Pliki i foldery upuszczone na okno z Eksploratora: po potwierdzeniu trafiają do biblioteki (foldery jako obserwowane).
+  useEffect(() => {
+    if (!inTauri) return
+    const un = getCurrentWebview().onDragDropEvent((e) => {
+      const p = e.payload
+      if (p.type === 'enter' || p.type === 'over') { setFileDragOver(true); return }
+      setFileDragOver(false)
+      if (p.type !== 'drop' || p.paths.length === 0) return
+      const paths = p.paths
+      setConfirm({
+        text: `Dodać do biblioteki ${paths.length} ${pl(paths.length, 'upuszczony element', 'upuszczone elementy', 'upuszczonych elementów')}? Foldery zostaną dodane jako obserwowane (nowe zdjęcia pojawią się same), a pojedyncze zdjęcia dodane bez obserwowania. Pliki nie są kopiowane ani zmieniane.`,
+        yes: 'Dodaj',
+        run: async () => {
+          try {
+            const r = await addDropped(paths)
+            await Promise.all([reload(), reloadRoots()])
+            say(r.folders + r.files === 0 ? 'Upuszczone elementy nie zawierały zdjęć ani folderów' : `Dodano z upuszczonych elementów: ${r.added} ${pl(r.added, 'nowe zdjęcie', 'nowe zdjęcia', 'nowych zdjęć')}`, r.folders + r.files === 0 ? 'err' : 'ok')
+          } catch (err) { say(`Błąd: ${err}`, 'err') }
+        },
+      })
+    })
+    return () => { un.then((f) => f()) }
+  }, [reload, reloadRoots, say])
+
+  // Natychmiastowo: system zgłasza zmiany w obserwowanych folderach, a po chwili ciszy robimy to samo sprawdzenie. Lista folderów zmienia się rzadko, więc obserwowanie ustawiamy od nowa przy jej zmianie.
+  useEffect(() => { if (inTauri) watchRoots().catch(() => {}) }, [roots])
+  useEffect(() => {
+    if (!inTauri) return
+    const un = listen('files-changed', () => rescan())
+    return () => { un.then((f) => f()) }
+  }, [rescan])
+
   useEffect(() => {
     if (!inTauri) return
     const first = window.setTimeout(() => rescan(), 2500)
@@ -912,8 +948,7 @@ export default function App() {
   const reorderMode = albumId !== null && sort === 'custom'
   useEffect(() => { if (albumId === null && sort === 'custom') setSort('date-desc') }, [albumId, sort])
   /** Przenosi przeciągane zdjęcia na miejsce wskazanego zdjęcia (w dół za nie, w górę przed nie) i zapisuje kolejność całego albumu. */
-  const dropOnPhoto = async (targetId: number) => {
-    const moving = dragIds
+  const dropOnPhoto = async (targetId: number, moving: number[] | null = dragIds) => {
     setDragIds(null)
     if (!reorderMode || albumId === null || !moving || moving.includes(targetId)) return
     const order = all.filter((p) => p.albums.includes(albumId)).sort((a, b) => (albumPos.get(a.id) ?? 1e9) - (albumPos.get(b.id) ?? 1e9) || whenOf(b).localeCompare(whenOf(a))).map((p) => p.id)
@@ -925,16 +960,16 @@ export default function App() {
     try { await setAlbumOrder(albumId, next) } catch (e) { say(`Nie udało się zapisać kolejności: ${e}`, 'err') }
   }
   /** Upuszczenie przeciąganych zdjęć na album z paska na dole. */
-  const dropOnAlbum = async (a: Album) => {
-    const ids = (dragIds ?? []).filter((i) => i >= 0)
+  const dropOnAlbum = async (a: Album, dragged: number[] | null = dragIds) => {
+    const ids = (dragged ?? []).filter((i) => i >= 0)
     setDragIds(null); setDropOver(null)
     if (!ids.length) return
     try { await addToAlbum(a.id, ids); await afterAlbumChange(); say(`Dodano do albumu „${a.name}”: ${ids.length}`, 'ok') }
     catch (e) { say(`Błąd albumu: ${e}`, 'err') }
   }
   /** Upuszczenie przeciąganych zdjęć na folder z paska na dole: po potwierdzeniu pliki są przenoszone na dysku (zablokowane foldery i zajęte nazwy obsługuje przenoszenie). */
-  const dropOnFolder = (dir: string) => {
-    const ids = (dragIds ?? []).filter((i) => i >= 0)
+  const dropOnFolder = (dir: string, dragged: number[] | null = dragIds) => {
+    const ids = (dragged ?? []).filter((i) => i >= 0)
     setDragIds(null); setDropOver(null)
     const moving = all.filter((p) => ids.includes(p.id) && dirOf(p.path) !== dir)
     if (!moving.length) { say('Te zdjęcia już są w tym folderze', 'ok'); return }
@@ -950,8 +985,10 @@ export default function App() {
       },
     })
   }
-  const dropOnNewAlbum = () => {
-    const ids = (dragIds ?? []).filter((i) => i >= 0)
+  /** Najnowsze funkcje upuszczania: przeciąganie zaczyna się w jednym wyrenderowaniu, a kończy w późniejszym. */
+  const dropApi = useRef<{ drop: (key: string, ids: number[]) => void }>({ drop: () => {} })
+  const dropOnNewAlbum = (dragged: number[] | null = dragIds) => {
+    const ids = (dragged ?? []).filter((i) => i >= 0)
     setDragIds(null); setDropOver(null)
     if (!ids.length) return
     setPrompt({
@@ -966,6 +1003,12 @@ export default function App() {
       },
     })
   }
+  dropApi.current.drop = (key, ids) => {
+    if (key === 'new') dropOnNewAlbum(ids)
+    else if (key.startsWith('album:')) { const a = albums.find((x) => x.id === Number(key.slice(6))); if (a) dropOnAlbum(a, ids) }
+    else if (key.startsWith('dir:')) dropOnFolder(key.slice(4), ids)
+    else if (key.startsWith('photo:')) dropOnPhoto(Number(key.slice(6)), ids)
+  }
   const selSet = useMemo(() => new Set(sel), [sel])
   const tile = (p: Photo, ratio43: boolean) => {
     const on = selSet.has(p.id)
@@ -973,7 +1016,7 @@ export default function App() {
     return (
       <button
         key={p.id}
-        onClick={(e) => pick(p.id, e)}
+        onClick={(e) => { if (dragJustEnded()) return; pick(p.id, e) }}
         onDoubleClick={() => openViewer(p.id)}
         onContextMenu={(e) => {
           e.preventDefault()
@@ -981,17 +1024,18 @@ export default function App() {
           setMenu({ x: e.clientX, y: e.clientY })
         }}
         onKeyDown={(e) => { if (e.key === 'Enter') openViewer(p.id) }}
-        draggable={p.id >= 0}
-        onDragStart={(e) => {
+        data-drop={reorderMode && p.id >= 0 ? `photo:${p.id}` : undefined}
+        onPointerDown={(e) => {
+          if (p.id < 0) return
           const ids = sel.includes(p.id) ? sel.filter((i) => i >= 0) : [p.id]
-          if (!sel.includes(p.id)) { setSel([p.id]); setAnchor(p.id) }
-          e.dataTransfer.setData('text/plain', String(ids.length))
-          e.dataTransfer.effectAllowed = 'copyMove'
-          setDragIds(ids)
+          beginPointerDrag(e, {
+            label: ids.length > 1 ? `${ids.length} ${pl(ids.length, 'zdjęcie', 'zdjęcia', 'zdjęć')}` : p.name,
+            onStart: () => { if (!sel.includes(p.id)) { setSel([p.id]); setAnchor(p.id) }; setDragIds(ids) },
+            onHover: (k) => setDropOver(k === null ? null : k.startsWith('album:') ? Number(k.slice(6)) : k.startsWith('photo:') ? null : k),
+            onDrop: (k) => dropApi.current.drop(k, ids),
+            onEnd: () => { setDragIds(null); setDropOver(null) },
+          })
         }}
-        onDragEnd={() => { setDragIds(null); setDropOver(null) }}
-        onDragOver={reorderMode && dragIds ? (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move' } : undefined}
-        onDrop={reorderMode && dragIds ? (e) => { e.preventDefault(); dropOnPhoto(p.id) } : undefined}
         aria-label={`${p.video ? 'Film ' : ''}${p.name}, ocena ${p.rating}${p.favorite ? ', ulubione' : ''}${sb?.leader ? `, stos ${sb.count} zdjęć` : ''}${flagOf(p) === 1 ? ', wybrane' : flagOf(p) === -1 ? ', odrzucone' : ''}${labelOf(p) ? `, etykieta ${LABELS[labelOf(p) - 1].name}` : ''}`}
         aria-pressed={on}
         className={`bare group relative overflow-hidden text-left ${ratio43 ? 'aspect-[4/3]' : 'h-full w-full'}`}
@@ -1795,17 +1839,11 @@ export default function App() {
           <div className="flex items-center gap-2 overflow-x-auto" style={{ width: '100%', flexWrap: 'nowrap' }}>
           <span style={{ fontSize: 13, color: 'var(--muted)', whiteSpace: 'nowrap' }}>Upuść na album ({dragIds.length}):</span>
           {visibleAlbums.map((a) => (
-            <span key={a.id} className={`chip${dropOver === a.id ? ' on' : ''}`} style={{ flex: 'none' }}
-              onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; setDropOver(a.id) }}
-              onDragLeave={() => setDropOver((c) => (c === a.id ? null : c))}
-              onDrop={(e) => { e.preventDefault(); dropOnAlbum(a) }}>
+            <span key={a.id} className={`chip${dropOver === a.id ? ' on' : ''}`} style={{ flex: 'none' }} data-drop={`album:${a.id}`}>
               <FolderOpen size={14} /> {a.name}
             </span>
           ))}
-          <span className={`chip${dropOver === 'new' ? ' on' : ''}`} style={{ flex: 'none' }}
-            onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; setDropOver('new') }}
-            onDragLeave={() => setDropOver((c) => (c === 'new' ? null : c))}
-            onDrop={(e) => { e.preventDefault(); dropOnNewAlbum() }}>
+          <span className={`chip${dropOver === 'new' ? ' on' : ''}`} style={{ flex: 'none' }} data-drop="new">
             <Plus size={14} /> Nowy album…
           </span>
           </div>
@@ -1815,10 +1853,7 @@ export default function App() {
               <div className="flex items-center gap-2 overflow-x-auto" style={{ width: '100%', flexWrap: 'nowrap' }}>
                 <span style={{ fontSize: 13, color: 'var(--muted)', whiteSpace: 'nowrap' }}>Przenieś do folderu:</span>
                 {targets.map(([dir]) => (
-                  <span key={dir} className={`chip${dropOver === `dir:${dir}` ? ' on' : ''}`} style={{ flex: 'none' }} title={dir}
-                    onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDropOver(`dir:${dir}`) }}
-                    onDragLeave={() => setDropOver((c) => (c === `dir:${dir}` ? null : c))}
-                    onDrop={(e) => { e.preventDefault(); dropOnFolder(dir) }}>
+                  <span key={dir} className={`chip${dropOver === `dir:${dir}` ? ' on' : ''}`} style={{ flex: 'none' }} title={dir} data-drop={`dir:${dir}`}>
                     <FolderOpen size={14} /> {folderName(dir)}
                   </span>
                 ))}
@@ -1848,6 +1883,11 @@ export default function App() {
               return true
             } catch (e) { say(`Nie udało się utworzyć albumu: ${e}`, 'err'); return false }
           }} />
+      )}
+      {fileDragOver && (
+        <div role="status" className="glass" style={{ position: 'fixed', inset: 12, zIndex: 2600, display: 'grid', placeItems: 'center', border: '3px dashed var(--accent)', borderRadius: 'var(--r-lg)', pointerEvents: 'none', fontSize: 20, fontWeight: 700 }}>
+          Upuść zdjęcia lub foldery, aby dodać je do biblioteki
+        </div>
       )}
       {dayViewOpen && <LibraryCalendar photos={all} onClose={() => setDayViewOpen(false)} onOpenDay={(ids, title) => openMemory(ids, title, '')} />}
       {calOpen && <CalendarMaker photos={all.filter((p) => !p.video)} say={say} onClose={() => setCalOpen(false)} />}

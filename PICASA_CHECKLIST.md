@@ -111,7 +111,7 @@ Lista powstała z pamięci o Picasie 3, z przeglądu FIBO i z oficjalnego podrę
 - [x] **Pasek stanu z liczbą zaznaczonych i rozmiarem**. P4 T S Gotowe pod tytułem widoku.
 - [x] **Przeciąganie zdjęć na foldery**: pasek „Przenieś do folderu” pod paskiem albumów podczas przeciągania; po upuszczeniu program pyta o potwierdzenie i przenosi pliki (z XMP i edycją), pomijając foldery zablokowane.
 - [x] **Przeciąganie zdjęć na albumy** w menu bocznym. P3 T M Gotowe jako pasek albumów na dole podczas przeciągania (nie w menu bocznym).
-- [ ] **Przeciągnij i upuść plików z Eksploratora** do FIBO (dodanie folderu). P3 T M, uwaga: wymaga ponownego włączenia obsługi upuszczania w oknie
+- [x] **Przeciągnij i upuść plików z Eksploratora** do FIBO (dodanie folderu). P3 T M Gotowe: obsługa upuszczania w oknie włączona, a przeciąganie wewnątrz programu przeniesione na własną obsługę myszy (przeciąganie HTML5 wyklucza się z upuszczaniem plików w Windows). Po upuszczeniu program pyta o potwierdzenie; foldery są obserwowane, pojedyncze zdjęcia dodawane bez obserwowania.
 - [ ] **Praca z wieloma biblioteka** (profile, np. rodzinna i służbowa). P4 T L
 
 ## 9. Uzupełnienie z oficjalnego podręcznika Picasa (Getting Started Guide, 9 stron)
@@ -199,7 +199,7 @@ Pliki i formaty:
 - [x] **Rozpoznawanie wielu rodzajów plików**: HEIC/HEIF, AVIF, JPEG XL, RAW (CR2, CR3, NEF, ARW, DNG, RAF, ORF, RW2 i inne), PSD, TIFF, TGA, PNM, DDS, HDR, QOI, OpenEXR, ICO, SVG. Pliki w tych formatach edytujemy tylko jako kopie.
 - [x] **Wideo**: miniatury, odtwarzanie, filtr „Filmy”. Wycinanie fragmentu jeszcze nie. P2 T L
 - [ ] **Zdjęcia ruchome** (Live Photos, krótkie klipy przy zdjęciu). P4 T L
-- [ ] **Natychmiastowe wykrywanie nowych plików** (obserwator folderów zamiast sprawdzania co kilka minut). P3 T M
+- [x] **Natychmiastowe wykrywanie nowych plików** (obserwator folderów zamiast sprawdzania co kilka minut). P3 T M Gotowe: nasłuch systemu (biblioteka notify), po 1,5 s ciszy zwykłe sprawdzenie folderów; własne pliki FIBO (XMP, .fibo.json, .originals) są pomijane. Sprawdzanie co 5 minut i po powrocie do okna zostaje jako zabezpieczenie.
 - [x] **Zarządzanie pamięcią podręczną miniatur** (rozmiar, czyszczenie). P3 T S Gotowe: menu → „Pamięć miniatur” (rozmiar, czyszczenie z potwierdzeniem; miniatury zdjęć z zapisaną edycją zostają).
 - [x] **Edycja EXIF i IPTC** (autor, prawa autorskie, strefa czasowa). P3 T M Gotowe: menu zdjęcia → „Autor, prawa i opis (IPTC)” (autor, prawa, tytuł, miejscowość, kraj, także w XMP) oraz „Zmień datę” → „Strefa czasowa”. Pliki zdjęć zostają nietknięte.
 

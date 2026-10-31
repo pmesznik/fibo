@@ -438,9 +438,21 @@ describe('Edytor: napisy na zdjęciu', () => {
 })
 
 describe('Okno: przeciąganie', () => {
-  test('wbudowana obsługa upuszczania plików jest wyłączona, żeby działało przeciąganie elementów w interfejsie', () => {
+  test('upuszczanie plików z Eksploratora jest włączone, więc przeciąganie w programie nie używa przeciągania HTML5', () => {
     const c = JSON.parse(readFileSync(new URL('../src-tauri/tauri.conf.json', import.meta.url), 'utf8'))
-    assert.equal(c.app.windows[0].dragDropEnabled, false)
+    assert.equal(c.app.windows[0].dragDropEnabled, true)
+    for (const f of readdirSync(new URL('../src/', import.meta.url)).filter((n) => /\.tsx?$/.test(n))) {
+      const t = readFileSync(new URL(`../src/${f}`, import.meta.url), 'utf8')
+      assert.ok(!/draggable(?!=\{false\})|onDragStart|dataTransfer/.test(t), `${f}: przeciąganie HTML5 nie działa przy włączonym upuszczaniu plików, użyj pointerDrag.ts`)
+    }
+  })
+
+  test('upuszczone z Eksploratora elementy dodaje się dopiero po potwierdzeniu, a polecenie nie czyta ani nie zmienia plików', () => {
+    const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8')
+    assert.match(app, /onDragDropEvent[\s\S]*setConfirm\([\s\S]*addDropped\(paths\)/)
+    const rs = readFileSync(new URL('../src-tauri/src/main.rs', import.meta.url), 'utf8')
+    const fn = rs.slice(rs.indexOf('fn add_dropped_blocking'), rs.indexOf('async fn add_dropped('))
+    assert.ok(/symlink_metadata/.test(fn) && !/remove_file|rename|copy\(/.test(fn))
   })
 })
 

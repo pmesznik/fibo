@@ -205,6 +205,9 @@ export const addManualFace = (photoId: number, x: number, y: number, w: number, 
 export type CacheInfo = { files: number; bytes: number }
 export const thumbCacheInfo = () => invoke<CacheInfo>('thumb_cache_info')
 export const thumbCacheClear = () => invoke<CacheInfo>('thumb_cache_clear')
+export const watchRoots = () => invoke<number>('watch_roots')
+export type DropReport = { folders: number; files: number; added: number }
+export const addDropped = (paths: string[]) => invoke<DropReport>('add_dropped', { paths })
 export const fillPlaces = () => invoke<number>('fill_places')
 export type OrganizePlan = {
   moves: { id: number; name: string; from_dir: string; to_dir: string; rel: string; file_date: boolean }[]

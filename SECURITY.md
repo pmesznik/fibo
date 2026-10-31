@@ -31,6 +31,7 @@ i poproś o kontakt). Najnowsza wydana wersja jest jedyną wspieraną.
   minimalny rozmiar), wektor liczą te same dołączone, sprawdzane modele lokalnie i trafia do bazy zaszyfrowany jak pozostałe. Nic nie wychodzi z komputera.
 - **Nazwy miejsc** liczą się lokalnie z tabeli miejscowości dołączonej do programu (GeoNames, CC BY 4.0). Współrzędne zdjęć nie są nigdzie wysyłane, a program nie pobiera żadnych map ani słowników w trakcie działania.
 - **Znak wodny z tekstu** jest rysowany w oknie programu na PNG, sprawdzany po stronie programu (prawdziwy PNG, do 2 MB, rozsądne wymiary) i zapisywany w folderze danych jako zwykły plik. Nic nie wychodzi z komputera.
+- **Obserwowanie folderów i upuszczanie plików.** Obserwator folderów (biblioteka `notify`) tylko nasłuchuje zdarzeń systemu i niczego nie czyta ani nie zapisuje; reaguje zwykłym sprawdzeniem folderów. Elementy upuszczone z Eksploratora są dodawane dopiero po potwierdzeniu, bez kopiowania i zmiany plików, a łącza symboliczne nie są śledzone. Przeciąganie wewnątrz programu działa na zdarzeniach myszy, bez przeciągania HTML5.
 - **Edycja nieniszcząca** zapisuje tylko przepis edycji (tekst JSON do 256 KB: korekty, efekty, napisy, ustawienia RAW) w bazie i, gdy zapis metadanych jest
   włączony, w pliku `<zdjęcie>.fibo.json` obok zdjęcia (poza zablokowanymi folderami). Plik zdjęcia pozostaje nietknięty. Przepis jest tylko sprawdzany
   jako JSON, a nie wykonywany. Pliki `.fibo.json` innych autorów są wczytywane tylko przy znaczniku `fibo_edit` i limicie rozmiaru.

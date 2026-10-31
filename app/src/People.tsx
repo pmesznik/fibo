@@ -8,6 +8,7 @@ import {
 import { PromptDialog } from './Dialogs'
 import { useEscape } from './ui'
 import { FaceImg } from './FaceImg'
+import { beginPointerDrag, dragJustEnded } from './pointerDrag'
 import { MergeDialog } from './MergePeople'
 
 export { FaceImg }
@@ -174,19 +175,19 @@ export function People({ say, ask, onOpenPerson, onChanged }: {
       )}
       <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))' }}>
         {shown.map((p) => (
-          <div key={p.id} draggable aria-grabbed={dragId === p.id}
-            onDragStart={(e) => { setDragId(p.id); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(p.id)) }}
-            onDragEnd={() => { setDragId(null); setOverId(null) }}
-            onDragOver={(e) => { if (dragId !== null && dragId !== p.id) { e.preventDefault(); setOverId(p.id) } }}
-            onDragLeave={() => setOverId((o) => (o === p.id ? null : o))}
-            onDrop={(e) => {
-              e.preventDefault()
-              const from = people.find((x) => x.id === dragId)
-              setDragId(null); setOverId(null)
-              if (from && from.id !== p.id) setMerge({ a: from, b: p })
-            }}
+          <div key={p.id} aria-grabbed={dragId === p.id} data-drop={`person:${p.id}`}
+            onPointerDown={(e) => beginPointerDrag(e, {
+              label: p.name ?? 'Nieznana osoba',
+              onStart: () => setDragId(p.id),
+              onHover: (k) => setOverId(k && k.startsWith('person:') ? Number(k.slice(7)) : null),
+              onDrop: (k) => {
+                const to = people.find((x) => `person:${x.id}` === k)
+                if (to && to.id !== p.id) setMerge({ a: p, b: to })
+              },
+              onEnd: () => { setDragId(null); setOverId(null) },
+            })}
             style={{ opacity: p.ignored ? 0.55 : dragId === p.id ? 0.4 : 1, borderRadius: 'var(--r-lg)', outline: overId === p.id ? '3px solid var(--accent)' : 'none', outlineOffset: 4, cursor: 'grab' }}>
-            <button className="bare block w-full text-center" aria-label={`${p.name ?? 'Nieznana osoba'}, ${p.photos} ${pl(p.photos, 'zdjęcie', 'zdjęcia', 'zdjęć')}`} onClick={() => open(p)}>
+            <button className="bare block w-full text-center" aria-label={`${p.name ?? 'Nieznana osoba'}, ${p.photos} ${pl(p.photos, 'zdjęcie', 'zdjęcia', 'zdjęć')}`} onClick={() => { if (!dragJustEnded()) open(p) }}>
               <div style={{ width: 120, height: 120, margin: '0 auto', borderRadius: '50%', overflow: 'hidden', boxShadow: 'var(--elev-1)', background: 'var(--tonal)' }}>
                 {p.cover !== null && <FaceImg id={p.cover} />}
               </div>

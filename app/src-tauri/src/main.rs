@@ -29,6 +29,7 @@ mod locks;
 mod organize;
 mod places;
 mod cache;
+mod watcher;
 mod pdf;
 mod people;
 mod secure;
@@ -453,6 +454,55 @@ async fn scan_folder(app: tauri::AppHandle, path: String, watch: Option<bool>) -
     })
         .await
         .map_err(|e| e.to_string())?
+}
+
+#[derive(Serialize, Default, Debug)]
+struct DropReport {
+    folders: usize,
+    files: usize,
+    added: usize,
+}
+
+/// Dodaje do biblioteki to, co użytkownik upuścił na okno z Eksploratora: foldery (jak „Dodaj folder”, obserwowane) i pojedyncze pliki zdjęć.
+/// Pliki innych rodzajów są pomijane, a łącze symboliczne nie jest śledzone.
+fn add_dropped_blocking(state: &AppState, paths: &[String], progress: &dyn Fn(usize), stats: &dyn Fn(usize, usize)) -> Result<DropReport, String> {
+    let mut rep = DropReport::default();
+    let mut rows: Vec<Row> = Vec::new();
+    for p in paths.iter().take(2000) {
+        let path = Path::new(p);
+        let Ok(meta) = fs::symlink_metadata(path) else { continue };
+        if meta.is_dir() {
+            add_root(state, p)?;
+            state.db.lock().map_err(|e| e.to_string())?
+                .execute("UPDATE photos SET hidden = 0 WHERE hidden = 1 AND substr(path, 1, length(?1)) = ?1", [p])
+                .map_err(|e| e.to_string())?;
+            rep.folders += 1;
+            rep.added += scan_blocking_stats(state, p, progress, stats)?;
+        } else if meta.is_file() && formats::should_scan(path) {
+            rep.files += 1;
+            if let Some(row) = build_row(path) {
+                state.db.lock().map_err(|e| e.to_string())?
+                    .execute("UPDATE photos SET hidden = 0 WHERE hidden = 1 AND path = ?1", [p])
+                    .map_err(|e| e.to_string())?;
+                rows.push(row);
+            }
+        }
+    }
+    rep.added += rows.len();
+    flush(state, &mut rows)?;
+    Ok(rep)
+}
+
+#[tauri::command]
+async fn add_dropped(app: tauri::AppHandle, paths: Vec<String>) -> Result<DropReport, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let emitter = app.clone();
+        let state = app.state::<AppState>();
+        let stats_emitter = emitter.clone();
+        add_dropped_blocking(&state, &paths, &move |n| { let _ = emitter.emit("scan-progress", n); }, &move |done, total| { let _ = stats_emitter.emit("scan-stats", (done, total)); })
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Ponownie czyta metadane wszystkich zdjęć z dysku (GPS, wymiary po obrocie). Pliki, które zniknęły, zostają bez zmian.
@@ -2929,6 +2979,26 @@ mod tests {
     }
 
     #[test]
+    fn dropped_folders_and_files_are_added_and_foreign_files_ignored() {
+        let dir = std::env::temp_dir().join("mz-drop-test");
+        let state = test_state(&dir);
+        let (folder, loose) = (dir.join("album"), dir.join("luzem"));
+        fs::create_dir_all(&folder).unwrap();
+        fs::create_dir_all(&loose).unwrap();
+        for p in [folder.join("a.jpg"), folder.join("b.jpg"), loose.join("c.jpg")] {
+            image::RgbImage::from_pixel(8, 8, image::Rgb([9, 9, 9])).save(&p).unwrap();
+        }
+        fs::write(loose.join("notatki.txt"), b"x").unwrap();
+        let paths = vec![folder.to_string_lossy().to_string(), loose.join("c.jpg").to_string_lossy().to_string(), loose.join("notatki.txt").to_string_lossy().to_string(), dir.join("nie-ma").to_string_lossy().to_string()];
+        let rep = add_dropped_blocking(&state, &paths, &|_| {}, &|_, _| {}).unwrap();
+        assert_eq!((rep.folders, rep.files, rep.added), (1, 1, 3), "folder z 2 zdjęciami i jeden plik; txt i brakująca ścieżka pominięte");
+        let conn = state.db.lock().unwrap();
+        let n: i64 = conn.query_row("SELECT COUNT(*) FROM photos", [], |r| r.get(0)).unwrap();
+        let roots: i64 = conn.query_row("SELECT COUNT(*) FROM roots", [], |r| r.get(0)).unwrap();
+        assert_eq!((n, roots), (3, 1), "folder staje się obserwowany, pojedynczy plik nie");
+    }
+
+    #[test]
     fn organizing_moves_by_date_checks_first_and_undo_restores_everything() {
         let dir = std::env::temp_dir().join("mz-organize-test");
         let _ = fs::remove_dir_all(&dir);
@@ -3943,7 +4013,7 @@ fn main() {
             app.manage(AppState { db: Mutex::new(db), thumbs, sidecar: AtomicBool::new(sidecar) });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![list_roots, remove_root, rescan_roots, list_albums, create_album, rename_album, set_album_hidden, put_thumbnail, set_credits, color::index_colors, get_skip_gif_png, set_skip_gif_png, detect_cards, rotate::rotate_photos, list_album_order, set_album_order, open_photo_external, delete_album, add_to_album, remove_from_album, rename_photo, move_photos, get_sidecar_enabled, set_sidecar_enabled, export_sidecars, import_sidecars, scan_folder, refresh_library, find_duplicates, trash_photos, export_photos, set_location, rename_batch, import_photos, gallery::export_gallery, gallery::export_gpx, gallery::export_gif, pdf::export_pdf, check::check_files, list_smart, save_smart, delete_smart, gallery::rename_folder, locks::list_locked, locks::set_folder_locked, set_date, shift_dates, set_caption, photo_exif, list_props, set_props, people::photo_people, people::add_manual_face, people::reassign_person_faces, backup::backup_library, photos_backup::backup_photos, backup::restore_library, hide_photos, hidden_count, restore_hidden, people::faces_status, people::set_faces_enabled, people::faces_start, people::faces_stop, people::faces_regroup, people::faces_reanalyze, people::faces_delete_all, people::list_people, people::person_photos, people::person_faces, people::set_person_cover, people::rename_person, people::merge_people, people::merge_suggestions, people::person_face_cards, people::photo_face_stats, calendar::save_calendar_pdf, people::confirm_faces, people::move_faces, people::reject_person_in_photos, people::move_person_faces, people::reject_faces, people::delete_person, people::restore_rejected_faces, people::ignore_person, list_photos, thumbnail, thumbnail_data, people::face_crop, places::fill_places, set_iptc, cache::thumb_cache_info, cache::thumb_cache_clear, watermark::save_watermark_text, organize::organize_plan, organize::organize_apply, organize::organize_last, organize::organize_undo, edits::get_edit, edits::save_edit_recipe, edits::put_edit_thumbnail, edits::delete_edit, edits::list_edit_history, edits::get_edit_version, set_rating, set_flag, set_label, rawdev::develop_raw, clip::clip_status, clip::clip_start, clip::clip_stop, clip::clip_search, set_favorite, add_tag, remove_tag, delete_tag, save_edit, save_collage, read_image, read_audio, has_original, restore_original])
+        .invoke_handler(tauri::generate_handler![list_roots, remove_root, rescan_roots, list_albums, create_album, rename_album, set_album_hidden, put_thumbnail, set_credits, color::index_colors, get_skip_gif_png, set_skip_gif_png, detect_cards, rotate::rotate_photos, list_album_order, set_album_order, open_photo_external, delete_album, add_to_album, remove_from_album, rename_photo, move_photos, get_sidecar_enabled, set_sidecar_enabled, export_sidecars, import_sidecars, scan_folder, refresh_library, find_duplicates, trash_photos, export_photos, set_location, rename_batch, import_photos, gallery::export_gallery, gallery::export_gpx, gallery::export_gif, pdf::export_pdf, check::check_files, list_smart, save_smart, delete_smart, gallery::rename_folder, locks::list_locked, locks::set_folder_locked, set_date, shift_dates, set_caption, photo_exif, list_props, set_props, people::photo_people, people::add_manual_face, people::reassign_person_faces, backup::backup_library, photos_backup::backup_photos, backup::restore_library, hide_photos, hidden_count, restore_hidden, people::faces_status, people::set_faces_enabled, people::faces_start, people::faces_stop, people::faces_regroup, people::faces_reanalyze, people::faces_delete_all, people::list_people, people::person_photos, people::person_faces, people::set_person_cover, people::rename_person, people::merge_people, people::merge_suggestions, people::person_face_cards, people::photo_face_stats, calendar::save_calendar_pdf, people::confirm_faces, people::move_faces, people::reject_person_in_photos, people::move_person_faces, people::reject_faces, people::delete_person, people::restore_rejected_faces, people::ignore_person, list_photos, thumbnail, thumbnail_data, people::face_crop, places::fill_places, add_dropped, watcher::watch_roots, set_iptc, cache::thumb_cache_info, cache::thumb_cache_clear, watermark::save_watermark_text, organize::organize_plan, organize::organize_apply, organize::organize_last, organize::organize_undo, edits::get_edit, edits::save_edit_recipe, edits::put_edit_thumbnail, edits::delete_edit, edits::list_edit_history, edits::get_edit_version, set_rating, set_flag, set_label, rawdev::develop_raw, clip::clip_status, clip::clip_start, clip::clip_stop, clip::clip_search, set_favorite, add_tag, remove_tag, delete_tag, save_edit, save_collage, read_image, read_audio, has_original, restore_original])
         .run(tauri::generate_context!())
         .expect("błąd uruchomienia aplikacji");
 
