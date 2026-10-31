@@ -5,6 +5,7 @@ import { Copy, Trash2, X, ScanSearch, Crown, FolderOpen } from './FiboIcons'
 import { findDuplicates, revealInExplorer, trashPhotos, type DupGroup, type Photo } from './api'
 import { Thumb } from './Thumb'
 import { Chip } from './ui'
+import { folderPairs, redundantIn, type FolderPair } from './dupFolders'
 
 type Level = 'exact' | 'close' | 'loose'
 const LEVELS: { id: Level; label: string; dist: number | null; hint: string }[] = [
@@ -110,6 +111,17 @@ export function Duplicates({ all, suspended, onClose, onOpen, onTrashed, say }: 
     setMarked((m) => { const n = new Set(m); if (n.has(id)) n.delete(id); else n.add(id); return n })
   }
 
+  /** Katalogi, które zawierają te same zdjęcia: identyczne (100%) na górze, potem jeden w drugim, potem malejąco. */
+  const pairs = useMemo(() => folderPairs(groups ?? [], all), [groups, all])
+  const shortDir = (d: string) => d.split(/[\\/]/).filter(Boolean).slice(-2).join('\\') || d
+  /** Zaznacza do Kosza kopie z katalogu `dir`, które mają odpowiednik w drugim katalogu pary. */
+  const markFolder = (dir: string, other: string) => {
+    const ids = redundantIn(dir, other, groups ?? [], all)
+    setMarked(new Set(ids))
+    say(`Zaznaczono ${ids.length} ${pl(ids.length, 'kopię', 'kopie', 'kopii')} z „${shortDir(dir)}”. Sprawdź i kliknij „Przenieś do Kosza” na dole`, 'ok')
+  }
+  const pairLabel = (p: FolderPair) => p.kind === 'identical' ? 'Te same zdjęcia w obu katalogach' : p.kind === 'subset' ? `„${shortDir(p.inside === 'a' ? p.a : p.b)}” w całości jest w „${shortDir(p.inside === 'a' ? p.b : p.a)}”` : 'Część zdjęć wspólna'
+
   const markedList = useMemo(() => [...marked], [marked])
   const markedBytes = markedList.reduce((n, id) => n + (byId.get(id)?.size ?? 0), 0)
 
@@ -156,6 +168,33 @@ export function Duplicates({ all, suspended, onClose, onOpen, onTrashed, say }: 
         {groups && shown.length === 0 && (
           <div className="empty" style={{ height: '30vh' }}><div><Copy size={40} strokeWidth={1.2} style={{ margin: '0 auto 10px' }} />
             <p style={{ margin: 0 }}>Nie znaleziono duplikatów. Spróbuj poziomu „Podobne”, żeby znaleźć też warianty tego samego ujęcia.</p></div></div>
+        )}
+
+        {pairs.length > 0 && (
+          <section className="sec" aria-label="Powtarzające się katalogi">
+            <h2 className="sec-h"><i><FolderOpen size={17} /></i>Powtarzające się katalogi<span style={{ font: '400 13px system-ui', color: 'var(--muted)' }}>{pairs.length} {pl(pairs.length, 'para', 'pary', 'par')}, od 100% w dół</span></h2>
+            <p style={{ margin: '0 2px 8px', color: 'var(--muted)', fontSize: 13 }}>
+              Te pary katalogów zawierają te same zdjęcia. Wybierz katalog, z którego chcesz usunąć kopie: zaznaczę do Kosza tylko te zdjęcia, które mają odpowiednik w drugim katalogu, więc ich oryginały zostaną.
+            </p>
+            <div style={{ display: 'grid', gap: 10 }}>
+              {pairs.map((p) => (
+                <div key={`${p.a}|${p.b}`} className="item" style={{ display: 'block', margin: 0, padding: 10 }}>
+                  <div className="flex items-center gap-2" style={{ flexWrap: 'wrap' }}>
+                    <span className={`chip${p.percent === 100 ? ' on' : ''}`} style={{ minHeight: 28, padding: '2px 10px', fontWeight: 700 }} aria-label={`Zgodność ${p.percent} procent`}>{p.percent}%</span>
+                    <b style={{ fontSize: 14 }}>{pairLabel(p)}</b>
+                    <span style={{ color: 'var(--muted)', fontSize: 12.5 }}>{p.shared} {pl(p.shared, 'wspólne zdjęcie', 'wspólne zdjęcia', 'wspólnych zdjęć')}{p.exact ? ', identyczne pliki' : ', podobne (nie identyczne), sprawdź przed usunięciem'}</span>
+                  </div>
+                  {([[p.a, p.b, p.countA], [p.b, p.a, p.countB]] as [string, string, number][]).map(([dir, other, n]) => (
+                    <div key={dir} style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
+                      <span style={{ flex: 1, minWidth: 0, wordBreak: 'break-all', fontSize: 13, userSelect: 'text' }} title={dir}>{dir} <span style={{ color: 'var(--muted)' }}>({n})</span></span>
+                      <button className="ico" aria-label={`Pokaż w Eksploratorze: ${dir}`} title="Pokaż katalog w Eksploratorze" onClick={() => revealInExplorer(dir).catch((e) => say(`Nie udało się otworzyć Eksploratora: ${e}`, 'err'))}><FolderOpen size={17} /></button>
+                      <button className="chip" onClick={() => markFolder(dir, other)} title={`Zaznacz do Kosza kopie z tego katalogu, które mają odpowiednik w „${shortDir(other)}”`}>Usuń kopie stąd</button>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </section>
         )}
 
         {shown.length > 0 && folderStats.length > 1 && (

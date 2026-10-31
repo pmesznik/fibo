@@ -12,7 +12,7 @@
 <link rel="alternate" hreflang="en" href="../en/">
 <link rel="stylesheet" href="../assets/site.css">
 </head>
-<body data-lang="pl" data-repo="pmesznik/fibo" data-version="0.4.59">
+<body data-lang="pl" data-repo="pmesznik/fibo" data-version="0.4.60">
 <a class="skip" href="#docs">Dokumentacja</a>
 <header class="top">
   <div class="wrap bar">
@@ -179,6 +179,7 @@
         <li><strong>Kolaż jako tapeta</strong>: w kolażu format <em>Tapeta (ten ekran)</em> zapisuje obraz w rozdzielczości Twojego ekranu. Nowe tła: szary i rozmyte pierwsze zdjęcie, nowy układ <em>Wielokrotna ekspozycja</em> (zdjęcia nakładają się jak na kliszy). FIBO sam nie zmienia tapety systemu: kliknij zapisany plik prawym przyciskiem w Eksploratorze i wybierz <em>Ustaw jako tło pulpitu</em>.</li>
         <li><strong>Powrót do listy osób</strong>: po wejściu w osobę (np. nierozpoznaną) i powrocie lista nie skacze na górę, tylko zostaje przy tej osobie, więc łatwo porządkować kolejne.</li>
         <li><strong>Scalanie osoby z widoku twarzy</strong>: w widoku osoby (po uporządkowaniu twarzy) chip <em>Scal z inną osobą…</em> otwiera okno scalania: wybierasz drugą osobę, która osoba i które imię zostaje, i łączysz je jednym kliknięciem.</li>
+        <li><strong>Duplikaty katalogów</strong>: po wyszukaniu duplikatów okno pokazuje na samej górze pary katalogów, które zawierają te same zdjęcia, od 100% w dół: najpierw katalogi identyczne, potem takie, w których jeden w całości mieści się w drugim, potem pozostałe od najwyższej zgodności (od 50%). Przy każdej parze przycisk <em>Usuń kopie stąd</em> zaznacza do Kosza tylko te zdjęcia z wybranego katalogu, które mają odpowiednik w drugim, więc oryginały zostają. Przed usunięciem nadal widzisz zaznaczenie i potwierdzasz je na dole.</li>
         <li><strong>Porządkowanie według daty</strong>: z menu „Porządkuj według daty” przenosisz zaznaczone lub widoczne zdjęcia do folderów RRRR, RRRR/MM albo RRRR/RRRR-MM-DD. Najpierw zobaczysz plan i nic się nie zmienia na dysku, pliki nigdy nie są nadpisywane, zablokowane foldery są pomijane, a całe porządkowanie cofniesz jednym kliknięciem (razem z plikami XMP, edycją i kopią oryginału).</li>
         <li><strong>Edycja nieniszcząca</strong>: w edytorze „Zapisz edycję (oryginał bez zmian)” zapisuje zmiany jako przepis (w bazie, w historii 20 ostatnich wersji i w pliku <code>zdjęcie.jpg.fibo.json</code> obok zdjęcia, gdy zapis metadanych jest włączony). Plik zdjęcia się nie zmienia, miniatura w bibliotece pokazuje edytowaną wersję, a edycję możesz później zmienić, cofnąć albo przywrócić z historii.</li>
         <li><strong>Kopia zapasowa biblioteki</strong> (menu): zapisuje dane biblioteki (tagi, oceny, albumy, ulubione, foldery) do pliku .db, a <em>Przywróć z kopii</em> wczytuje je z powrotem. Przed przywróceniem FIBO zapisuje kopię bezpieczeństwa obecnej biblioteki. Same zdjęcia, osoby i dane twarzy nie są w kopii.</li>
