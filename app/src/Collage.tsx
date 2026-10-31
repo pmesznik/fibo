@@ -5,7 +5,7 @@ import { decodeBitmap } from './imageDecode'
 import { readImage, saveCollage, type Photo } from './api'
 import { Chip } from './ui'
 
-type Layout = 'grid' | 'mosaic' | 'pile' | 'contact'
+type Layout = 'grid' | 'mosaic' | 'pile' | 'contact' | 'exposure'
 type Cell = { x: number; y: number; w: number; h: number; rot?: number }
 type Loaded = { bmp: ImageBitmap; name: string }
 
@@ -14,15 +14,27 @@ const LAYOUTS: { id: Layout; label: string }[] = [
   { id: 'mosaic', label: 'Mozaika' },
   { id: 'pile', label: 'Stos zdjęć' },
   { id: 'contact', label: 'Kontaktówka' },
+  { id: 'exposure', label: 'Wielokrotna ekspozycja' },
 ]
-const FORMATS: { label: string; ratio: number }[] = [
+/** Rozdzielczość tego ekranu w pikselach (dla tapety): nie więcej niż 3840 px szerokości. */
+const SCREEN: [number, number] = (() => {
+  const k = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1
+  const w = Math.min(3840, Math.round((typeof screen !== 'undefined' ? screen.width : 1920) * k)), h = Math.round(w * (typeof screen !== 'undefined' && screen.width ? screen.height / screen.width : 9 / 16))
+  return [Math.max(800, w), Math.max(450, h)]
+})()
+/** `px` to dokładny rozmiar zapisu (tapeta), a bez niego zapis ma 2800 px szerokości. */
+export const FORMATS: { label: string; ratio: number; px?: [number, number] }[] = [
+  { label: 'Tapeta (ten ekran)', ratio: SCREEN[0] / SCREEN[1], px: SCREEN },
   { label: '16:9', ratio: 16 / 9 }, { label: '4:3', ratio: 4 / 3 }, { label: '3:2', ratio: 3 / 2 },
   { label: '1:1', ratio: 1 }, { label: '3:4', ratio: 3 / 4 }, { label: '9:16', ratio: 9 / 16 },
 ]
-const BACKGROUNDS = [
+export const BACKGROUNDS = [
   { label: 'Biały', v: '#ffffff', text: '#1c2430' }, { label: 'Czarny', v: '#0b0d10', text: '#e8ecf1' },
   { label: 'Grafit', v: '#2a303a', text: '#e8ecf1' }, { label: 'Papier', v: '#f1e8d8', text: '#3a3023' },
-]
+  { label: 'Szary', v: '#808080', text: '#10141a' },
+  /** Tło ze zdjęcia: pierwsze zdjęcie, powiększone, mocno rozmyte i przyciemnione. */
+  { label: 'Ze zdjęcia', v: '#0b0d10', text: '#e8ecf1', photo: true },
+] as { label: string; v: string; text: string; photo?: boolean }[]
 const MAX_PHOTOS = 30
 const PREVIEW_W = 900
 const EXPORT_W = 2800
@@ -111,7 +123,7 @@ function drawCover(ctx: CanvasRenderingContext2D, img: ImageBitmap, c: Cell, rad
   ctx.restore()
 }
 
-function render(canvas: HTMLCanvasElement, items: Loaded[], opt: {
+export function render(canvas: HTMLCanvasElement, items: Loaded[], opt: {
   layout: Layout; W: number; H: number; gap: number; radius: number; bg: typeof BACKGROUNDS[number]; seed: number
 }) {
   canvas.width = Math.round(opt.W); canvas.height = Math.round(opt.H)
@@ -122,6 +134,23 @@ function render(canvas: HTMLCanvasElement, items: Loaded[], opt: {
   if (!items.length) return
   const k = opt.W / PREVIEW_W // wartości w "pikselach podglądu" skalujemy do rozmiaru eksportu
   const gap = opt.gap * k, radius = opt.radius * k
+  if (opt.bg.photo) {
+    // Rozmyte, przyciemnione pierwsze zdjęcie jako tło.
+    ctx.save()
+    ctx.filter = `blur(${Math.round(36 * k)}px)`
+    drawCover(ctx, items[0].bmp, { x: -60 * k, y: -60 * k, w: canvas.width + 120 * k, h: canvas.height + 120 * k }, 0)
+    ctx.restore()
+    ctx.fillStyle = 'rgba(0,0,0,.38)'; ctx.fillRect(0, 0, canvas.width, canvas.height)
+  }
+  if (opt.layout === 'exposure') {
+    // Efekt filmowej wielokrotnej ekspozycji: zdjęcia nakładają się na siebie, rozjaśniając się nawzajem (tryb „ekran”).
+    ctx.fillStyle = '#05060a'; ctx.fillRect(0, 0, canvas.width, canvas.height)
+    ctx.globalCompositeOperation = 'screen'
+    const a = Math.min(1, 1.5 / Math.sqrt(items.length))
+    items.forEach((it) => { ctx.globalAlpha = a; drawCover(ctx, it.bmp, { x: 0, y: 0, w: canvas.width, h: canvas.height }, 0) })
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'
+    return
+  }
   const cells = layoutCells(opt.layout, items, opt.W, opt.H, gap, opt.seed)
 
   if (opt.layout === 'pile') {
@@ -210,13 +239,14 @@ export function Collage({ photos, onClose, onSaved, say }: {
     setSaving(true)
     try {
       const c = document.createElement('canvas')
-      render(c, items, { layout, W: EXPORT_W, H: EXPORT_W / ratio, gap, radius, bg, seed })
+      const px = FORMATS[format].px
+      render(c, items, { layout, W: px ? px[0] : EXPORT_W, H: px ? px[1] : EXPORT_W / ratio, gap, radius, bg, seed })
       const blob = await new Promise<Blob | null>((res) => c.toBlob(res, 'image/jpeg', 0.92))
       if (!blob) throw new Error('nie udało się zakodować obrazu')
       const d = new Date(), p2 = (n: number) => String(n).padStart(2, '0')
       const name = `kolaz_${d.getFullYear()}${p2(d.getMonth() + 1)}${p2(d.getDate())}_${p2(d.getHours())}${p2(d.getMinutes())}${p2(d.getSeconds())}`
       const id = await saveCollage(used[0].id, await blob.arrayBuffer(), name)
-      say('Kolaż zapisany w folderze pierwszego zdjęcia', 'ok')
+      say(FORMATS[format].px ? 'Tapeta zapisana w folderze pierwszego zdjęcia. Żeby ustawić ją na pulpicie, kliknij plik prawym przyciskiem w Eksploratorze i wybierz „Ustaw jako tło pulpitu”' : 'Kolaż zapisany w folderze pierwszego zdjęcia', 'ok')
       onSaved(id)
       onClose()
     } catch (e) {
@@ -256,7 +286,7 @@ export function Collage({ photos, onClose, onSaved, say }: {
           <section className="sec">
             <label htmlFor="gap" style={{ marginTop: 0 }}>Odstęp: {gap} px</label>
             <input id="gap" type="range" min={0} max={40} value={gap} onChange={(e) => setGap(+e.target.value)} />
-            {layout !== 'pile' && (<>
+            {layout !== 'pile' && layout !== 'exposure' && (<>
               <label htmlFor="rad">Zaokrąglenie rogów: {radius} px</label>
               <input id="rad" type="range" min={0} max={40} value={radius} onChange={(e) => setRadius(+e.target.value)} />
             </>)}

@@ -233,7 +233,7 @@ mod tests {
         assert!(save_calendar_core(&[], &dir, "x", "a4", false).is_err(), "pusto");
         assert!(save_calendar_core(&body(&[b"to nie jpeg".to_vec()]), &dir, "x", "a4", false).is_err(), "nie JPEG");
         assert!(save_calendar_core(&body(&vec![jpeg(8, 8); 15]), &dir, "x", "a4", false).is_err(), "za dużo stron");
-        assert!(save_calendar_core(&body(&[jpeg(8, 8)]), &dir, "x", "a5", false).is_err(), "nieznany rozmiar");
+        assert!(save_calendar_core(&body(&[jpeg(8, 8)]), &dir, "x", "a2", false).is_err(), "nieznany rozmiar");
         assert!(save_calendar_core(&body(&[jpeg(8, 8)]), &dir.join("brak"), "x", "a4", false).is_err(), "brak folderu");
         let mut cut = body(&[jpeg(8, 8)]);
         cut.truncate(cut.len() - 5);

@@ -145,7 +145,7 @@ Edytor, szczegóły z podręcznika:
 
 Taca i wyjście:
 - [x] **Taca zdjęć** z przyciskami **Zatrzymaj, Wyczyść, Dodaj do albumu, Gwiazdka, Obróć** oraz akcjami **Drukuj, E-mail, Kolaż, Eksport** na całej zawartości. P2 T M Gotowe: Zatrzymaj zaznaczone, Do albumu, Ulubione, Obróć, Kolaż, Eksport i druk, E-mail.
-- [ ] **Kolaż: zapis jako tapeta pulpitu lub wygaszacz**, tło ze zdjęcia lub kolor (czarny, biały, szary), efekt filmowej wielokrotnej ekspozycji. P3 T M
+- [x] **Kolaż: zapis jako tapeta pulpitu lub wygaszacz**, tło ze zdjęcia lub kolor (czarny, biały, szary), efekt filmowej wielokrotnej ekspozycji. P3 T M Gotowe jako tapeta: format „Tapeta (ten ekran)” zapisuje obraz w rozdzielczości ekranu (do 3840 px), tła: biały, czarny, grafit, papier, szary i rozmyte zdjęcie, układ „Wielokrotna ekspozycja”. Ustawienie tapety robi użytkownik w Eksploratorze („Ustaw jako tło pulpitu”), bo FIBO nie wywołuje funkcji systemu. Wygaszacz ekranu: poza zakresem (wymaga pliku .scr zarejestrowanego w systemie).
 - [x] **Pokaz slajdów: pokaz opisów, obracanie, ocenianie gwiazdkami i ustawienie czasu slajdu w trakcie pokazu**. P2 T S Gotowe: czas slajdu, opisy i ocenianie (obracanie w pokazie jeszcze nie).
 - [x] **Płyta z prezentem → „Paczka prezentowa”**: zapis wybranych zdjęć w wybranym rozmiarze razem z samodzielnym pokazem HTML do folderu lub na pendrive. P3 T M Załatwia to eksport galerii HTML (pomniejszone zdjęcia i samodzielna strona index.html).
 - [x] **Wydruk: układy na stronie** (np. 4 zdjęcia 9x13 na A4), przycisk „Przegląd” przed drukiem. P2 T M Gotowe: układy 1, 2, 4, 6, 9 oraz arkusze 12 i 20 na stronie A4 z podglądem strony przed wydrukiem.
