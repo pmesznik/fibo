@@ -6,6 +6,10 @@ import { pl } from './pl'
 
 /** Zmiana daty zdjęć: ustawienie dokładnej daty albo przesunięcie o dni, godziny i minuty (np. zły zegar aparatu).
  *  Dotyczy biblioteki FIBO, plików zdjęć nie zmieniamy. */
+/** Strefy czasowe (przesunięcie względem UTC w godzinach), od −12 do +14. */
+const ZONES = Array.from({ length: 27 }, (_, i) => i - 12)
+const zoneName = (z: number) => `UTC${z >= 0 ? '+' : '−'}${Math.abs(z)}${z === 1 ? ' (Polska zimą)' : z === 2 ? ' (Polska latem)' : z === 0 ? ' (Londyn zimą)' : ''}`
+
 export function DateDialog({ photos, onClose, onDone, say }: {
   photos: Photo[]
   onClose: () => void
@@ -15,7 +19,10 @@ export function DateDialog({ photos, onClose, onDone, say }: {
   useEscape(onClose)
   const first = photos[0]
   const initial = (first?.taken ?? new Date((first?.modified ?? 0) * 1000).toISOString()).slice(0, 16).replace(/:/g, '-').replace(' ', 'T').replace(/^(\d{4}-\d{2}-\d{2})-(\d{2})-(\d{2})$/, '$1T$2:$3')
-  const [mode, setMode] = useState<'set' | 'shift'>('shift')
+  const [mode, setMode] = useState<'set' | 'shift' | 'zone'>('shift')
+  // Strefa czasowa: zegar aparatu szedł według jednej strefy, a zdjęcia mają pokazywać czas w innej (np. podróż). Różnica stref to przesunięcie w godzinach.
+  const [zoneFrom, setZoneFrom] = useState(0)
+  const [zoneTo, setZoneTo] = useState(0)
   const [value, setValue] = useState(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(initial) ? initial : '')
   const [sign, setSign] = useState<1 | -1>(1)
   const [days, setDays] = useState(0)
@@ -23,7 +30,7 @@ export function DateDialog({ photos, onClose, onDone, say }: {
   const [minutes, setMinutes] = useState(0)
   const [busy, setBusy] = useState(false)
 
-  const total = sign * (days * 1440 + hours * 60 + minutes)
+  const total = mode === 'zone' ? (zoneTo - zoneFrom) * 60 : sign * (days * 1440 + hours * 60 + minutes)
   const can = mode === 'set' ? !!value : total !== 0
 
   const run = async () => {
@@ -49,9 +56,18 @@ export function DateDialog({ photos, onClose, onDone, say }: {
           <p style={{ margin: '0 0 8px', color: 'var(--muted)', fontSize: 13 }}>Zmiana dotyczy biblioteki FIBO (plików zdjęć nie zmieniamy) i zostaje po ponownym skanowaniu.</p>
           <div className="chips">
             <button className={`chip${mode === 'shift' ? ' on' : ''}`} aria-pressed={mode === 'shift'} onClick={() => setMode('shift')}>Przesuń o…</button>
+            <button className={`chip${mode === 'zone' ? ' on' : ''}`} aria-pressed={mode === 'zone'} onClick={() => setMode('zone')}>Strefa czasowa</button>
             <button className={`chip${mode === 'set' ? ' on' : ''}`} aria-pressed={mode === 'set'} onClick={() => setMode('set')}>Ustaw datę</button>
           </div>
-          {mode === 'set' ? (
+          {mode === 'zone' ? (
+            <>
+              <label htmlFor="dt-zf">Zegar aparatu był ustawiony na strefę</label>
+              <select id="dt-zf" value={zoneFrom} onChange={(e) => setZoneFrom(+e.target.value)}>{ZONES.map((z) => <option key={z} value={z}>{zoneName(z)}</option>)}</select>
+              <label htmlFor="dt-zt">Zdjęcia mają pokazywać czas w strefie</label>
+              <select id="dt-zt" value={zoneTo} onChange={(e) => setZoneTo(+e.target.value)}>{ZONES.map((z) => <option key={z} value={z}>{zoneName(z)}</option>)}</select>
+              <p style={{ margin: '8px 0 0', color: 'var(--muted)', fontSize: 13 }}>{total === 0 ? 'Obie strefy są takie same, nic się nie zmieni.' : `Daty zdjęć przesunę o ${total > 0 ? '+' : '−'}${Math.abs(total) / 60} ${Math.abs(total) / 60 === 1 ? 'godzinę' : 'godz.'}.`}</p>
+            </>
+          ) : mode === 'set' ? (
             <>
               <label htmlFor="dt-set">Data i godzina (wszystkie zaznaczone zdjęcia dostaną tę samą)</label>
               <input id="dt-set" type="datetime-local" value={value} onChange={(e) => setValue(e.target.value)} />

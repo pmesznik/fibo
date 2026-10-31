@@ -200,8 +200,8 @@ Pliki i formaty:
 - [x] **Wideo**: miniatury, odtwarzanie, filtr „Filmy”. Wycinanie fragmentu jeszcze nie. P2 T L
 - [ ] **Zdjęcia ruchome** (Live Photos, krótkie klipy przy zdjęciu). P4 T L
 - [ ] **Natychmiastowe wykrywanie nowych plików** (obserwator folderów zamiast sprawdzania co kilka minut). P3 T M
-- [ ] **Zarządzanie pamięcią podręczną miniatur** (rozmiar, czyszczenie). P3 T S
-- [ ] **Edycja EXIF i IPTC** (autor, prawa autorskie, strefa czasowa). P3 T M
+- [x] **Zarządzanie pamięcią podręczną miniatur** (rozmiar, czyszczenie). P3 T S Gotowe: menu → „Pamięć miniatur” (rozmiar, czyszczenie z potwierdzeniem; miniatury zdjęć z zapisaną edycją zostają).
+- [x] **Edycja EXIF i IPTC** (autor, prawa autorskie, strefa czasowa). P3 T M Gotowe: menu zdjęcia → „Autor, prawa i opis (IPTC)” (autor, prawa, tytuł, miejscowość, kraj, także w XMP) oraz „Zmień datę” → „Strefa czasowa”. Pliki zdjęć zostają nietknięte.
 
 Udostępnianie i wygoda:
 - [ ] **Udostępnianie w sieci domowej** z kodem QR, tylko na żądanie i bez internetu. P4 T L

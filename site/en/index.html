@@ -12,7 +12,7 @@
 <link rel="alternate" hreflang="pl" href="../pl/">
 <link rel="stylesheet" href="../assets/site.css">
 </head>
-<body data-lang="en" data-repo="pmesznik/fibo" data-version="0.4.46">
+<body data-lang="en" data-repo="pmesznik/fibo" data-version="0.4.47">
 <a class="skip" href="#docs">Documentation</a>
 <header class="top">
   <div class="wrap bar">
@@ -163,6 +163,8 @@
         <li><strong>Place names</strong>: photos with GPS coordinates get the name of the nearest town (for example "Warsaw, Poland"). The name shows in photo info, in search and in the <em>Places</em> section of the menu. It works offline, on a table of about 27,000 towns shipped in the installer (GeoNames data, CC BY 4.0). A photo more than 30 km from any larger town gets no name.</li>
         <li><strong>Calendar view</strong> (menu → Quick actions): a month grid with the first photo of each day and the photo count. Arrows, a year list and month shortcuts let you jump through time, and clicking a day shows its photos. Dates come from EXIF, or the file date when missing.</li>
         <li><strong>Text watermark</strong>: in export, next to the logo file you can type text (for example "© Jane Smith 2026"), pick a colour, position, size and opacity. The text is drawn locally and applied only to copies, originals never change.</li>
+        <li><strong>Thumbnail cache</strong> (menu): shows how much space thumbnails use and clears them with one button after confirmation. Photos are untouched and thumbnails are rebuilt. Thumbnails of photos with a saved edit are kept.</li>
+        <li><strong>IPTC data and time zone</strong>: <em>Author, rights and description (IPTC)</em> in the photo menu stores author, rights, title, city and country (also in the XMP file next to the photo), and city and country override the GPS place name. In <em>Change date</em> the <em>Time zone</em> mode converts dates when the camera clock followed a different zone. Photo files are never changed.</li>
         <li><strong>Organize by date</strong>: "Organize by date" in the menu moves selected or visible photos into YEAR, YEAR/MONTH or YEAR/YEAR-MM-DD folders. You see the plan first and nothing changes on disk, files are never overwritten, locked folders are skipped, and the whole run can be undone in one click (with XMP files, edits and original backups).</li>
         <li><strong>Non-destructive editing</strong>: in the editor, "Save edit (original untouched)" stores your changes as a recipe (in the database, in a history of the last 20 versions, and in a <code>photo.jpg.fibo.json</code> file next to the photo when metadata saving is on). The photo file never changes, the library thumbnail shows the edited look, and you can change, undo or restore the edit from history later.</li>
         <li><strong>Library backup</strong> (menu): saves your library data (tags, ratings, albums, favourites, folders) to a .db file, and <em>Restore from backup</em> loads it back. Before restoring, FIBO saves a safety copy of the current library. Photos themselves, people and face data are not in the backup.</li>

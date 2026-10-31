@@ -37,6 +37,10 @@ export type Photo = {
   /** Najbliższa miejscowość ze współrzędnych GPS (null = jeszcze nie ustalono, pusty tekst = brak w pobliżu) i kod kraju. */
   place?: string | null
   country?: string | null
+  /** Pola IPTC wpisane przez użytkownika: tytuł oraz miejscowość i kraj (mają pierwszeństwo przed nazwą z GPS). */
+  title?: string | null
+  iptc_city?: string | null
+  iptc_country?: string | null
   /** Licznik odświeżeń miniatury (tylko w oknie programu): rośnie po zapisie lub usunięciu edycji. */
   rev?: number
 }
@@ -170,6 +174,7 @@ export const setSkipGifPng = (skip: boolean) => invoke('set_skip_gif_png', { ski
 /** Dyski wyglądające na kartę pamięci aparatu (zawierają folder DCIM), jeszcze nieobserwowane przez FIBO. */
 export const detectCards = () => invoke<string[]>('detect_cards')
 
+export const setIptc = (ids: number[], title: string, city: string, country: string) => invoke<number>('set_iptc', { ids, title, city, country })
 export const setCredits = (ids: number[], author: string, copyright: string) => invoke<number>('set_credits', { ids, author, copyright })
 export const indexColors = () => invoke<{ done: number }>('index_colors')
 
@@ -197,6 +202,9 @@ export const listEditHistory = (id: number) => invoke<EditVersion[]>('list_edit_
 export const getEditVersion = (id: number, version: number) => invoke<string>('get_edit_version', { id, version })
 
 export const addManualFace = (photoId: number, x: number, y: number, w: number, h: number, person: number | null) => invoke<number>('add_manual_face', { photoId, x, y, w, h, person })
+export type CacheInfo = { files: number; bytes: number }
+export const thumbCacheInfo = () => invoke<CacheInfo>('thumb_cache_info')
+export const thumbCacheClear = () => invoke<CacheInfo>('thumb_cache_clear')
 export const fillPlaces = () => invoke<number>('fill_places')
 export type OrganizePlan = {
   moves: { id: number; name: string; from_dir: string; to_dir: string; rel: string; file_date: boolean }[]

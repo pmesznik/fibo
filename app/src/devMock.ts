@@ -134,6 +134,8 @@ function respond(cmd: string, args: Record<string, unknown> = {}): unknown | Pro
     case 'organize_plan': return { moves: photos.slice(0, 5).map((p) => ({ id: p.id, name: p.name, from_dir: 'C:\\Zdjecia', to_dir: 'D:\\Porzadek\\2024\\07', rel: '2024/07', file_date: false })), in_place: 1, skipped: [], file_dates: 0 }
     case 'organize_last': return null
     case 'fill_places': return 0
+    case 'thumb_cache_info': return { files: 1240, bytes: 38 * 1048576 }
+    case 'thumb_cache_clear': return { files: 1240, bytes: 38 * 1048576 }
     case 'add_manual_face': return 1
     case 'get_sidecar_enabled': return true
     case 'get_skip_gif_png': return false

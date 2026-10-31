@@ -949,7 +949,8 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
                 ['Rozmiar', `${(photo.size / 1048576).toFixed(2)} MB`],
                 ['Data zdjęcia', photo.taken ?? new Date(photo.modified * 1000).toLocaleString('pl-PL')],
                 ['Aparat', photo.camera ?? '—'],
-                ...(photo.place ? [['Miejsce', `${photo.place}${photo.country ? `, ${(() => { try { return new Intl.DisplayNames(['pl'], { type: 'region' }).of(photo.country) } catch { return photo.country } })()}` : ''}`]] : []),
+                ...(photo.title ? [['Tytuł', photo.title]] : []),
+                ...(photo.iptc_city || photo.iptc_country ? [['Miejsce', [photo.iptc_city, photo.iptc_country].filter(Boolean).join(', ')]] : photo.place ? [['Miejsce', `${photo.place}${photo.country ? `, ${(() => { try { return new Intl.DisplayNames(['pl'], { type: 'region' }).of(photo.country) } catch { return photo.country } })()}` : ''}`]] : []),
               ].map(([k, v]) => (
                 <div key={k} className="item" style={{ display: 'block' }}>
                   <small style={{ color: 'var(--muted)', fontSize: 12 }}>{k}</small>

@@ -28,6 +28,7 @@ mod gallery;
 mod locks;
 mod organize;
 mod places;
+mod cache;
 mod pdf;
 mod people;
 mod secure;
@@ -84,6 +85,10 @@ struct Photo {
     /** Najbliższa miejscowość ze współrzędnych GPS (None = jeszcze nie ustalono, pusty tekst = brak w pobliżu) i kod kraju. */
     place: Option<String>,
     country: Option<String>,
+    /** Pola IPTC wpisane przez użytkownika. */
+    title: Option<String>,
+    iptc_city: Option<String>,
+    iptc_country: Option<String>,
 }
 
 fn open_db(path: &Path) -> rusqlite::Result<Connection> {
@@ -162,6 +167,10 @@ fn open_db(path: &Path) -> rusqlite::Result<Connection> {
     // Migracje: autor i prawa autorskie (zapisywane też w pliku XMP) oraz kolor dominujący (0 do 11, zob. color.rs).
     let _ = conn.execute("ALTER TABLE photos ADD COLUMN author TEXT", []);
     let _ = conn.execute("ALTER TABLE photos ADD COLUMN copyright TEXT", []);
+    // Migracja: pola IPTC wpisane przez użytkownika: tytuł oraz miejscowość i kraj (zapisywane też w pliku XMP).
+    for col in ["title", "iptc_city", "iptc_country"] {
+        let _ = conn.execute(&format!("ALTER TABLE photos ADD COLUMN {col} TEXT"), []);
+    }
     let _ = conn.execute("ALTER TABLE photos ADD COLUMN color INTEGER", []);
     // Migracja: tekst z danych EXIF (aparat, obiektyw, ISO, przysłona…) do szukania; uzupełnia się przy skanowaniu lub „Odśwież dane zdjęć”.
     let _ = conn.execute("ALTER TABLE photos ADD COLUMN exif_text TEXT", []);
@@ -489,7 +498,7 @@ fn list_photos(state: State<'_, AppState>) -> Result<Vec<Photo>, String> {
                     (SELECT group_concat(t.name, char(31)) FROM photo_tags pt JOIN tags t ON t.id = pt.tag_id
                      WHERE pt.photo_id = photos.id), lat, lon,
                     (SELECT group_concat(album_id) FROM album_photos WHERE photo_id = photos.id), caption, exif_text, author, copyright, color, flag, label, video, duration,
-                    EXISTS(SELECT 1 FROM edits e WHERE e.photo_id = photos.id), place, country
+                    EXISTS(SELECT 1 FROM edits e WHERE e.photo_id = photos.id), place, country, title, iptc_city, iptc_country
              FROM photos WHERE hidden = 0 ORDER BY COALESCE(taken, datetime(modified,'unixepoch')) DESC",
         )
         .map_err(|e| e.to_string())?;
@@ -529,6 +538,9 @@ fn list_photos(state: State<'_, AppState>) -> Result<Vec<Photo>, String> {
                 edited: r.get::<_, i64>(24)? != 0,
                 place: r.get(25)?,
                 country: r.get(26)?,
+                title: r.get(27)?,
+                iptc_city: r.get(28)?,
+                iptc_country: r.get(29)?,
             })
         })
         .map_err(|e| e.to_string())?
@@ -809,12 +821,21 @@ fn restore_original(state: State<'_, AppState>, id: i64) -> Result<i64, String> 
 
 const XMP_MARKER: &str = "x:xmptk=\"FIBO\"";
 
+#[derive(Default, Clone, Debug, PartialEq)]
+struct Iptc {
+    title: Option<String>,
+    city: Option<String>,
+    country: Option<String>,
+}
+
 struct Sidecar {
     rating: i64,
     favorite: bool,
     tags: Vec<String>,
     author: Option<String>,
     copyright: Option<String>,
+    /** Pola IPTC: tytuł (dc:title), miejscowość (photoshop:City) i kraj (photoshop:Country). */
+    iptc: Iptc,
     /** 1 wybrane, -1 odrzucone (xmpDM:pick), 0 brak. */
     flag: i64,
     /** Numer etykiety kolorowej (xmp:Label), 0 brak. */
@@ -853,6 +874,12 @@ fn build_xmp_full(rating: i64, favorite: bool, tags: &[String], author: Option<&
 
 /// To samo z flagą selekcji (`xmpDM:pick`) i etykietą kolorową (`xmp:Label`). Gdy ich nie ma, plik jest bajt w bajt taki jak dawniej.
 fn build_xmp_marks(rating: i64, favorite: bool, tags: &[String], author: Option<&str>, copyright: Option<&str>, flag: i64, label: i64) -> String {
+    build_xmp_iptc(rating, favorite, tags, author, copyright, flag, label, &Iptc::default())
+}
+
+/// To samo z polami IPTC (tytuł, miejscowość, kraj). Bez nich plik jest bajt w bajt taki jak dawniej.
+#[allow(clippy::too_many_arguments)]
+fn build_xmp_iptc(rating: i64, favorite: bool, tags: &[String], author: Option<&str>, copyright: Option<&str>, flag: i64, label: i64, iptc: &Iptc) -> String {
     let pick = if flag != 0 { format!("\n    xmpDM:pick=\"{}\"", flag.clamp(-1, 1)) } else { String::new() };
     let pick_ns = if flag != 0 { "\n    xmlns:xmpDM=\"http://ns.adobe.com/xmp/1.0/DynamicMedia/\"" } else { "" };
     let label_attr = LABELS.get((label - 1).max(0) as usize).filter(|_| label > 0).map(|l| format!("\n    xmp:Label=\"{l}\"")).unwrap_or_default();
@@ -865,6 +892,14 @@ fn build_xmp_marks(rating: i64, favorite: bool, tags: &[String], author: Option<
         format!("   <dc:subject>\n    <rdf:Bag>\n{items}    </rdf:Bag>\n   </dc:subject>\n")
     };
     let fav = if favorite { "True" } else { "False" };
+    let has_place = iptc.city.is_some() || iptc.country.is_some();
+    let place_ns = if has_place { "\n    xmlns:photoshop=\"http://ns.adobe.com/photoshop/1.0/\"" } else { "" };
+    let place_attr = format!(
+        "{}{}",
+        iptc.city.as_deref().map(|c| format!("\n    photoshop:City=\"{}\"", xml_escape(c))).unwrap_or_default(),
+        iptc.country.as_deref().map(|c| format!("\n    photoshop:Country=\"{}\"", xml_escape(c))).unwrap_or_default()
+    );
+    let title = iptc.title.as_deref().map(|t| format!("   <dc:title>\n    <rdf:Alt>\n     <rdf:li xml:lang=\"x-default\">{}</rdf:li>\n    </rdf:Alt>\n   </dc:title>\n", xml_escape(t))).unwrap_or_default();
     format!(
         "<?xpacket begin=\"\u{feff}\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?>\n\
 <x:xmpmeta xmlns:x=\"adobe:ns:meta/\" {XMP_MARKER}>\n\
@@ -872,10 +907,10 @@ fn build_xmp_marks(rating: i64, favorite: bool, tags: &[String], author: Option<
   <rdf:Description rdf:about=\"\"\n\
     xmlns:xmp=\"http://ns.adobe.com/xap/1.0/\"\n\
     xmlns:dc=\"http://purl.org/dc/elements/1.1/\"\n\
-    xmlns:fibo=\"https://pmesznik.github.io/fibo/ns/1.0/\"{pick_ns}\n\
-    xmp:Rating=\"{rating}\"{label_attr}{pick}\n\
+    xmlns:fibo=\"https://pmesznik.github.io/fibo/ns/1.0/\"{pick_ns}{place_ns}\n\
+    xmp:Rating=\"{rating}\"{label_attr}{pick}{place_attr}\n\
     fibo:Favorite=\"{fav}\">\n\
-{subject}{creator}{rights}  </rdf:Description>\n\
+{subject}{title}{creator}{rights}  </rdf:Description>\n\
  </rdf:RDF>\n\
 </x:xmpmeta>\n\
 <?xpacket end=\"w\"?>\n"
@@ -897,6 +932,11 @@ fn xmp_value(text: &str, name: &str) -> Option<String> {
 
 /// Słowa kluczowe z pakietu XMP (`dc:subject`).
 /// Pierwszy element listy z pola `dc:creator` albo `dc:rights` (tekst bez znaczników), obcięty do rozsądnej długości.
+/// Tekst pola bez znaków sterujących, przycięty i obcięty do rozsądnej długości.
+fn clean_credit(s: &str) -> String {
+    s.chars().filter(|c| !c.is_control()).take(MAX_CREDIT).collect::<String>().trim().to_string()
+}
+
 fn parse_xmp_first_li(text: &str, field: &str) -> Option<String> {
     let start = text.find(&format!("<{field}>"))?;
     let rest = &text[start..];
@@ -957,6 +997,11 @@ fn read_sidecar(photo: &Path) -> Option<Sidecar> {
         tags: parse_xmp_tags(&text),
         author: parse_xmp_first_li(&text, "dc:creator"),
         copyright: parse_xmp_first_li(&text, "dc:rights"),
+        iptc: Iptc {
+            title: parse_xmp_first_li(&text, "dc:title"),
+            city: xmp_value(&text, "photoshop:City").map(|v| clean_credit(&xml_unescape(&v))).filter(|v| !v.is_empty()),
+            country: xmp_value(&text, "photoshop:Country").map(|v| clean_credit(&xml_unescape(&v))).filter(|v| !v.is_empty()),
+        },
         flag: xmp_value(&text, "xmpDM:pick").and_then(|v| v.trim().parse::<i64>().ok()).unwrap_or(0).clamp(-1, 1),
         label: xmp_value(&text, "xmp:Label").map(|v| label_number(&v)).unwrap_or(0),
     })
@@ -1077,7 +1122,7 @@ fn read_embedded(path: &Path, exif: Option<&ExifInfo>) -> Option<Sidecar> {
             }
         }
     }
-    (rating > 0 || !tags.is_empty()).then_some(Sidecar { rating, favorite: false, tags, author: None, copyright: None, flag: 0, label: 0 })
+    (rating > 0 || !tags.is_empty()).then_some(Sidecar { rating, favorite: false, tags, author: None, copyright: None, iptc: Iptc::default(), flag: 0, label: 0 })
 }
 
 /// Wszystko, co zdjęcie już ma: plik XMP obok (pierwszeństwo) i metadane wewnątrz pliku.
@@ -1130,6 +1175,15 @@ fn apply_sidecar(conn: &Connection, id: i64, sc: &Sidecar) -> rusqlite::Result<u
     if let Some(c) = &sc.copyright {
         changed += conn.execute("UPDATE photos SET copyright = ?2 WHERE id = ?1 AND copyright IS NULL", params![id, c])?;
     }
+    if let Some(t) = &sc.iptc.title {
+        changed += conn.execute("UPDATE photos SET title = ?2 WHERE id = ?1 AND title IS NULL", params![id, t])?;
+    }
+    if let Some(c) = &sc.iptc.city {
+        changed += conn.execute("UPDATE photos SET iptc_city = ?2 WHERE id = ?1 AND iptc_city IS NULL", params![id, c])?;
+    }
+    if let Some(c) = &sc.iptc.country {
+        changed += conn.execute("UPDATE photos SET iptc_country = ?2 WHERE id = ?1 AND iptc_country IS NULL", params![id, c])?;
+    }
     for t in &sc.tags {
         conn.execute("INSERT OR IGNORE INTO tags (name) VALUES (?1)", [t])?;
         changed += conn.execute(
@@ -1150,16 +1204,18 @@ enum SidecarOutcome {
 
 /// Zapisuje (albo usuwa, gdy nie ma już żadnych metadanych) plik XMP zdjęcia `id`.
 fn write_sidecar(state: &AppState, id: i64) -> Result<SidecarOutcome, String> {
-    let (path, rating, favorite, tags, author, copyright, flag, label) = {
+    let (path, rating, favorite, tags, author, copyright, flag, label, iptc) = {
         let conn = state.db.lock().map_err(|e| e.to_string())?;
-        let (path, rating, fav, author, copyright, flag, label): (String, i64, i64, Option<String>, Option<String>, i64, i64) = conn
-            .query_row("SELECT path, rating, favorite, author, copyright, flag, label FROM photos WHERE id = ?1", [id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?)))
+        let (path, rating, fav, author, copyright, flag, label, iptc): (String, i64, i64, Option<String>, Option<String>, i64, i64, Iptc) = conn
+            .query_row("SELECT path, rating, favorite, author, copyright, flag, label, title, iptc_city, iptc_country FROM photos WHERE id = ?1", [id], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, Iptc { title: r.get(7)?, city: r.get(8)?, country: r.get(9)? }))
+            })
             .map_err(|e| e.to_string())?;
         let mut stmt = conn
             .prepare("SELECT t.name FROM photo_tags pt JOIN tags t ON t.id = pt.tag_id WHERE pt.photo_id = ?1 ORDER BY t.name")
             .map_err(|e| e.to_string())?;
         let tags: Vec<String> = stmt.query_map([id], |r| r.get(0)).map_err(|e| e.to_string())?.filter_map(Result::ok).collect();
-        (path, rating, fav != 0, tags, author, copyright, flag, label)
+        (path, rating, fav != 0, tags, author, copyright, flag, label, iptc)
     };
     let xmp = xmp_path(Path::new(&path));
     // Zbyt duży plik XMP na pewno nie jest nasz: nie wczytujemy go i nie nadpisujemy.
@@ -1170,13 +1226,13 @@ fn write_sidecar(state: &AppState, id: i64) -> Result<SidecarOutcome, String> {
     if existing.as_deref().map(|t| !t.contains(XMP_MARKER)).unwrap_or(false) {
         return Ok(SidecarOutcome::Skipped);
     }
-    if rating == 0 && !favorite && tags.is_empty() && author.is_none() && copyright.is_none() && flag == 0 && label == 0 {
+    if rating == 0 && !favorite && tags.is_empty() && author.is_none() && copyright.is_none() && iptc == Iptc::default() && flag == 0 && label == 0 {
         return match existing {
             Some(_) => fs::remove_file(&xmp).map(|_| SidecarOutcome::Removed).map_err(|e| e.to_string()),
             None => Ok(SidecarOutcome::Unchanged),
         };
     }
-    let xml = build_xmp_marks(rating, favorite, &tags, author.as_deref(), copyright.as_deref(), flag, label);
+    let xml = build_xmp_iptc(rating, favorite, &tags, author.as_deref(), copyright.as_deref(), flag, label, &iptc);
     if existing.as_deref() == Some(xml.as_str()) {
         return Ok(SidecarOutcome::Unchanged);
     }
@@ -1288,6 +1344,22 @@ fn set_credits(state: State<'_, AppState>, ids: Vec<i64>, author: String, copyri
         let conn = state.db.lock().map_err(|e| e.to_string())?;
         for id in &ids {
             n += conn.execute("UPDATE photos SET author = ?2, copyright = ?3 WHERE id = ?1", params![id, author, copyright]).map_err(|e| e.to_string())?;
+        }
+    }
+    sync_ids(&state, &ids);
+    Ok(n)
+}
+
+/// Pola IPTC wybranych zdjęć: tytuł, miejscowość i kraj (puste pole czyści wartość). Zapisują się w bibliotece i w plikach XMP.
+#[tauri::command]
+fn set_iptc(state: State<'_, AppState>, ids: Vec<i64>, title: String, city: String, country: String) -> Result<usize, String> {
+    let clean = |s: String| -> Option<String> { let t = clean_credit(&s); (!t.is_empty()).then_some(t) };
+    let (title, city, country) = (clean(title), clean(city), clean(country));
+    let mut n = 0;
+    {
+        let conn = state.db.lock().map_err(|e| e.to_string())?;
+        for id in &ids {
+            n += conn.execute("UPDATE photos SET title = ?2, iptc_city = ?3, iptc_country = ?4 WHERE id = ?1", params![id, title, city, country]).map_err(|e| e.to_string())?;
         }
     }
     sync_ids(&state, &ids);
@@ -2817,6 +2889,25 @@ mod tests {
     }
 
     #[test]
+    fn iptc_fields_roundtrip_through_xmp_and_do_not_change_plain_files() {
+        let plain = build_xmp_marks(3, false, &["morze".to_string()], None, None, 0, 0);
+        assert_eq!(plain, build_xmp_iptc(3, false, &["morze".to_string()], None, None, 0, 0, &Iptc::default()), "bez pól IPTC plik jest taki jak dawniej");
+        let ip = Iptc { title: Some("Zachód <słońca> & morze".into()), city: Some("Sopot".into()), country: Some("Polska".into()) };
+        let xml = build_xmp_iptc(3, false, &[], Some("Jan"), None, 0, 0, &ip);
+        assert!(xml.contains("xmlns:photoshop") && xml.contains("photoshop:City=\"Sopot\""));
+        let dir = std::env::temp_dir().join("mz-iptc-test");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let photo = dir.join("a.jpg");
+        fs::write(&photo, b"x").unwrap();
+        fs::write(xmp_path(&photo), &xml).unwrap();
+        let sc = read_sidecar(&photo).unwrap();
+        assert_eq!(sc.iptc, ip);
+        assert_eq!(sc.author.as_deref(), Some("Jan"));
+        assert_eq!(read_sidecar(&{ fs::write(xmp_path(&photo), &plain).unwrap(); photo.clone() }).unwrap().iptc, Iptc::default());
+    }
+
+    #[test]
     fn flag_and_label_roundtrip_through_xmp_and_old_files_stay_identical() {
         let plain = build_xmp_full(3, false, &["morze".to_string()], None, None);
         assert_eq!(plain, build_xmp_marks(3, false, &["morze".to_string()], None, None, 0, 0), "bez flagi i etykiety plik jest taki jak dawniej");
@@ -3651,7 +3742,7 @@ mod tests {
         let evil = ["'; drop table photos; --", "\" or 1=1 --", "x'); delete from tags; --", "robert'); drop table albums;--"];
         {
             let conn = state.db.lock().unwrap();
-            let sc = Sidecar { rating: 0, favorite: false, tags: evil.iter().filter_map(|t| norm_tag(t)).collect(), author: None, copyright: None, flag: 0, label: 0 };
+            let sc = Sidecar { rating: 0, favorite: false, tags: evil.iter().filter_map(|t| norm_tag(t)).collect(), author: None, copyright: None, iptc: Iptc::default(), flag: 0, label: 0 };
             apply_sidecar(&conn, id, &sc).unwrap();
             for e in evil {
                 let name = clean_album_name(e).unwrap();
@@ -3852,7 +3943,7 @@ fn main() {
             app.manage(AppState { db: Mutex::new(db), thumbs, sidecar: AtomicBool::new(sidecar) });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![list_roots, remove_root, rescan_roots, list_albums, create_album, rename_album, set_album_hidden, put_thumbnail, set_credits, color::index_colors, get_skip_gif_png, set_skip_gif_png, detect_cards, rotate::rotate_photos, list_album_order, set_album_order, open_photo_external, delete_album, add_to_album, remove_from_album, rename_photo, move_photos, get_sidecar_enabled, set_sidecar_enabled, export_sidecars, import_sidecars, scan_folder, refresh_library, find_duplicates, trash_photos, export_photos, set_location, rename_batch, import_photos, gallery::export_gallery, gallery::export_gpx, gallery::export_gif, pdf::export_pdf, check::check_files, list_smart, save_smart, delete_smart, gallery::rename_folder, locks::list_locked, locks::set_folder_locked, set_date, shift_dates, set_caption, photo_exif, list_props, set_props, people::photo_people, people::add_manual_face, people::reassign_person_faces, backup::backup_library, photos_backup::backup_photos, backup::restore_library, hide_photos, hidden_count, restore_hidden, people::faces_status, people::set_faces_enabled, people::faces_start, people::faces_stop, people::faces_regroup, people::faces_reanalyze, people::faces_delete_all, people::list_people, people::person_photos, people::person_faces, people::set_person_cover, people::rename_person, people::merge_people, people::merge_suggestions, people::person_face_cards, people::photo_face_stats, calendar::save_calendar_pdf, people::confirm_faces, people::move_faces, people::reject_person_in_photos, people::move_person_faces, people::reject_faces, people::delete_person, people::restore_rejected_faces, people::ignore_person, list_photos, thumbnail, thumbnail_data, people::face_crop, places::fill_places, watermark::save_watermark_text, organize::organize_plan, organize::organize_apply, organize::organize_last, organize::organize_undo, edits::get_edit, edits::save_edit_recipe, edits::put_edit_thumbnail, edits::delete_edit, edits::list_edit_history, edits::get_edit_version, set_rating, set_flag, set_label, rawdev::develop_raw, clip::clip_status, clip::clip_start, clip::clip_stop, clip::clip_search, set_favorite, add_tag, remove_tag, delete_tag, save_edit, save_collage, read_image, read_audio, has_original, restore_original])
+        .invoke_handler(tauri::generate_handler![list_roots, remove_root, rescan_roots, list_albums, create_album, rename_album, set_album_hidden, put_thumbnail, set_credits, color::index_colors, get_skip_gif_png, set_skip_gif_png, detect_cards, rotate::rotate_photos, list_album_order, set_album_order, open_photo_external, delete_album, add_to_album, remove_from_album, rename_photo, move_photos, get_sidecar_enabled, set_sidecar_enabled, export_sidecars, import_sidecars, scan_folder, refresh_library, find_duplicates, trash_photos, export_photos, set_location, rename_batch, import_photos, gallery::export_gallery, gallery::export_gpx, gallery::export_gif, pdf::export_pdf, check::check_files, list_smart, save_smart, delete_smart, gallery::rename_folder, locks::list_locked, locks::set_folder_locked, set_date, shift_dates, set_caption, photo_exif, list_props, set_props, people::photo_people, people::add_manual_face, people::reassign_person_faces, backup::backup_library, photos_backup::backup_photos, backup::restore_library, hide_photos, hidden_count, restore_hidden, people::faces_status, people::set_faces_enabled, people::faces_start, people::faces_stop, people::faces_regroup, people::faces_reanalyze, people::faces_delete_all, people::list_people, people::person_photos, people::person_faces, people::set_person_cover, people::rename_person, people::merge_people, people::merge_suggestions, people::person_face_cards, people::photo_face_stats, calendar::save_calendar_pdf, people::confirm_faces, people::move_faces, people::reject_person_in_photos, people::move_person_faces, people::reject_faces, people::delete_person, people::restore_rejected_faces, people::ignore_person, list_photos, thumbnail, thumbnail_data, people::face_crop, places::fill_places, set_iptc, cache::thumb_cache_info, cache::thumb_cache_clear, watermark::save_watermark_text, organize::organize_plan, organize::organize_apply, organize::organize_last, organize::organize_undo, edits::get_edit, edits::save_edit_recipe, edits::put_edit_thumbnail, edits::delete_edit, edits::list_edit_history, edits::get_edit_version, set_rating, set_flag, set_label, rawdev::develop_raw, clip::clip_status, clip::clip_start, clip::clip_stop, clip::clip_search, set_favorite, add_tag, remove_tag, delete_tag, save_edit, save_collage, read_image, read_audio, has_original, restore_original])
         .run(tauri::generate_context!())
         .expect("błąd uruchomienia aplikacji");
 

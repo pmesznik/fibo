@@ -20,7 +20,7 @@ import { Duplicates } from './Duplicates'
 import { UpdateDialog, useUpdater } from './Updater'
 import { exportSidecars, getSidecarEnabled, importSidecars, setSidecarEnabled } from './api'
 import {
-  addToAlbum, createAlbum, deleteAlbum, setAlbumHidden, listAlbumOrder, setAlbumOrder, listAlbums, fillPlaces, listRoots, movePhotos, removeFromAlbum, removeRoot,
+  addToAlbum, createAlbum, deleteAlbum, setAlbumHidden, listAlbumOrder, setAlbumOrder, listAlbums, fillPlaces, thumbCacheInfo, thumbCacheClear, listRoots, movePhotos, removeFromAlbum, removeRoot,
   renameAlbum, renamePhoto, rescanRoots, trashPhotos, listSmart, saveSmart, deleteSmart, type SmartAlbum, listLocked, setFolderLocked, revealInExplorer, openPhotoExternal, findDuplicates, indexColors, rejectPersonInPhotos, rotatePhotos, getSkipGifPng, setSkipGifPng, detectCards, listPeople, listProps, renameFolder, type Prop, type Person, personPhotos, importPhotos, backupLibrary, backupPhotos, restoreLibrary, pickFile, hidePhotos, hiddenCount, restoreHidden, type Album,
 } from './api'
 import { AlbumPicker, PromptDialog } from './Dialogs'
@@ -102,6 +102,17 @@ export default function App() {
   const [contentOpen, setContentOpen] = useState(false)
   const [organizeOpen, setOrganizeOpen] = useState(false)
   const [dayViewOpen, setDayViewOpen] = useState(false)
+  const [cacheInfo, setCacheInfo] = useState<{ files: number; bytes: number } | null>(null)
+  const mb = (b: number) => (b >= 1073741824 ? `${(b / 1073741824).toFixed(1)} GB` : `${(b / 1048576).toFixed(1)} MB`).replace('.', ',')
+  const reloadCache = () => { thumbCacheInfo().then(setCacheInfo).catch(() => {}) }
+  const askClearCache = () => setConfirm({
+    text: `Wyczyścić pamięć miniatur (${cacheInfo ? `${cacheInfo.files} ${pl(cacheInfo.files, 'miniatura', 'miniatury', 'miniatur')}, ${mb(cacheInfo.bytes)}` : 'wszystkie'})? Zdjęcia zostają nietknięte, a miniatury program zrobi od nowa przy następnym pokazaniu (to chwilę potrwa). Miniatury zdjęć z zapisaną edycją zostają.`,
+    yes: 'Wyczyść',
+    run: async () => {
+      try { const r = await thumbCacheClear(); say(`Usunięto ${r.files} ${pl(r.files, 'miniaturę', 'miniatury', 'miniatur')} (${mb(r.bytes)})`, 'ok') } catch (e) { say(`Błąd: ${e}`, 'err') }
+      reloadCache()
+    },
+  })
   const [original, setOriginal] = useState(() => { try { return localStorage.getItem('grid-original') !== '0' } catch { return true } })
   const selected = sel.length === 1 ? sel[0] : null
   const setSelected = (id: number | null) => { setSel(id === null ? [] : [id]); setAnchor(id) }
@@ -117,7 +128,7 @@ export default function App() {
   /** Filtr „Miejsca”: nazwa miejscowości z kodu GPS zdjęcia (np. „Warszawa, Polska”). */
   const [placeFilter, setPlaceFilter] = useState<string | null>(null)
   const regionNames = useMemo(() => { try { return new Intl.DisplayNames(['pl'], { type: 'region' }) } catch { return null } }, [])
-  const placeOf = useCallback((p: Photo) => (p.place ? `${p.place}${p.country ? `, ${regionNames?.of(p.country) ?? p.country}` : ''}` : ''), [regionNames])
+  const placeOf = useCallback((p: Photo) => (p.iptc_city || p.iptc_country ? [p.iptc_city, p.iptc_country].filter(Boolean).join(', ') : p.place ? `${p.place}${p.country ? `, ${regionNames?.of(p.country) ?? p.country}` : ''}` : ''), [regionNames])
   const [minStars, setMinStars] = useState(0)
   // Stosy: para RAW + JPEG i seria zdjęć pokazują się jako jedno zdjęcie (wyłączone domyślnie; nic się nie zmienia na dysku).
   const [stacksOn, setStacksOnState] = useState(() => { try { return localStorage.getItem('stacks-on') === '1' } catch { return false } })
@@ -479,6 +490,7 @@ export default function App() {
   }, [all, placeOf])
   // Nazwy miejsc liczy się lokalnie z dołączonej tabeli miejscowości; zdjęcia ze współrzędnymi i bez nazwy dostają ją raz.
   const fillingPlaces = useRef(false)
+  useEffect(() => { if (inTauri) reloadCache() }, [])
   useEffect(() => {
     if (!inTauri || fillingPlaces.current || !all.some((p) => p.lat != null && p.lon != null && p.place == null)) return
     fillingPlaces.current = true
@@ -1196,6 +1208,13 @@ export default function App() {
               <button className="wide" disabled={busy} onClick={doPhotoBackup}><Save size={17} /> Kopia zdjęć na dysk zewnętrzny…</button>
               <button className="wide" onClick={doRestore}><Download size={17} /> Przywróć z kopii…</button>
             </Sec>
+            <Sec id="cache" icon={<ImageUp size={17} />} title="Pamięć miniatur" hint={cacheInfo ? `${mb(cacheInfo.bytes)}, ${cacheInfo.files} ${pl(cacheInfo.files, 'miniatura', 'miniatury', 'miniatur')}` : 'Rozmiar i czyszczenie'}>
+              <p style={{ margin: '0 0 8px', color: 'var(--muted)', fontSize: 13 }}>
+                Miniatury przyspieszają przeglądanie i zajmują miejsce na dysku. Możesz je usunąć w każdej chwili: zdjęć to nie rusza, a miniatury powstaną od nowa.
+              </p>
+              <button className="wide" onClick={reloadCache}><RefreshCw size={17} /> Sprawdź rozmiar</button>
+              <button className="wide" onClick={askClearCache}><Trash2 size={17} /> Wyczyść pamięć miniatur…</button>
+            </Sec>
             <Sec id="roots" icon={<RefreshCw size={17} />} title="Obserwowane foldery" hint={roots.length ? `${roots.length} ${pl(roots.length, 'folder', 'foldery', 'folderów')}, nowe zdjęcia dodają się same` : 'Brak obserwowanych folderów'}>
               <p style={{ margin: '0 0 8px', color: 'var(--muted)', fontSize: 13 }}>
                 FIBO sprawdza te foldery po uruchomieniu, po powrocie do okna i co 5 minut. Nowe zdjęcia pojawiają się same (razem z tagami i ocenami zapisanymi w pliku), a zdjęcia usunięte z dysku znikają z biblioteki.
@@ -1654,7 +1673,7 @@ export default function App() {
                 <button className="text menu-item" role="menuitem" style={{ gridColumn: '1 / -1' }} onClick={() => { setMenu(null); setMoveFaces(photosOfPerson()) }}><Users size={18} /> To inna osoba: przenieś twarz…</button>
               </>
             )}
-            <button className="text menu-item" role="menuitem" onClick={() => { setMenu(null); setCreditIds(realIds()) }}><Pencil size={18} /> Autor i prawa…</button>
+            <button className="text menu-item" role="menuitem" onClick={() => { setMenu(null); setCreditIds(realIds()) }}><Pencil size={18} /> Autor, prawa i opis (IPTC)…</button>
             <button className="text menu-item" role="menuitem" title="Bez utraty jakości (JPEG): zmienia tylko znacznik orientacji" onClick={() => rotateSelected(true)}><RotateCw size={18} /> Obróć w prawo</button>
             <button className="text menu-item" role="menuitem" title="Bez utraty jakości (JPEG): zmienia tylko znacznik orientacji" onClick={() => rotateSelected(false)}><RotateCcw size={18} /> Obróć w lewo</button>
             <button className="text menu-item" role="menuitem" onClick={pasteEditSelected}><Wand2 size={18} /> Wklej edycję…</button>
