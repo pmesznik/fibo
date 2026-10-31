@@ -3,7 +3,7 @@ import { listen } from '@tauri-apps/api/event'
 import { CalendarDays, Search, Check, Copy, Download, Images, Pause, RefreshCw, RotateCw, Save, Users, Wand2, X } from './FiboIcons'
 import { clipStart, clipStop, ocrStart, ocrStop, facesStart, facesStop, inTauri, type FacesProgress } from './api'
 
-type Kind = 'scan' | 'faces' | 'dups' | 'backup' | 'colors' | 'rotate' | 'export' | 'gallery' | 'pdf' | 'gif' | 'import' | 'check' | 'refresh' | 'sidecar' | 'paste' | 'calendar' | 'clip' | 'raw' | 'organize' | 'quality' | 'ocr' | 'merge'
+type Kind = 'scan' | 'faces' | 'dups' | 'backup' | 'colors' | 'rotate' | 'export' | 'gallery' | 'pdf' | 'gif' | 'import' | 'check' | 'refresh' | 'sidecar' | 'paste' | 'calendar' | 'clip' | 'raw' | 'organize' | 'quality' | 'ocr' | 'merge' | 'film'
 type Job = {
   kind: Kind
   done: number
@@ -46,6 +46,7 @@ const META: Record<Kind, { title: string; unit: [string, string, string]; Icon: 
   refresh: { title: 'Odświeżanie danych zdjęć', unit: PHOTOS, Icon: RefreshCw },
   sidecar: { title: 'Zapis metadanych do plików XMP', unit: PHOTOS, Icon: Save },
   paste: { title: 'Wklejanie edycji do zdjęć', unit: PHOTOS, Icon: Wand2 },
+  film: { title: 'Nagrywanie filmu ze zdjęć', unit: PHOTOS, Icon: Download },
   merge: { title: 'Łączenie zdjęć', unit: PHOTOS, Icon: Images },
   ocr: { title: 'Rozpoznawanie tekstu na zdjęciach', unit: PHOTOS, Icon: Search },
   quality: { title: 'Ocena jakości zdjęć', unit: PHOTOS, Icon: Images },

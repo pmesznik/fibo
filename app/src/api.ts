@@ -223,6 +223,7 @@ export const addDropped = (paths: string[]) => invoke<DropReport>('add_dropped',
 export const qualityScan = () => invoke<{ done: number; failed: number }>('quality_scan')
 export type MergeReport = { id: number; path: string; shifts: [number, number][] }
 export const mergePhotos = (ids: number[], mode: 'hdr' | 'focus') => invoke<MergeReport>('merge_photos', { ids, mode })
+export const saveFilm = (dest: string, name: string, bytes: ArrayBuffer) => invoke<string>('save_film', bytes, { headers: { dest: encodeURIComponent(dest), name } })
 export const fillPlaces = () => invoke<number>('fill_places')
 export type OrganizePlan = {
   moves: { id: number; name: string; from_dir: string; to_dir: string; rel: string; file_date: boolean }[]

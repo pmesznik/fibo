@@ -1,9 +1,12 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useEscape } from './ui'
 import { pl } from './pl'
 import { X, Download } from './FiboIcons'
 import { Thumb } from './Thumb'
-import { saveWatermarkText, exportGallery, exportGif, exportGpx, exportPdf, exportPhotos, pickFile, pickFolder, type Photo, type Watermark } from './api'
+import { decodeBitmap } from './imageDecode'
+import { FILM_SIZES, MAX_FILM_PHOTOS, filmDuration, filmFileName, recordFilm } from './film'
+import { reportJob } from './ProgressDock'
+import { readAudio, readImage, saveFilm, saveWatermarkText, exportGallery, exportGif, exportGpx, exportPdf, exportPhotos, pickFile, pickFolder, type Photo, type Watermark } from './api'
 
 const SIZES: [number, string][] = [[1024, '1024 px (e-mail)'], [1600, '1600 px'], [2048, '2048 px'], [0, 'Oryginalny rozmiar']]
 const QUALITIES: [number, string][] = [[75, 'Mała'], [88, 'Dobra'], [95, 'Najlepsza']]
@@ -18,7 +21,7 @@ export function ExportDialog({ ids, onClose, say, initialSize, photos }: { ids: 
   const [quality, setQuality] = useState(88)
   const [format, setFormat] = useState<'jpg' | 'png' | 'webp'>('jpg')
   const [busy, setBusy] = useState(false)
-  const [tab, setTab] = useState<'copies' | 'gallery' | 'pdf' | 'gif' | 'gpx'>('copies')
+  const [tab, setTab] = useState<'copies' | 'gallery' | 'pdf' | 'gif' | 'film' | 'gpx'>('copies')
   // Znak wodny z własnego logo: plik, położenie, rozmiar i krycie (ustawienia są zapamiętywane na tym komputerze).
   const [wm, setWm] = useState<{ path: string; position: string; sizePct: number; opacity: number } | null>(() => {
     try {
@@ -68,6 +71,45 @@ export function ExportDialog({ ids, onClose, say, initialSize, photos }: { ids: 
   const [title, setTitle] = useState('Galeria')
   const [delay, setDelay] = useState(1000)
   const [layout, setLayout] = useState<[number, number]>([2, 2])
+
+  // Film ze zdjęć (MP4): czas na zdjęcie, przejście, rozdzielczość i muzyka; nagrywanie trwa tyle, ile film.
+  const [filmSec, setFilmSec] = useState(4)
+  const [filmFade, setFilmFade] = useState(0.8)
+  const [filmZoom, setFilmZoom] = useState(true)
+  const [filmSize, setFilmSize] = useState(0)
+  const [filmMusic, setFilmMusic] = useState<{ name: string; bytes: ArrayBuffer } | null>(null)
+  const [filmProg, setFilmProg] = useState<{ done: number; total: number } | null>(null)
+  const [filmAbort, setFilmAbort] = useState<AbortController | null>(null)
+  // Zamknięcie okna w trakcie nagrywania przerywa film.
+  const filmAbortRef = useRef<AbortController | null>(null)
+  filmAbortRef.current = filmAbort
+  useEffect(() => () => filmAbortRef.current?.abort(), [])
+  const filmIds = (photos ? ids.filter((i) => !photos.find((p) => p.id === i)?.video) : ids).slice(0, MAX_FILM_PHOTOS)
+  const pickFilmMusic = async () => {
+    try {
+      const f = await pickFile('Wybierz muzykę do filmu', ['mp3', 'm4a', 'aac', 'ogg', 'oga', 'wav', 'flac'], 'Muzyka')
+      if (f) setFilmMusic({ name: f.split(/[\\/]/).pop() ?? 'muzyka', bytes: await readAudio(f) })
+    } catch (e) { say(`Błąd muzyki: ${e}`, 'err') }
+  }
+  const runFilm = async () => {
+    if (filmIds.length < 2) return
+    const ac = new AbortController()
+    try {
+      const dir = await pickFolder('Wybierz folder na film')
+      if (!dir) return
+      setFilmAbort(ac); setFilmProg({ done: 0, total: 1 }); setBusy(true)
+      const [, width, height] = FILM_SIZES[filmSize]
+      const opts = { count: filmIds.length, secPerPhoto: filmSec, fadeSec: Math.min(filmFade, filmSec / 2), zoom: filmZoom, width, height, fps: 30 }
+      const r = await recordFilm(opts, async (i) => decodeBitmap(await readImage(filmIds[i]), `foto${i}.jpg`), filmMusic?.bytes ?? null, (d, t) => { setFilmProg({ done: d, total: t }); reportJob('film', Math.round(d), Math.round(t)) }, ac.signal)
+      reportJob('film', 1, 1, true)
+      const path = await saveFilm(dir, filmFileName(new Date(), r.ext), await r.blob.arrayBuffer())
+      say(`Film zapisany: ${path.split(/[\\/]/).pop()} (${Math.round(r.seconds)} s${r.ext === 'webm' ? ', format WebM, bo okno nie umie MP4' : ''})`, 'ok')
+      onClose()
+    } catch (e) {
+      reportJob('film', 1, 1, true)
+      say(ac.signal.aborted ? 'Przerwano tworzenie filmu' : `Błąd filmu: ${e}`, ac.signal.aborted ? 'ok' : 'err')
+    } finally { setBusy(false); setFilmProg(null); setFilmAbort(null) }
+  }
 
   const run = async () => {
     try {
@@ -142,7 +184,7 @@ export function ExportDialog({ ids, onClose, say, initialSize, photos }: { ids: 
         </div>
         <div style={{ padding: '4px 16px 16px', overflowY: 'auto' }}>
           <div className="seg" role="tablist" aria-label="Rodzaj eksportu">
-            {([['copies', 'Kopie'], ['gallery', 'Galeria'], ['pdf', 'PDF'], ['gif', 'GIF'], ['gpx', 'Lokalizacje']] as [typeof tab, string][]).map(([v, l]) => (
+            {([['copies', 'Kopie'], ['gallery', 'Galeria'], ['pdf', 'PDF'], ['gif', 'GIF'], ['film', 'Film'], ['gpx', 'Lokalizacje']] as [typeof tab, string][]).map(([v, l]) => (
               <button key={v} role="tab" aria-selected={tab === v} className={tab === v ? 'on' : ''} onClick={() => setTab(v)}>{l}</button>
             ))}
           </div>
@@ -262,6 +304,39 @@ export function ExportDialog({ ids, onClose, say, initialSize, photos }: { ids: 
             ))}
           </div>
           <button className="wide" disabled={busy || ids.length < 2} onClick={runGif}>Utwórz animowany GIF</button>
+          </>
+          )}
+          {tab === 'film' && (
+          <>
+          <p style={{ margin: '0 0 6px', color: 'var(--muted)', fontSize: 13 }}>Z zaznaczonych zdjęć ({filmIds.length}, w widocznej kolejności) powstaje film z płynnymi przejściami. Nagrywanie trwa tyle, ile sam film, więc zostaw okno programu na wierzchu.</p>
+          <label>Czas na zdjęcie</label>
+          <div className="chips" role="group" aria-label="Czas na zdjęcie">
+            {[2, 3, 4, 6, 8].map((v) => <button key={v} className={`chip${filmSec === v ? ' on' : ''}`} aria-pressed={filmSec === v} disabled={busy} onClick={() => setFilmSec(v)}>{v} s</button>)}
+          </div>
+          <label>Przejście</label>
+          <div className="chips" role="group" aria-label="Przejście między zdjęciami">
+            {([[0, 'Brak'], [0.5, 'Krótkie'], [0.8, 'Płynne'], [1.5, 'Długie']] as [number, string][]).map(([v, l]) => <button key={v} className={`chip${filmFade === v ? ' on' : ''}`} aria-pressed={filmFade === v} disabled={busy} onClick={() => setFilmFade(v)}>{l}</button>)}
+          </div>
+          <label>Jakość</label>
+          <div className="chips" role="group" aria-label="Rozdzielczość filmu">
+            {FILM_SIZES.map(([l], i) => <button key={l} className={`chip${filmSize === i ? ' on' : ''}`} aria-pressed={filmSize === i} disabled={busy} onClick={() => setFilmSize(i)}>{l}</button>)}
+            <button className={`chip${filmZoom ? ' on' : ''}`} aria-pressed={filmZoom} disabled={busy} onClick={() => setFilmZoom((v) => !v)}>Powolne przybliżenie</button>
+          </div>
+          <label>Muzyka (opcjonalnie)</label>
+          <div className="chips" style={{ alignItems: 'center' }}>
+            <button className="chip" disabled={busy} onClick={pickFilmMusic}>{filmMusic ? 'Zmień muzykę…' : 'Wybierz muzykę…'}</button>
+            {filmMusic && <><span style={{ fontSize: 13, color: 'var(--muted)' }}>{filmMusic.name}</span><button className="chip" disabled={busy} onClick={() => setFilmMusic(null)}>Usuń</button></>}
+          </div>
+          <p style={{ margin: '8px 0', color: 'var(--muted)', fontSize: 13 }}>Długość filmu: {Math.round(filmDuration({ count: filmIds.length, secPerPhoto: filmSec }))} s. Muzyka jest powtarzana i wyciszana na końcu.</p>
+          {filmProg ? (
+            <div role="status" aria-live="polite">
+              <div style={{ height: 8, borderRadius: 4, background: 'var(--tonal)', overflow: 'hidden' }}><div style={{ width: `${Math.min(100, (filmProg.done / Math.max(1, filmProg.total)) * 100)}%`, height: '100%', background: 'var(--accent)' }} /></div>
+              <div style={{ fontSize: 13, margin: '6px 0' }}>Nagrywam: {Math.round(filmProg.done)} z {Math.round(filmProg.total)} s</div>
+              <button className="wide" onClick={() => filmAbort?.abort()}><X size={15} /> Przerwij</button>
+            </div>
+          ) : (
+            <button className="wide" disabled={busy || filmIds.length < 2} onClick={runFilm}>Utwórz film…</button>
+          )}
           </>
           )}
           {tab === 'gpx' && (

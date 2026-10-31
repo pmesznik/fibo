@@ -134,6 +134,7 @@ function respond(cmd: string, args: Record<string, unknown> = {}): unknown | Pro
     case 'organize_plan': return { moves: photos.slice(0, 5).map((p) => ({ id: p.id, name: p.name, from_dir: 'C:\\Zdjecia', to_dir: 'D:\\Porzadek\\2024\\07', rel: '2024/07', file_date: false })), in_place: 1, skipped: [], file_dates: 0 }
     case 'organize_last': return null
     case 'fill_places': return 0
+    case 'save_film': return 'x'
     case 'merge_photos': return { id: 1, path: 'x', shifts: [[0, 0]] }
     case 'ocr_status': return { models_ok: true, running: false, indexed: 0, total: 0 }
     case 'ocr_search': return { ids: [], snippets: [], indexed: 0 }
