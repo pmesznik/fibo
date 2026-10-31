@@ -35,7 +35,7 @@ export function takenSeconds(taken: string | null | undefined): number | null {
 }
 
 /** Im wyższy wynik, tym lepiej nadaje się zdjęcie na lidera stosu: wybrane, dobrze ocenione, ulubione; odrzucone na końcu. */
-const score = (p: Photo) => (flagOf(p) === 1 ? 100 : flagOf(p) === -1 ? -100 : 0) + (p.rating || 0) * 10 + (p.favorite ? 5 : 0)
+const score = (p: Photo) => (flagOf(p) === 1 ? 100 : flagOf(p) === -1 ? -100 : 0) + (p.rating || 0) * 10 + (p.favorite ? 5 : 0) + Math.min(3, (p.q_sharp ?? 0) / 100)
 
 /**
  * Znajduje stosy w całej bibliotece. Wynik: numer zdjęcia -> jego stos (każde zdjęcie jest w co najwyżej jednym stosie).

@@ -40,6 +40,7 @@ import { EventsDialog } from './EventsDialog'
 import { ContentSearch } from './ContentSearch'
 import { OrganizerDialog } from './OrganizerDialog'
 import { LibraryCalendar } from './LibraryCalendar'
+import { QualityDialog } from './QualityDialog'
 import { beginPointerDrag, dragJustEnded } from './pointerDrag'
 import { collapseStacks, findStacks, stackCount } from './stacks'
 import {
@@ -104,6 +105,7 @@ export default function App() {
   const [contentOpen, setContentOpen] = useState(false)
   const [organizeOpen, setOrganizeOpen] = useState(false)
   const [dayViewOpen, setDayViewOpen] = useState(false)
+  const [qualityOpen, setQualityOpen] = useState(false)
   /** Pliki przeciągane z Eksploratora nad oknem (pokazujemy podpowiedź „Upuść”). */
   const [fileDragOver, setFileDragOver] = useState(false)
   const [cacheInfo, setCacheInfo] = useState<{ files: number; bytes: number } | null>(null)
@@ -1139,6 +1141,7 @@ export default function App() {
                 { icon: FolderOpen, label: 'Porządkuj według daty', fn: () => { setDrawer(false); setOrganizeOpen(true) }, on: false },
                 { icon: SearchIcon, label: 'Szukaj po treści zdjęć', fn: () => { setDrawer(false); setContentOpen(true) }, on: false },
                 { icon: CalendarDays, label: 'Wydarzenia i podróże', fn: () => { setDrawer(false); setEventsOpen(true) }, on: false },
+                { icon: Compare, label: 'Przegląd jakości zdjęć', fn: () => { setDrawer(false); setQualityOpen(true) }, on: false },
                 { icon: CalendarDays, label: 'Widok kalendarza', fn: () => { setDrawer(false); setDayViewOpen(true) }, on: false },
                 { icon: CalendarDays, label: 'Kalendarz do wydruku', fn: () => { setDrawer(false); setCalOpen(true) }, on: false },
                 { icon: Copy, label: 'Duplikaty', fn: () => { setDrawer(false); setDupOpen(true) }, on: false },
@@ -1889,6 +1892,7 @@ export default function App() {
           Upuść zdjęcia lub foldery, aby dodać je do biblioteki
         </div>
       )}
+      {qualityOpen && <QualityDialog photos={all} say={say} onClose={() => setQualityOpen(false)} onChanged={() => reload()} onShow={(ids, title) => openRanked(ids, title)} />}
       {dayViewOpen && <LibraryCalendar photos={all} onClose={() => setDayViewOpen(false)} onOpenDay={(ids, title) => openMemory(ids, title, '')} />}
       {calOpen && <CalendarMaker photos={all.filter((p) => !p.video)} say={say} onClose={() => setCalOpen(false)} />}
       {creditIds && creditIds.length > 0 && <CreditsDialog photos={all.filter((p) => creditIds.includes(p.id))} say={say} onClose={() => setCreditIds(null)} onDone={reload} />}

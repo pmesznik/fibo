@@ -176,7 +176,7 @@ Szukanie i porządkowanie:
 - [x] **Wspomnienia i „tego dnia”**: zdjęcia z tego samego dnia w poprzednich latach, na starcie programu. P2 T S
 - [x] **Automatyczne wydarzenia i podróże** z dat i lokalizacji GPS, jako gotowe albumy do zatwierdzenia. P2 T M
 - [x] **Stosy zdjęć seryjnych** i **RAW + JPEG jako jedno zdjęcie**. P2 T M
-- [ ] **Wybór najlepszego ze zdjęć seryjnych** i wykrywanie zdjęć nieostrych, poruszonych, ciemnych albo z zamkniętymi oczami (do przejrzenia i ukrycia). P3 T L
+- [x] **Wybór najlepszego ze zdjęć seryjnych** i wykrywanie zdjęć nieostrych, poruszonych, ciemnych albo z zamkniętymi oczami (do przejrzenia i ukrycia). P3 T L Gotowe z jednym wyjątkiem: menu → „Przegląd jakości zdjęć” (nieostre i poruszone, ciemne, prześwietlone, najlepsze z serii; odrzucanie to flaga, którą można zdjąć). Zamknięte oczy nie są wykrywane (potrzebny byłby osobny model).
 - [x] **Flagi „wybierz / odrzuć” i kolorowe etykiety** zapisywane do XMP, szybkie selekcjonowanie klawiaturą. P2 T S
 - [x] **Porównanie 2 do 4 zdjęć obok siebie** z jednoczesnym powiększaniem. P2 T M
 - [x] **Widok kalendarza** (miesiące z miniaturami). P3 T M Gotowe: menu → Szybkie akcje → „Widok kalendarza”: siatka miesiąca z miniaturą i liczbą zdjęć w dniu, rok i miesiące na górze, kliknięcie dnia pokazuje jego zdjęcia.

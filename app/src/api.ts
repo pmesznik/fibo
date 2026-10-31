@@ -41,6 +41,11 @@ export type Photo = {
   title?: string | null
   iptc_city?: string | null
   iptc_country?: string | null
+  /** Ocena jakości z backendu: ostrość, średnia jasność (0 do 255), odsetek prześwietlonych i czarnych pikseli (0 do 1). null = jeszcze nie oceniono. */
+  q_sharp?: number | null
+  q_mean?: number | null
+  q_hi?: number | null
+  q_lo?: number | null
   /** Licznik odświeżeń miniatury (tylko w oknie programu): rośnie po zapisie lub usunięciu edycji. */
   rev?: number
 }
@@ -208,6 +213,7 @@ export const thumbCacheClear = () => invoke<CacheInfo>('thumb_cache_clear')
 export const watchRoots = () => invoke<number>('watch_roots')
 export type DropReport = { folders: number; files: number; added: number }
 export const addDropped = (paths: string[]) => invoke<DropReport>('add_dropped', { paths })
+export const qualityScan = () => invoke<{ done: number; failed: number }>('quality_scan')
 export const fillPlaces = () => invoke<number>('fill_places')
 export type OrganizePlan = {
   moves: { id: number; name: string; from_dir: string; to_dir: string; rel: string; file_date: boolean }[]
