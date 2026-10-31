@@ -42,6 +42,7 @@ import { OrganizerDialog } from './OrganizerDialog'
 import { LibraryCalendar } from './LibraryCalendar'
 import { QualityDialog } from './QualityDialog'
 import { TagSuggestDialog } from './TagSuggestDialog'
+import { TextSearch } from './TextSearch'
 import { beginPointerDrag, dragJustEnded } from './pointerDrag'
 import { collapseStacks, findStacks, stackCount } from './stacks'
 import {
@@ -108,6 +109,7 @@ export default function App() {
   const [dayViewOpen, setDayViewOpen] = useState(false)
   const [qualityOpen, setQualityOpen] = useState(false)
   const [tagSuggestOpen, setTagSuggestOpen] = useState(false)
+  const [textSearchOpen, setTextSearchOpen] = useState(false)
   /** Pliki przeciągane z Eksploratora nad oknem (pokazujemy podpowiedź „Upuść”). */
   const [fileDragOver, setFileDragOver] = useState(false)
   const [cacheInfo, setCacheInfo] = useState<{ files: number; bytes: number } | null>(null)
@@ -1143,6 +1145,7 @@ export default function App() {
                 { icon: FolderOpen, label: 'Porządkuj według daty', fn: () => { setDrawer(false); setOrganizeOpen(true) }, on: false },
                 { icon: SearchIcon, label: 'Szukaj po treści zdjęć', fn: () => { setDrawer(false); setContentOpen(true) }, on: false },
                 { icon: CalendarDays, label: 'Wydarzenia i podróże', fn: () => { setDrawer(false); setEventsOpen(true) }, on: false },
+                { icon: SearchIcon, label: 'Szukaj tekstu na zdjęciach', fn: () => { setDrawer(false); setTextSearchOpen(true) }, on: false },
                 { icon: Tag, label: 'Podpowiedzi tagów', fn: () => { setDrawer(false); setTagSuggestOpen(true) }, on: false },
                 { icon: Compare, label: 'Przegląd jakości zdjęć', fn: () => { setDrawer(false); setQualityOpen(true) }, on: false },
                 { icon: CalendarDays, label: 'Widok kalendarza', fn: () => { setDrawer(false); setDayViewOpen(true) }, on: false },
@@ -1895,6 +1898,7 @@ export default function App() {
           Upuść zdjęcia lub foldery, aby dodać je do biblioteki
         </div>
       )}
+      {textSearchOpen && <TextSearch say={say} onClose={() => setTextSearchOpen(false)} onResults={(ids, title) => { setTextSearchOpen(false); openRanked(ids, title) }} />}
       {tagSuggestOpen && <TagSuggestDialog photos={all} say={say} onClose={() => setTagSuggestOpen(false)} onChanged={() => reload()} onShow={(ids, title) => openRanked(ids, title)} />}
       {qualityOpen && <QualityDialog photos={all} say={say} onClose={() => setQualityOpen(false)} onChanged={() => reload()} onShow={(ids, title) => openRanked(ids, title)} />}
       {dayViewOpen && <LibraryCalendar photos={all} onClose={() => setDayViewOpen(false)} onOpenDay={(ids, title) => openMemory(ids, title, '')} />}

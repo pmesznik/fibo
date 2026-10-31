@@ -95,6 +95,11 @@ export const clipStart = () => invoke<boolean>('clip_start')
 export const clipStop = () => invoke('clip_stop')
 export type TagSuggestion = { id: string; label: string; ids: number[]; scores: number[] }
 export const clipSuggestTags = (minScore: number) => invoke<TagSuggestion[]>('clip_suggest_tags', { minScore })
+export type OcrStatus = { models_ok: boolean; running: boolean; indexed: number; total: number }
+export const ocrStatus = () => invoke<OcrStatus>('ocr_status')
+export const ocrStart = () => invoke<boolean>('ocr_start')
+export const ocrStop = () => invoke('ocr_stop')
+export const ocrSearch = (query: string) => invoke<{ ids: number[]; snippets: string[]; indexed: number }>('ocr_search', { query })
 export const clipSearch = (query: string) => invoke<ClipResult>('clip_search', { query })
 export const setFlag = (ids: number[], flag: number) => invoke('set_flag', { ids, flag })
 export const setLabel = (ids: number[], label: number) => invoke('set_label', { ids, label })

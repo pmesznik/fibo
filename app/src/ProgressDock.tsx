@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { listen } from '@tauri-apps/api/event'
 import { CalendarDays, Search, Check, Copy, Download, Images, Pause, RefreshCw, RotateCw, Save, Users, Wand2, X } from './FiboIcons'
-import { clipStart, clipStop, facesStart, facesStop, inTauri, type FacesProgress } from './api'
+import { clipStart, clipStop, ocrStart, ocrStop, facesStart, facesStop, inTauri, type FacesProgress } from './api'
 
-type Kind = 'scan' | 'faces' | 'dups' | 'backup' | 'colors' | 'rotate' | 'export' | 'gallery' | 'pdf' | 'gif' | 'import' | 'check' | 'refresh' | 'sidecar' | 'paste' | 'calendar' | 'clip' | 'raw' | 'organize' | 'quality'
+type Kind = 'scan' | 'faces' | 'dups' | 'backup' | 'colors' | 'rotate' | 'export' | 'gallery' | 'pdf' | 'gif' | 'import' | 'check' | 'refresh' | 'sidecar' | 'paste' | 'calendar' | 'clip' | 'raw' | 'organize' | 'quality' | 'ocr'
 type Job = {
   kind: Kind
   done: number
@@ -46,6 +46,7 @@ const META: Record<Kind, { title: string; unit: [string, string, string]; Icon: 
   refresh: { title: 'Odświeżanie danych zdjęć', unit: PHOTOS, Icon: RefreshCw },
   sidecar: { title: 'Zapis metadanych do plików XMP', unit: PHOTOS, Icon: Save },
   paste: { title: 'Wklejanie edycji do zdjęć', unit: PHOTOS, Icon: Wand2 },
+  ocr: { title: 'Rozpoznawanie tekstu na zdjęciach', unit: PHOTOS, Icon: Search },
   quality: { title: 'Ocena jakości zdjęć', unit: PHOTOS, Icon: Images },
   organize: { title: 'Porządkowanie zdjęć w folderach', unit: PHOTOS, Icon: Copy },
   raw: { title: 'Wywoływanie zdjęcia RAW', unit: PHOTOS, Icon: Images },
@@ -105,8 +106,8 @@ function SpeedChart({ values, id }: { values: number[]; id: string }) {
 }
 
 /** Zadania, które można wstrzymać i wznowić prosto z okienka postępu: rozpoznawanie twarzy i indeksowanie zdjęć po treści. */
-const pausable = (j: Job) => j.kind === 'faces' || j.kind === 'clip'
-const resumeJob = (k: Kind) => { (k === 'clip' ? clipStart() : facesStart()).catch(() => {}) }
+const pausable = (j: Job) => j.kind === 'faces' || j.kind === 'clip' || j.kind === 'ocr'
+const resumeJob = (k: Kind) => { (k === 'clip' ? clipStart() : k === 'ocr' ? ocrStart() : facesStart()).catch(() => {}) }
 
 function Card({ job, min, compact, onMin, onStop, onResume }: { job: Job; min: boolean; compact: boolean; onMin: () => void; onStop?: () => void; onResume?: () => void }) {
   const halted = job.finished && job.stopped
@@ -223,6 +224,7 @@ export function ProgressDock() {
         touch('scan', done, total)
         if (done >= total) finish('scan')
       }),
+      listen<{ stopped: boolean; error: string | null }>('ocr-done', (e) => finish('ocr', { error: e.payload.error, stopped: !e.payload.error && !!e.payload.stopped })),
       listen<{ stopped: boolean; error: string | null }>('clip-done', (e) => finish('clip', { error: e.payload.error, stopped: !e.payload.error && !!e.payload.stopped })),
       listen<FacesProgress>('faces-progress', (e) => {
         const p = e.payload
@@ -237,7 +239,7 @@ export function ProgressDock() {
 
   const stopJob = (k: Kind) => {
     setJobs((all) => (all[k] ? { ...all, [k]: { ...all[k]!, stopping: true } } : all))
-    ;(k === 'clip' ? clipStop() : facesStop()).catch(() => {})
+    ;(k === 'clip' ? clipStop() : k === 'ocr' ? ocrStop() : facesStop()).catch(() => {})
   }
 
   // Małe zadania (kilka zdjęć) nie migają oknem: pokazujemy je od 30 pozycji albo gdy trwają dłużej niż 1,5 s.

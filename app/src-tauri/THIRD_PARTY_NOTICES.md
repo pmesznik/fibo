@@ -10,6 +10,7 @@ razem z ich licencjami. Każdy z nich zachowuje prawa autorskie swoich twórców
 | YuNet (wykrywanie twarzy), face_detection_yunet_2023mar | Shiqi Yu i współautorzy, projekt OpenCV Zoo | MIT | https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet |
 | SFace (wektory twarzy), face_recognition_sface_2021dec | Zhong Yaoyao i współautorzy, projekt OpenCV Zoo | Apache-2.0 | https://github.com/opencv/opencv_zoo/tree/main/models/face_recognition_sface |
 | CLIP ViT-B/32 (koder obrazu do szukania po treści; wektory pojęć policzono z kodera tekstu tego samego modelu) | OpenAI, wersja ONNX: Xenova (Transformers.js) | MIT | https://huggingface.co/Xenova/clip-vit-base-patch32 |
+| PP-OCRv5 mobile det i latin mobile rec (wykrywanie i rozpoznawanie tekstu na zdjęciach) | PaddlePaddle (Baidu), wersja ONNX z oficjalnych repozytoriów | Apache-2.0 | https://huggingface.co/PaddlePaddle/PP-OCRv5_mobile_det_onnx oraz https://huggingface.co/PaddlePaddle/latin_PP-OCRv5_mobile_rec_onnx |
 
 ## Biblioteki interfejsu (npm)
 

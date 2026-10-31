@@ -126,9 +126,20 @@ test('model treści zdjęć (CLIP): ta sama suma SHA256 w skrypcie pobierania i 
   assert.ok(!/reqwest|ureq|hyper|TcpStream|UdpSocket|std::net|Command::new|unsafe\s*\{/.test(clip), 'clip.rs nie może mieć kodu sieciowego ani unsafe')
 })
 
+test('modele rozpoznawania tekstu (OCR): te same sumy SHA256 w skrypcie i w kodzie, kod sprawdza je przed użyciem i nie ma kodu sieciowego', () => {
+  const script = read('scripts/fetch-models.mjs')
+  const ocr = src('ocr.rs')
+  for (const [name, file] of [['DET', 'ocr_det'], ['REC', 'ocr_rec']]) {
+    const inScript = script.match(new RegExp(`${file}\.onnx'.*?sha256: '([0-9a-f]{64})'`))[1]
+    assert.equal(ocr.match(new RegExp(`${name}_SHA256: &str = "([0-9a-f]{64})"`))[1], inScript, `${name}: różne sumy`)
+  }
+  assert.match(ocr, /niewłaściwą sumę kontrolną/)
+  assert.ok(!/reqwest|ureq|hyper|TcpStream|UdpSocket|std::net|Command::new|unsafe\s*\{/.test(ocr), 'ocr.rs nie może mieć kodu sieciowego ani unsafe')
+})
+
 test('modele są dołączone do instalatora jako zasoby, a CSP nie zyskała nowych adresów', () => {
   const conf = JSON.parse(read('src-tauri/tauri.conf.json'))
-  assert.deepEqual(conf.bundle.resources, ['models/yunet.onnx', 'models/sface.onnx', 'models/clip_vision.onnx', 'THIRD_PARTY_NOTICES.md'])
+  assert.deepEqual(conf.bundle.resources, ['models/yunet.onnx', 'models/sface.onnx', 'models/clip_vision.onnx', 'models/ocr_det.onnx', 'models/ocr_rec.onnx', 'THIRD_PARTY_NOTICES.md'])
   const connect = conf.app.security.csp.match(/connect-src ([^;]+)/)[1].split(/\s+/)
   assert.deepEqual(connect, ['\'self\'', 'ipc:', 'http://ipc.localhost', 'https://tiles.openfreemap.org'])
 })

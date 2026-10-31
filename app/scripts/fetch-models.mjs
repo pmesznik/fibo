@@ -13,6 +13,9 @@ export const MODELS = [
   { file: 'sface.onnx', url: `${BASE}/face_recognition_sface/face_recognition_sface_2021dec.onnx`, sha256: '0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79', license: 'Apache-2.0' },
   // CLIP ViT-B/32 (OpenAI, licencja MIT) w wersji ONNX od Xenova: tylko koder obrazu. Wektory pojęć tekstowych są już w repozytorium (data/clip_concepts.bin).
   { file: 'clip_vision.onnx', url: 'https://huggingface.co/Xenova/clip-vit-base-patch32/resolve/main/onnx/vision_model.onnx', sha256: 'fd6e1402a588279d1723c7534d4bcba5bc0b14b47dfab0e46f8c47b8270d7d40', license: 'MIT' },
+  // Rozpoznawanie tekstu na zdjęciach: PaddleOCR PP-OCRv5 (Apache-2.0), oficjalne modele ONNX z Hugging Face przypięte do wersji. Wykrywanie linii tekstu i rozpoznawanie alfabetu łacińskiego (z polskimi znakami).
+  { file: 'ocr_det.onnx', url: 'https://huggingface.co/PaddlePaddle/PP-OCRv5_mobile_det_onnx/resolve/e6f4fa85f00e168c862bc462aebca69eef9b3d3d/inference.onnx', sha256: 'a431985659dc921974177a95adcfbb90fd9e51989a5e04d70d0b75f597b6e61d', license: 'Apache-2.0' },
+  { file: 'ocr_rec.onnx', url: 'https://huggingface.co/PaddlePaddle/latin_PP-OCRv5_mobile_rec_onnx/resolve/89d3a50e2c27e2e7cceeab0e944c25c807d5db4f/inference.onnx', sha256: '7888113072263cb471b93f66dd5e2ad70548dc526fa1ace760d0d973dd121498', license: 'Apache-2.0' },
 ]
 
 const sha = (b) => createHash('sha256').update(b).digest('hex')
