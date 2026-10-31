@@ -205,7 +205,7 @@ Pliki i formaty:
 
 Udostępnianie i wygoda:
 - [ ] **Udostępnianie w sieci domowej** z kodem QR, tylko na żądanie i bez internetu. P4 T L
-- [ ] **Fotoksiążka** (układ stron do PDF). P4 T L
+- [x] **Fotoksiążka** (układ stron do PDF). P4 T L Gotowe: menu → Szybkie akcje → „Fotoksiążka (PDF)”: 4 układy (1, 2, 4 zdjęcia na stronie albo mieszany), A4, A5 lub kwadrat, marginesy, tło, numery stron, strona tytułowa, podgląd stron; do 120 zdjęć i 80 stron.
 - [ ] **Wersja angielska i inne języki interfejsu**. P3 T L
 - [ ] **Pokaz slajdów na kilku monitorach** i sterowanie z pilota. P4 T S
 - [x] **Widok twarzy osoby jak w Picasie**: kafelki to wycinki twarzy, niepewne przypisania mają pomarańczowy znak „?” oraz przyciski „to ta osoba” i „to nie ta osoba”, całe zdjęcie otwiera się po kliknięciu twarzy, a na karcie osoby widać liczbę twarzy do potwierdzenia.

@@ -10,6 +10,8 @@ use tauri::State;
 use crate::{unique_target, AppState};
 
 const MAX_PAGES: usize = 14;
+/// Fotoksiążka może mieć więcej stron niż kalendarz.
+const MAX_BOOK_PAGES: usize = 80;
 const MAX_PAGE_BYTES: usize = 40 * 1024 * 1024;
 
 struct PageImg {
@@ -23,6 +25,8 @@ fn page_points(size: &str, landscape: bool) -> Result<(f32, f32), String> {
     let (w, h) = match size {
         "a4" => (595.0, 842.0),
         "a3" => (842.0, 1191.0),
+        "a5" => (420.0, 595.0),
+        "square" => (595.0, 595.0),
         _ => return Err("Nieznany rozmiar papieru".into()),
     };
     Ok(if landscape { (h, w) } else { (w, h) })
@@ -77,13 +81,13 @@ fn build_calendar_pdf(pages: &[PageImg], page_w: f32, page_h: f32) -> Vec<u8> {
 }
 
 /// Ciało żądania: liczba stron (u32), potem dla każdej strony długość (u32) i bajty JPEG; liczby w porządku little-endian.
-fn parse_pages(body: &[u8]) -> Result<Vec<PageImg>, String> {
+fn parse_pages(body: &[u8], max_pages: usize) -> Result<Vec<PageImg>, String> {
     let take4 = |at: usize| -> Result<u32, String> {
         body.get(at..at + 4).map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]])).ok_or_else(|| "Uszkodzone dane kalendarza".to_string())
     };
     let count = take4(0)? as usize;
-    if count == 0 || count > MAX_PAGES {
-        return Err(format!("Kalendarz może mieć od 1 do {MAX_PAGES} stron"));
+    if count == 0 || count > max_pages {
+        return Err(format!("Dokument może mieć od 1 do {max_pages} stron"));
     }
     let mut at = 4;
     let mut pages = Vec::new();
@@ -105,13 +109,18 @@ fn parse_pages(body: &[u8]) -> Result<Vec<PageImg>, String> {
 }
 
 pub fn save_calendar_core(body: &[u8], dest: &Path, name: &str, size: &str, landscape: bool) -> Result<std::path::PathBuf, String> {
+    save_pages_core(body, dest, name, size, landscape, MAX_PAGES, "Kalendarz")
+}
+
+/// Zapis stron (JPEG na całą stronę) jako PDF; wspólny dla kalendarza i fotoksiążki.
+pub fn save_pages_core(body: &[u8], dest: &Path, name: &str, size: &str, landscape: bool, max_pages: usize, default_stem: &str) -> Result<std::path::PathBuf, String> {
     if !dest.is_dir() {
         return Err("Folder docelowy nie istnieje".into());
     }
     let (w, h) = page_points(size, landscape)?;
-    let pages = parse_pages(body)?;
+    let pages = parse_pages(body, max_pages)?;
     let stem: String = name.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '-').take(60).collect();
-    let stem = if stem.is_empty() { "Kalendarz".to_string() } else { stem };
+    let stem = if stem.is_empty() { default_stem.to_string() } else { stem };
     let target = unique_target(dest, &format!("{stem}.pdf"));
     std::fs::write(&target, build_calendar_pdf(&pages, w, h)).map_err(|e| e.to_string())?;
     Ok(target)
@@ -125,6 +134,15 @@ pub fn save_calendar_pdf(_state: State<'_, AppState>, request: tauri::ipc::Reque
     // Folder przychodzi zakodowany (nagłówki HTTP są ASCII), więc dekodujemy znaki specjalne.
     let dest = percent_decode(&header("dest"));
     save_calendar_core(bytes, Path::new(&dest), &header("name"), &header("size"), header("landscape") == "1").map(|p| p.to_string_lossy().to_string())
+}
+
+/// Zapisuje fotoksiążkę jako PDF w wybranym folderze (do 80 stron; A4, A5 albo kwadrat). Nagłówki jak przy kalendarzu.
+#[tauri::command]
+pub fn save_book_pdf(_state: State<'_, AppState>, request: tauri::ipc::Request<'_>) -> Result<String, String> {
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else { return Err("brak danych fotoksiążki".into()) };
+    let header = |k: &str| request.headers().get(k).and_then(|v| v.to_str().ok()).unwrap_or("").to_string();
+    let dest = percent_decode(&header("dest"));
+    save_pages_core(bytes, Path::new(&dest), &header("name"), &header("size"), header("landscape") == "1", MAX_BOOK_PAGES, "Fotoksiazka").map(|p| p.to_string_lossy().to_string())
 }
 
 fn percent_decode(s: &str) -> String {
@@ -188,6 +206,23 @@ mod tests {
         let second = save_calendar_core(&b, &dir, "Kalendarz_2027", "a3", true).unwrap();
         assert_ne!(second, path);
         assert!(String::from_utf8_lossy(&std::fs::read(&second).unwrap()).contains("/MediaBox [0 0 1191.00 842.00]"), "A3 poziomo");
+    }
+
+    #[test]
+    fn book_pdf_allows_many_pages_and_square_and_a5() {
+        let dir = std::env::temp_dir().join("mz-book-test");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let b = body(&vec![jpeg(30, 30); 20]);
+        assert!(save_calendar_core(&b, &dir, "x", "a4", false).is_err(), "kalendarz ma limit 14 stron");
+        let p = save_pages_core(&b, &dir, "Moja ksiazka!", "square", false, MAX_BOOK_PAGES, "Fotoksiazka").unwrap();
+        assert_eq!(p.file_name().unwrap(), "Mojaksiazka.pdf");
+        let t = String::from_utf8_lossy(&std::fs::read(&p).unwrap()).to_string();
+        assert!(t.contains("/Count 20") && t.contains("/MediaBox [0 0 595.00 595.00]"));
+        let a5 = save_pages_core(&b, &dir, "", "a5", false, MAX_BOOK_PAGES, "Fotoksiazka").unwrap();
+        assert_eq!(a5.file_name().unwrap(), "Fotoksiazka.pdf");
+        assert!(String::from_utf8_lossy(&std::fs::read(&a5).unwrap()).contains("/MediaBox [0 0 420.00 595.00]"));
+        assert!(save_pages_core(&body(&vec![jpeg(8, 8); 81]), &dir, "x", "a4", false, MAX_BOOK_PAGES, "F").is_err(), "limit 80 stron");
     }
 
     #[test]
