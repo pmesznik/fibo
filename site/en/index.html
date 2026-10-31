@@ -12,7 +12,7 @@
 <link rel="alternate" hreflang="pl" href="../pl/">
 <link rel="stylesheet" href="../assets/site.css">
 </head>
-<body data-lang="en" data-repo="pmesznik/fibo" data-version="0.4.51">
+<body data-lang="en" data-repo="pmesznik/fibo" data-version="0.4.52">
 <a class="skip" href="#docs">Documentation</a>
 <header class="top">
   <div class="wrap bar">
@@ -170,6 +170,7 @@
         <li><strong>Quality review</strong> (menu → Quick actions): the app measures sharpness and brightness locally (from thumbnails, in the background) and lists blurry or shaky, dark and overexposed photos, worst first, with a threshold slider. You can mark selected ones as rejected (files stay, and the flag can be removed any time). The <em>Best of burst</em> tab points to the sharpest shot of each burst and marks it as picked in one click. Closed eyes are not detected.</li>
         <li><strong>Tag suggestions</strong> (menu → Quick actions): on indexed photos (as in content search) the app finds concepts that fit many photos, such as "beach", "dog", "cake". You review thumbnails, untick mistakes and approve: only photos you leave ticked get the tag. A caution slider sets how sure suggestions must be. Everything runs locally.</li>
         <li><strong>Search text in photos</strong> (menu → Quick actions): the app reads text in photos (receipts, signs, documents) locally with small PaddleOCR models shipped in the installer (about 13 MB, Apache-2.0), including Polish characters. You run recognition once, on request, in the background (about 1 to 2 seconds per photo, pausable). Then you type words and the app shows photos containing them, ignoring case and Polish diacritics. The text stays in the library on this computer.</li>
+        <li><strong>Curves, HSL colour, haze and clarity</strong>: in the editor's <em>Fine-tune</em> tab you get a live histogram, tone curves (luminance plus separate red, green and blue; add points by clicking, move them with the mouse or arrow keys, remove them with a double-click or Delete), hue, saturation and luminance for eight colour ranges, plus dehaze and clarity (local contrast). Everything is saved in the non-destructive edit and the original is untouched.</li>
         <li><strong>Organize by date</strong>: "Organize by date" in the menu moves selected or visible photos into YEAR, YEAR/MONTH or YEAR/YEAR-MM-DD folders. You see the plan first and nothing changes on disk, files are never overwritten, locked folders are skipped, and the whole run can be undone in one click (with XMP files, edits and original backups).</li>
         <li><strong>Non-destructive editing</strong>: in the editor, "Save edit (original untouched)" stores your changes as a recipe (in the database, in a history of the last 20 versions, and in a <code>photo.jpg.fibo.json</code> file next to the photo when metadata saving is on). The photo file never changes, the library thumbnail shows the edited look, and you can change, undo or restore the edit from history later.</li>
         <li><strong>Library backup</strong> (menu): saves your library data (tags, ratings, albums, favourites, folders) to a .db file, and <em>Restore from backup</em> loads it back. Before restoring, FIBO saves a safety copy of the current library. Photos themselves, people and face data are not in the backup.</li>

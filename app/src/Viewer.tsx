@@ -7,6 +7,8 @@ import {
 import { decodeBitmap } from './imageDecode'
 import { pickFile, readAudio, hasOriginal, photoPeople, addManualFace, readImage, restoreOriginal, saveEdit, setCaption, setPersonCover, photoExif, listPeople, reassignPersonFaces, type Person, setFavorite, setRating, setFlag, setLabel, videoUrl, developRaw, isRawName, RAW_NEUTRAL, getEdit, saveEditRecipe, putEditThumbnail, deleteEdit, listEditHistory, getEditVersion, type EditVersion, type RawParams, type Photo, type PhotoPerson } from './api'
 import { FaceImg } from './People'
+import { CurveEditor, HistogramView, HslPanel } from './editor/ToneUi'
+import { cleanHsl, cleanPoints } from './editor/tone'
 import { copyEdit, deletePreset, getClip, loadPresets, savePreset, type Preset } from './editor/batch'
 import { Thumb } from './Thumb'
 import { Chip, Sec, Toast } from './ui'
@@ -44,8 +46,10 @@ const TUNE_GROUPS: { id: string; title: string; icon: typeof Sun; items: TuneDef
     { key: 'temp', label: 'Temperatura barwowa', min: -100, max: 100 },
     { key: 'saturation', label: 'Nasycenie', min: -100, max: 100 },
   ] },
-  { id: 'tune-sharp', title: 'Ostrość', icon: Aperture, items: [
+  { id: 'tune-sharp', title: 'Ostrość i klarowność', icon: Aperture, items: [
     { key: 'sharpen', label: 'Wyostrzenie', min: 0, max: 100 },
+    { key: 'clarity', label: 'Klarowność (kontrast lokalny)', min: -100, max: 100 },
+    { key: 'dehaze', label: 'Usuwanie mgły', min: -100, max: 100 },
   ] },
 ]
 
@@ -424,6 +428,8 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
         geo: { ...EMPTY_EDIT.geo, ...(e.geo ?? {}) }, adj: { ...ZERO_ADJUST, ...(e.adj ?? {}) },
         fx: Array.isArray(e.fx) ? e.fx : [], redeye: Array.isArray(e.redeye) ? e.redeye : [], texts: Array.isArray(e.texts) ? e.texts : [], spots: Array.isArray(e.spots) ? e.spots : [],
         neutral: e.neutral ?? null,
+        curves: e.curves ? { rgb: cleanPoints(e.curves.rgb), r: cleanPoints(e.curves.r), g: cleanPoints(e.curves.g), b: cleanPoints(e.curves.b) } : undefined,
+        hsl: e.hsl ? cleanHsl(e.hsl) : undefined,
       }
       setEdit(next); setUndo([]); setRedo([])
       const raw = r.raw && photo && isRawName(photo.name) ? { ...RAW_NEUTRAL, ...r.raw } : null
@@ -821,6 +827,7 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
             <>
               <h2 className="sec-h" style={{ margin: '4px 2px 0' }}>Dostrajanie</h2>
               <div style={{ color: 'var(--muted)', fontSize: 13, margin: '0 2px 4px' }}>Dwuklik na suwaku zeruje go</div>
+              <HistogramView source={canvasRef.current} version={edit} />
               {TUNE_GROUPS.map((g) => (
                 <Sec key={g.id} id={g.id} icon={<g.icon size={17} />} title={g.title}
                   hint={g.items.some((t) => edit.adj[t.key]) ? 'Zmieniono' : 'Bez zmian'} defaultOpen={g.id === 'tune-light'}>
@@ -838,7 +845,13 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
                   ))}
                 </Sec>
               ))}
-              <button className="wide" onClick={() => change((s) => ({ ...s, adj: ZERO_ADJUST }))}>Zeruj dostrajanie</button>
+              <Sec id="tune-curves" icon={<Sliders size={17} />} title="Krzywe" hint={edit.curves ? 'Zmieniono' : 'Bez zmian'}>
+                <CurveEditor value={edit.curves} onStart={snap} onChange={(c) => live((s) => ({ ...s, curves: c }))} />
+              </Sec>
+              <Sec id="tune-hsl" icon={<Palette size={17} />} title="Kolor według zakresów (HSL)" hint={edit.hsl ? 'Zmieniono' : 'Bez zmian'}>
+                <HslPanel value={edit.hsl} onStart={snap} onChange={(h) => live((s) => ({ ...s, hsl: h }))} Slider={Slider} />
+              </Sec>
+              <button className="wide" onClick={() => change((s) => ({ ...s, adj: ZERO_ADJUST, curves: undefined, hsl: undefined }))}>Zeruj dostrajanie</button>
             </>
           )}
 

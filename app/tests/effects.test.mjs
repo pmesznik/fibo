@@ -6,8 +6,12 @@ import { fileURLToPath } from 'node:url'
 import ts from 'typescript'
 
 const src = readFileSync(fileURLToPath(new URL('../src/editor/effects.ts', import.meta.url)), 'utf8')
-const js = ts.transpileModule(src, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText
-const mod = await import('data:text/javascript;base64,' + Buffer.from(js).toString('base64'))
+const opts = { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }
+const dataUrl = (code) => 'data:text/javascript;base64,' + Buffer.from(code).toString('base64')
+// effects.ts importuje ./tone, więc najpierw wczytujemy tone.ts i podstawiamy jego adres.
+const toneUrl = dataUrl(ts.transpileModule(readFileSync(fileURLToPath(new URL('../src/editor/tone.ts', import.meta.url)), 'utf8'), opts).outputText)
+const js = ts.transpileModule(src, opts).outputText.replace("'./tone'", JSON.stringify(toneUrl))
+const mod = await import(dataUrl(js))
 
 const px = (r, g, b) => ({ d: new Uint8ClampedArray([r, g, b, 255]), w: 1, h: 1 })
 const run = (id, r, g, b, t = 1) => { const img = px(r, g, b); mod.EFFECT_BY_ID.get(id).fn(img, t); return [...img.d].slice(0, 3) }

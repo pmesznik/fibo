@@ -1,12 +1,16 @@
 // Silnik edycji zdjęć: geometria + korekty + efekty, wszystko na canvasie.
 // Własne implementacje inspirowane zestawem funkcji Picasy 3.
 
+import { applyClarity, applyCurves, applyDehaze, applyHsl, curvesAreIdentity, hslIsIdentity, type Curves, type Hsl } from './tone'
+
 export type Adjust = {
   brightness: number; contrast: number; saturation: number; temp: number
   fill: number; highlights: number; shadows: number; sharpen: number; gamma: number
+  /** Usuwanie mgły (od -100 do 100) i klarowność, czyli kontrast lokalny (od -100 do 100). */
+  dehaze: number; clarity: number
 }
 export const ZERO_ADJUST: Adjust = {
-  brightness: 0, contrast: 0, saturation: 0, temp: 0, fill: 0, highlights: 0, shadows: 0, sharpen: 0, gamma: 0,
+  brightness: 0, contrast: 0, saturation: 0, temp: 0, fill: 0, highlights: 0, shadows: 0, sharpen: 0, gamma: 0, dehaze: 0, clarity: 0,
 }
 
 export type Geometry = {
@@ -28,7 +32,9 @@ export type Neutral = { r: number; g: number; b: number }
 /** Retusz plamy (kurzu, skazy): środek i promień jako ułamki wymiarów zdjęcia (promień względem krótszego boku). */
 export type Spot = { x: number; y: number; r: number }
 export const MAX_SPOTS = 200
-export type EditState = { geo: Geometry; adj: Adjust; fx: EffectInst[]; redeye: RedEye[]; texts: TextItem[]; neutral: Neutral | null; spots: Spot[] }
+export type EditState = { geo: Geometry; adj: Adjust; fx: EffectInst[]; redeye: RedEye[]; texts: TextItem[]; neutral: Neutral | null; spots: Spot[]
+  /** Krzywe tonalne i kolor według zakresów barw (brak = bez zmian). */
+  curves?: Curves; hsl?: Hsl }
 export const EMPTY_EDIT: EditState = { geo: ZERO_GEO, adj: ZERO_ADJUST, fx: [], redeye: [], texts: [], neutral: null, spots: [] }
 
 /** Zamalowuje plamę kolorem z jej otoczenia: mediana z pierścienia wokół plamy (osobno dla każdego kanału), z miękkim brzegiem. */
@@ -398,6 +404,11 @@ export function applyColor(canvas: HTMLCanvasElement, st: EditState) {
     for (let i = 0; i < img.d.length; i += 4) { img.d[i] = clamp(img.d[i] * r); img.d[i + 1] = clamp(img.d[i + 1] * g); img.d[i + 2] = clamp(img.d[i + 2] * b) }
   }
   if (JSON.stringify(st.adj) !== JSON.stringify(ZERO_ADJUST)) applyAdjust(img, st.adj)
+  // Mgła i klarowność, potem krzywe i kolor HSL (jak w programach do wywoływania zdjęć: najpierw lokalny kontrast, na końcu ton i barwa).
+  if (st.adj.dehaze) applyDehaze(img, st.adj.dehaze)
+  if (st.adj.clarity) applyClarity(img, st.adj.clarity)
+  if (st.curves && !curvesAreIdentity(st.curves)) applyCurves(img, st.curves)
+  if (st.hsl && !hslIsIdentity(st.hsl)) applyHsl(img, st.hsl)
   for (const fx of st.fx) EFFECT_BY_ID.get(fx.id)?.fn(img, fx.amount / 100, { cx: fx.cx, cy: fx.cy, size: fx.size, color: fx.color })
   ctx.putImageData(data, 0, 0)
 }
