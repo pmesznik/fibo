@@ -10,8 +10,9 @@ const opts = { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.Scrip
 const dataUrl = (code) => 'data:text/javascript;base64,' + Buffer.from(code).toString('base64')
 // effects.ts importuje ./tone, więc najpierw wczytujemy tone.ts i podstawiamy jego adres.
 const toneUrl = dataUrl(ts.transpileModule(readFileSync(fileURLToPath(new URL('../src/editor/tone.ts', import.meta.url)), 'utf8'), opts).outputText)
+const inpaintUrl = dataUrl(ts.transpileModule(readFileSync(fileURLToPath(new URL('../src/editor/inpaint.ts', import.meta.url)), 'utf8'), opts).outputText)
 const geomUrl = dataUrl(ts.transpileModule(readFileSync(fileURLToPath(new URL('../src/editor/geom.ts', import.meta.url)), 'utf8'), opts).outputText)
-const js = ts.transpileModule(src, opts).outputText.replace("'./tone'", JSON.stringify(toneUrl)).replace("'./geom'", JSON.stringify(geomUrl))
+const js = ts.transpileModule(src, opts).outputText.replace("'./tone'", JSON.stringify(toneUrl)).replace("'./geom'", JSON.stringify(geomUrl)).replace("'./inpaint'", JSON.stringify(inpaintUrl))
 const mod = await import(dataUrl(js))
 
 const px = (r, g, b) => ({ d: new Uint8ClampedArray([r, g, b, 255]), w: 1, h: 1 })

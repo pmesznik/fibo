@@ -188,9 +188,9 @@ Edycja:
 - [x] **Edycja nieniszcząca**: zapis historii zmian obok zdjęcia (XMP) z możliwością cofnięcia po latach. P2 T L
 - [x] **Krzywe, HSL, histogram na żywo**, dehaze, klarowność. P3 T M Gotowe w edytorze, zakładka „Dostrajanie”: histogram na żywo, krzywe (jasność i kanały R, G, B, do 12 punktów, obsługa myszą i klawiaturą), kolor według 8 zakresów barw (barwa, nasycenie, jasność), usuwanie mgły i klarowność; zapisują się w edycji nieniszczącej.
 - [ ] **Maski lokalne** (pędzel, gradient liniowy i radialny) z osobnymi korektami. P3 T L
-- [ ] **Usuwanie obiektów** (wypełnianie tła), automatyczne prostowanie horyzontu. P4 T L
+- [x] **Usuwanie obiektów** (wypełnianie tła), automatyczne prostowanie horyzontu. P4 T L Gotowe: „Usuwanie obiektów” w zakładce Podstawy (zamalowujesz obiekt, a program wypełnia go fragmentami otoczenia; działa najlepiej na jednolitym lub powtarzalnym tle) oraz przycisk „Prostuj horyzont automatycznie”.
 - [x] **Wywoływanie RAW**: ekspozycja, balans bieli, odzyskiwanie świateł (dziś RAW ma tylko podgląd). P2 T L
-- [ ] **Korekta obiektywu** (dystorsja, winietowanie, aberracja chromatyczna). P4 T L
+- [x] **Korekta obiektywu** (dystorsja, winietowanie, aberracja chromatyczna). P4 T L Gotowe jako ręczne suwaki w zakładce Dostrajanie (bez bazy profili obiektywów).
 - [ ] **Łączenie zdjęć**: panorama, HDR, stos ostrości. P4 T L
 - [x] **Znak wodny tekstowy** (dziś tylko logo). P3 T S Gotowe: w eksporcie przełącznik „Logo z pliku” i „Tekst” (do 80 znaków, 4 kolory, położenie, rozmiar, krycie).
 - [x] **Konwersja wsadowa formatów** (np. HEIC lub RAW do JPEG, PNG, WebP) z wyborem jakości. P2 T S

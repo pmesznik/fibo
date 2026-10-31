@@ -20,6 +20,7 @@ import {
   type Adjust, type EditState, type EffectInst, type Ink,
 } from './editor/effects'
 import { detectHorizonAngle } from './editor/geom'
+import { MAX_DABS, type Dab } from './editor/inpaint'
 
 type Tab = 'basic' | 'tune' | 'fx' | 'info'
 
@@ -127,6 +128,11 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
   const [inkColor, setInkColor] = useState('#ff3030')
   const [inkWidth, setInkWidth] = useState(0.008)
   const inking = useRef(false)
+  /** Usuwanie obiektów: tryb pędzla, rozmiar (% krótszego boku) i krople zamalowane w trakcie przeciągania (zatwierdzane po puszczeniu przycisku). */
+  const [eraseMode, setEraseMode] = useState(false)
+  const [eraseSize, setEraseSize] = useState(3)
+  const [eraseDraft, setEraseDraft] = useState<Dab[]>([])
+  const erasing = useRef(false)
   const [retouchSize, setRetouchSize] = useState(2)
   const [playing, setPlaying] = useState(autoplay)
   // Muzyka do pokazu slajdów: plik z dysku trafia do odtwarzacza jako blob (bez sieci), gra w pętli tylko podczas pokazu.
@@ -373,6 +379,7 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
       else if (e.key === 'Escape') {
         if (centerFor) setCenterFor(null)
         else if (inkTool) setInkTool(null)
+        else if (eraseMode) setEraseMode(false)
         else if (redEyeMode) setRedEyeMode(false)
         else if (neutralMode) setNeutralMode(false)
         else if (retouchMode) setRetouchMode(false)
@@ -435,6 +442,7 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
         geo: { ...EMPTY_EDIT.geo, ...(e.geo ?? {}) }, adj: { ...ZERO_ADJUST, ...(e.adj ?? {}) },
         fx: Array.isArray(e.fx) ? e.fx : [], redeye: Array.isArray(e.redeye) ? e.redeye : [], texts: Array.isArray(e.texts) ? e.texts : [], spots: Array.isArray(e.spots) ? e.spots : [],
         neutral: e.neutral ?? null,
+        erase: Array.isArray(e.erase) ? e.erase.filter((d) => d && Number.isFinite(d.x) && Number.isFinite(d.y) && Number.isFinite(d.r)).slice(0, MAX_DABS) : undefined,
         ink: Array.isArray(e.ink) ? e.ink.filter((k) => k && ['arrow', 'line', 'rect', 'ellipse', 'pen'].includes(k.kind) && Array.isArray(k.pts) && k.pts.length >= 2 && typeof k.color === 'string' && Number.isFinite(k.width)).slice(0, MAX_INK).map((k) => ({ ...k, pts: k.pts.slice(0, MAX_INK_POINTS) })) : undefined,
         curves: e.curves ? { rgb: cleanPoints(e.curves.rgb), r: cleanPoints(e.curves.r), g: cleanPoints(e.curves.g), b: cleanPoints(e.curves.b) } : undefined,
         hsl: e.hsl ? cleanHsl(e.hsl) : undefined,
@@ -546,6 +554,36 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
       return { ...s, ink: list.length ? list : undefined }
     })
   }
+  const eraseFrac = (e: React.PointerEvent): Dab => {
+    const r = canvasRef.current?.getBoundingClientRect()
+    const q = (n: number) => Math.round(Math.min(1, Math.max(0, n)) * 10000) / 10000
+    if (!r || r.width < 1 || r.height < 1) return { x: 0, y: 0, r: eraseSize / 100 }
+    return { x: q((e.clientX - r.left) / r.width), y: q((e.clientY - r.top) / r.height), r: eraseSize / 100 }
+  }
+  const eraseDown = (e: React.PointerEvent) => {
+    if ((edit.erase?.length ?? 0) >= MAX_DABS) { say('Za dużo zamalowań. Cofnij część albo usuń wszystkie', 'err'); return }
+    erasing.current = true
+    e.currentTarget.setPointerCapture(e.pointerId)
+    setEraseDraft([eraseFrac(e)])
+  }
+  const eraseMove = (e: React.PointerEvent) => {
+    if (!erasing.current) return
+    const p = eraseFrac(e)
+    setEraseDraft((d) => {
+      const last = d[d.length - 1]
+      if (last && Math.hypot(p.x - last.x, p.y - last.y) < p.r * 0.5) return d
+      return d.length >= 200 ? d : [...d, p]
+    })
+  }
+  const eraseUp = () => {
+    if (!erasing.current) return
+    erasing.current = false
+    const draft = eraseDraft
+    setEraseDraft([])
+    if (draft.length === 0) return
+    snap()
+    setEdit((s) => ({ ...s, erase: [...(s.erase ?? []), ...draft].slice(-MAX_DABS) }))
+  }
   const autoStraighten = () => {
     if (!bitmap) return
     const c = document.createElement('canvas')
@@ -628,6 +666,18 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
             transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: 'center center',
           }}
         />
+        {eraseMode && (() => {
+          const r = canvasRef.current?.getBoundingClientRect()
+          if (!r) return null
+          return (
+            <div role="application" aria-label="Usuwanie obiektu: zamaluj przeciągając myszą" onPointerDown={eraseDown} onPointerMove={eraseMove} onPointerUp={eraseUp} onPointerCancel={eraseUp}
+              style={{ position: 'fixed', left: r.left, top: r.top, width: r.width, height: r.height, cursor: 'crosshair', touchAction: 'none', zIndex: 4, outline: '2px dashed var(--accent)', outlineOffset: -2 }}>
+              <svg width={r.width} height={r.height} style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }} aria-hidden>
+                {eraseDraft.map((d, i) => <circle key={i} cx={d.x * r.width} cy={d.y * r.height} r={d.r * Math.min(r.width, r.height)} fill="rgba(255,40,40,.4)" />)}
+              </svg>
+            </div>
+          )
+        })()}
         {inkTool && (() => {
           const r = canvasRef.current?.getBoundingClientRect()
           if (!r) return null
@@ -859,6 +909,20 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
                 <Slider label="Perspektywa pionowa" value={edit.geo.persV} min={-100} max={100} onStart={snap} onChange={(v) => live((s) => ({ ...s, geo: { ...s.geo, persV: v } }))} />
                 <Slider label="Perspektywa pozioma" value={edit.geo.persH} min={-100} max={100} onStart={snap} onChange={(v) => live((s) => ({ ...s, geo: { ...s.geo, persH: v } }))} />
               </Sec>
+              <Sec id="b-erase" icon={<Wand2 size={17} />} title="Usuwanie obiektów" hint={edit.erase?.length ? `${edit.erase.length} ${pl(edit.erase.length, 'zamalowanie', 'zamalowania', 'zamalowań')}` : 'Bez zmian'}>
+                <p style={{ margin: '0 0 6px', fontSize: 13, color: 'var(--muted)' }}>Zamaluj niechciany obiekt (osobę w tle, kabel, śmieć), a program wypełni to miejsce fragmentami otoczenia. Działa najlepiej na jednolitym lub powtarzalnym tle.</p>
+                <button className={`wide${eraseMode ? ' on' : ''}`} aria-pressed={eraseMode} onClick={() => { setEraseMode((m) => !m); setInkTool(null); setRedEyeMode(false); setNeutralMode(false); setRetouchMode(false); setZoom(1); setPan({ x: 0, y: 0 }); setSheet(true) }}>
+                  <Wand2 size={17} /> {eraseMode ? 'Zakończ zamalowywanie' : 'Zamaluj obiekt do usunięcia'}
+                </button>
+                {eraseMode && <p style={{ margin: '8px 0 0', fontSize: 13, color: 'var(--muted)' }}>Przeciągnij myszą po obiekcie i puść: program go usunie. Esc kończy.</p>}
+                <Slider label="Rozmiar pędzla (% krótszego boku)" value={eraseSize} min={0.5} max={15} onStart={() => {}} onChange={setEraseSize} />
+                {(edit.erase?.length ?? 0) > 0 && (
+                  <div className="chips" style={{ marginTop: 8 }}>
+                    <button className="chip" onClick={() => change((st) => ({ ...st, erase: undefined }))}>Usuń wszystkie zamalowania</button>
+                    <span style={{ fontSize: 12.5, color: 'var(--muted)', alignSelf: 'center' }}>Ostatnie zamalowanie cofa przycisk „Cofnij” na górze</span>
+                  </div>
+                )}
+              </Sec>
               <Sec id="b-crop" icon={<CropIcon size={17} />} title="Kadrowanie" hint={edit.geo.aspect === null && edit.geo.zoom === 1 ? 'Bez kadrowania' : 'Przycięte'}>
                 <div className="chips">
                   {ASPECTS.map((a) => (
@@ -918,7 +982,13 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
               <Sec id="tune-hsl" icon={<Palette size={17} />} title="Kolor według zakresów (HSL)" hint={edit.hsl ? 'Zmieniono' : 'Bez zmian'}>
                 <HslPanel value={edit.hsl} onStart={snap} onChange={(h) => live((s) => ({ ...s, hsl: h }))} Slider={Slider} />
               </Sec>
-              <button className="wide" onClick={() => change((s) => ({ ...s, adj: ZERO_ADJUST, curves: undefined, hsl: undefined }))}>Zeruj dostrajanie</button>
+              <Sec id="tune-lens" icon={<Aperture size={17} />} title="Korekta obiektywu" hint={edit.geo.lensD || edit.geo.lensV || edit.geo.lensCA ? 'Zmieniono' : 'Bez zmian'}>
+                <p style={{ margin: '0 0 6px', fontSize: 13, color: 'var(--muted)' }}>Ręczna korekta wad obiektywu. Dystorsja dodatnia prostuje „beczkę” (linie wygięte na zewnątrz), ujemna „poduszkę”.</p>
+                <Slider label="Dystorsja" value={edit.geo.lensD} min={-100} max={100} onStart={snap} onChange={(v) => live((s) => ({ ...s, geo: { ...s.geo, lensD: v } }))} />
+                <Slider label="Winietowanie (rozjaśnienie rogów)" value={edit.geo.lensV} min={-100} max={100} onStart={snap} onChange={(v) => live((s) => ({ ...s, geo: { ...s.geo, lensV: v } }))} />
+                <Slider label="Aberracja chromatyczna (kolorowe obwódki)" value={edit.geo.lensCA} min={-100} max={100} onStart={snap} onChange={(v) => live((s) => ({ ...s, geo: { ...s.geo, lensCA: v } }))} />
+              </Sec>
+              <button className="wide" onClick={() => change((s) => ({ ...s, adj: ZERO_ADJUST, curves: undefined, hsl: undefined, geo: { ...s.geo, lensD: 0, lensV: 0, lensCA: 0 } }))}>Zeruj dostrajanie</button>
             </>
           )}
 

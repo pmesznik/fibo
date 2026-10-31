@@ -1,7 +1,8 @@
 // Silnik edycji zdjęć: geometria + korekty + efekty, wszystko na canvasie.
 // Własne implementacje inspirowane zestawem funkcji Picasy 3.
 
-import { arrowHead, warpPerspective } from './geom'
+import { applyLensCorrection, arrowHead, warpPerspective } from './geom'
+import { removeObjectsCached, type Dab } from './inpaint'
 import { applyClarity, applyCurves, applyDehaze, applyHsl, curvesAreIdentity, hslIsIdentity, type Curves, type Hsl } from './tone'
 
 export type Adjust = {
@@ -19,8 +20,10 @@ export type Geometry = {
   aspect: number | null; zoom: number; panX: number; panY: number
   /** Poprawka perspektywy (od -100 do 100): pionowa prostuje zbiegające się pionowe linie, pozioma poziome. */
   persV: number; persH: number
+  /** Korekta obiektywu (od -100 do 100): dystorsja, winieta i aberracja chromatyczna. */
+  lensD: number; lensV: number; lensCA: number
 }
-export const ZERO_GEO: Geometry = { rot: 0, flipH: false, flipV: false, angle: 0, aspect: null, zoom: 1, panX: 0, panY: 0, persV: 0, persH: 0 }
+export const ZERO_GEO: Geometry = { rot: 0, flipH: false, flipV: false, angle: 0, aspect: null, zoom: 1, panX: 0, panY: 0, persV: 0, persH: 0, lensD: 0, lensV: 0, lensCA: 0 }
 
 /** Ustawienia efektu poza siłą: środek (ułamki szerokości i wysokości kadru), rozmiar (1 = domyślny) i kolor (#rrggbb). */
 export type FxOptions = { cx?: number; cy?: number; size?: number; color?: string }
@@ -45,7 +48,9 @@ export type EditState = { geo: Geometry; adj: Adjust; fx: EffectInst[]; redeye: 
   /** Krzywe tonalne i kolor według zakresów barw (brak = bez zmian). */
   curves?: Curves; hsl?: Hsl
   /** Rysunki i strzałki (brak = bez rysunków). */
-  ink?: Ink[] }
+  ink?: Ink[]
+  /** Usuwane obiekty: krople pędzla (środek i promień jako ułamki zdjęcia); obszar jest wypełniany z otoczenia. */
+  erase?: Dab[] }
 export const EMPTY_EDIT: EditState = { geo: ZERO_GEO, adj: ZERO_ADJUST, fx: [], redeye: [], texts: [], neutral: null, spots: [] }
 
 /** Zamalowuje plamę kolorem z jej otoczenia: mediana z pierścienia wokół plamy (osobno dla każdego kanału), z miękkim brzegiem. */
@@ -390,10 +395,12 @@ export function renderGeometry(src: Source, geo: Geometry, maxSide: number): HTM
   const dw = sw * scale, dh = sh * scale
   g.drawImage(src, -dw / 2, -dh / 2, dw, dh)
   // Poprawka perspektywy działa na już obróconym i wyprostowanym obrazie, przed kadrowaniem.
-  if (geo.persV || geo.persH) {
+  if (geo.persV || geo.persH || geo.lensD || geo.lensV || geo.lensCA) {
     const ctx = a.getContext('2d')!
     const id = ctx.getImageData(0, 0, W, H)
-    const out = warpPerspective({ d: id.data, w: W, h: H }, geo.persV, geo.persH)
+    // Najpierw korekta obiektywu (dotyczy całego kadru z aparatu), potem perspektywa.
+    const lensed = applyLensCorrection({ d: id.data, w: W, h: H }, { distortion: geo.lensD ?? 0, vignette: geo.lensV ?? 0, ca: geo.lensCA ?? 0 })
+    const out = warpPerspective(lensed, geo.persV, geo.persH)
     ctx.setTransform(1, 0, 0, 1, 0, 0)
     ctx.putImageData(new ImageData(new Uint8ClampedArray(out.d), W, H), 0, 0)
   }
@@ -416,6 +423,7 @@ export function applyColor(canvas: HTMLCanvasElement, st: EditState) {
   const ctx = canvas.getContext('2d', { willReadFrequently: true })!
   const data = ctx.getImageData(0, 0, canvas.width, canvas.height)
   const img: Img = { d: data.data, w: canvas.width, h: canvas.height }
+  if (st.erase?.length) removeObjectsCached(img, st.erase)
   for (const sp of st.spots.slice(0, MAX_SPOTS)) healSpot(img, sp)
   for (const e of st.redeye) redEyeFix(img, e)
   if (st.neutral) {

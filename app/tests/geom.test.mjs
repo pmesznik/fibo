@@ -39,3 +39,22 @@ test('prostowanie horyzontu: wykrywa nachylenie linii i zwraca kąt naprawczy o 
   assert.equal(g.detectHorizonAngle(img(320, 240, () => 128)), null, 'gładki obraz nie ma linii')
   assert.equal(g.detectHorizonAngle(img(10, 10, () => 0)), null)
 })
+
+test('korekta obiektywu: zera nic nie zmieniają, winieta rozjaśnia rogi, aberracja rozsuwa kanały, dystorsja nie tworzy pustych rogów', () => {
+  const flat = img(60, 40, () => 100)
+  assert.equal(g.applyLensCorrection(flat, g.ZERO_LENS), flat)
+  const v = g.applyLensCorrection(flat, { distortion: 0, vignette: 80, ca: 0 })
+  assert.equal(v.d[(20 * 60 + 30) * 4], 100, 'środek bez zmian')
+  assert.ok(v.d[0] > 120, `róg rozjaśniony: ${v.d[0]}`)
+  const rgb = (w2, h2, f) => { const d = new Uint8ClampedArray(w2 * h2 * 4); for (let y = 0; y < h2; y++) for (let x = 0; x < w2; x++) { const [r, gg, b] = f(x, y); const i = (y * w2 + x) * 4; d[i] = r; d[i + 1] = gg; d[i + 2] = b; d[i + 3] = 255 } return { d, w: w2, h: h2 } }
+  const dot = rgb(201, 101, (x, y) => (Math.abs(x - 190) < 2 && Math.abs(y - 50) < 2 ? [255, 255, 255] : [0, 0, 0]))
+  const ca = g.applyLensCorrection(dot, { distortion: 0, vignette: 0, ca: 100 })
+  const col = (im, c) => { let sx = 0, n = 0; for (let y = 0; y < im.h; y++) for (let x = 0; x < im.w; x++) { const v2 = im.d[(y * im.w + x) * 4 + c]; sx += x * v2; n += v2 } return sx / n }
+  assert.ok(Math.abs(col(ca, 0) - col(ca, 2)) > 0.5, `kanały rozsunięte: ${col(ca, 0)} vs ${col(ca, 2)}`)
+  assert.ok(Math.abs(col(ca, 1) - 190) < 0.6, 'zielony zostaje odniesieniem')
+  const stripes = img(120, 80, (x) => (x % 10 < 5 ? 40 : 200))
+  const dist = g.applyLensCorrection(stripes, { distortion: 100, vignette: 0, ca: 0 })
+  assert.ok(dist.d.every((val, i) => i % 4 === 3 || (val >= 30 && val <= 210)), 'bez czarnych rogów')
+  const center = (im) => im.d[(40 * 120 + 60) * 4]
+  assert.ok(Math.abs(center(dist) - center(stripes)) <= 170)
+})

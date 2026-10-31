@@ -94,3 +94,44 @@ export function detectHorizonAngle(src: Img, limit = 15): number | null {
   const tilt = -limit + best * 0.25
   return Math.abs(tilt) < 0.3 ? null : Math.round(-tilt * 10) / 10
 }
+
+/** Ręczna korekta obiektywu: dystorsja (beczka lub poduszka), winietowanie i aberracja chromatyczna, każda od -100 do 100. */
+export type Lens = { distortion: number; vignette: number; ca: number }
+export const ZERO_LENS: Lens = { distortion: 0, vignette: 0, ca: 0 }
+export const lensIsZero = (l: Lens) => !l.distortion && !l.vignette && !l.ca
+
+/**
+ * Korekta obiektywu na całym obrazie. Dodatnia dystorsja prostuje „beczkę” (linie wyginające się na zewnątrz), ujemna „poduszkę”; obraz jest przy tym lekko
+ * przybliżany, żeby nie było pustych rogów. Winieta rozjaśnia rogi (dodatnia) albo je przyciemnia. Aberracja chromatyczna przesuwa kanał czerwony i niebieski
+ * względem zielonego w stronę środka lub od środka (zielony jest odniesieniem).
+ */
+export function applyLensCorrection(src: Img, lens: Lens): Img {
+  if (lensIsZero(lens)) return src
+  const { d, w, h } = src
+  const out = new Uint8ClampedArray(d.length)
+  const k = (lens.distortion / 100) * 0.35
+  const ca = (lens.ca / 100) * 0.006
+  const vig = lens.vignette / 100
+  const cx = (w - 1) / 2, cy = (h - 1) / 2, rmax = Math.hypot(cx, cy)
+  // Skala przybliżenia: dla dodatniej korekty rogi obrazu pobierają próbki z dalszych miejsc, więc zmniejszamy zasięg.
+  const fit = k > 0 ? 1 / (1 + k) : 1
+  const sample = (fx: number, fy: number, c: number) => {
+    const x0 = Math.floor(fx), y0 = Math.floor(fy), tx = fx - x0, ty = fy - y0
+    const p = (xx: number, yy: number) => d[(Math.min(h - 1, Math.max(0, yy)) * w + Math.min(w - 1, Math.max(0, xx))) * 4 + c]
+    return (p(x0, y0) * (1 - tx) + p(x0 + 1, y0) * tx) * (1 - ty) + (p(x0, y0 + 1) * (1 - tx) + p(x0 + 1, y0 + 1) * tx) * ty
+  }
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const dx = (x - cx) / rmax, dy = (y - cy) / rmax
+    const r2 = dx * dx + dy * dy
+    // Odwzorowanie radialne cel -> źródło.
+    const s = (1 + k * r2) * fit
+    const gain = 1 + vig * r2 * 1.0
+    const o = (y * w + x) * 4
+    for (let c = 0; c < 3; c++) {
+      const sc = c === 0 ? s * (1 + ca) : c === 2 ? s * (1 - ca) : s
+      out[o + c] = sample(cx + dx * sc * rmax, cy + dy * sc * rmax, c) * gain
+    }
+    out[o + 3] = d[o + 3]
+  }
+  return { d: out, w, h }
+}
