@@ -1244,7 +1244,7 @@ dependencies = [
 
 [[package]]
 name = "fibo"
-version = "0.4.74"
+version = "0.4.75"
 dependencies = [
  "heic-decoder",
  "image",

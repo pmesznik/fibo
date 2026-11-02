@@ -748,6 +748,14 @@ fn regroup_apply(conn: &Connection, plan: &RegroupPlan) -> Result<usize, String>
         )
         .map_err(|e| e.to_string())?;
     }
+    // Twarz dołączona przez program do osoby z imieniem czeka na potwierdzenie (sekcja „Do potwierdzenia”), a nie dołącza po cichu jako pewna.
+    for (id, old, target) in &plan.changes {
+        if let Target::Person(p) = target {
+            if *old != Some(*p) {
+                tx.execute("UPDATE faces SET auto = 1 WHERE id = ?1 AND person_id = ?2 AND manual = 0 AND EXISTS (SELECT 1 FROM people WHERE id = ?2 AND name IS NOT NULL)", params![id, p]).map_err(|e| e.to_string())?;
+            }
+        }
+    }
     // Osoby bez twarzy znikają, o ile nie mają imienia i nie zostały pominięte przez użytkownika.
     tx.execute("DELETE FROM people WHERE name IS NULL AND ignored = 0 AND id NOT IN (SELECT person_id FROM faces WHERE person_id IS NOT NULL)", []).map_err(|e| e.to_string())?;
     tx.commit().map_err(|e| e.to_string())?;
@@ -2315,6 +2323,23 @@ mod tests {
         learn_once(&c);
         let after: Option<i64> = c.query_row("SELECT person_id FROM faces WHERE id = ?1", [f3], |r| r.get(0)).unwrap();
         assert_ne!(after, Some(a));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn regrouping_attaches_new_faces_to_a_named_person_only_as_waiting_for_confirmation() {
+        let (c, tmp) = lib_with_photos(5);
+        for ph in 1..=3 { store_faces(&c, &tmp, ph, 5, vec![new_face(near(0, 40 + ph as usize, 0.05), 0.9)]).unwrap(); }
+        regroup(&c).unwrap();
+        let a: i64 = c.query_row("SELECT person_id FROM faces WHERE photo_id = 1", [], |r| r.get(0)).unwrap();
+        c.execute("UPDATE people SET name = 'Ala' WHERE id = ?1", [a]).unwrap();
+        store_faces(&c, &tmp, 4, 5, vec![new_face(near(0, 50, 0.05), 0.9)]).unwrap();
+        regroup(&c).unwrap();
+        let (p, auto): (Option<i64>, i64) = c.query_row("SELECT person_id, auto FROM faces WHERE photo_id = 4", [], |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
+        assert_eq!(p, Some(a), "nowa podobna twarz dołącza do znanej osoby");
+        assert_eq!(auto, 1, "ale czeka na potwierdzenie, a nie dołącza po cichu");
+        let old_auto: i64 = c.query_row("SELECT SUM(auto) FROM faces WHERE photo_id IN (1,2,3)", [], |r| r.get(0)).unwrap();
+        assert_eq!(old_auto, 0, "wcześniejsze twarze osoby nie są ruszane");
     }
 
     #[cfg(windows)]
