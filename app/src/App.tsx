@@ -894,7 +894,11 @@ export default function App() {
     patch(current.id, { favorite: !current.favorite })
     if (inTauri) setFavorite(current.id, !current.favorite)
   }
-  const openViewer = (id: number, autoplay = false, list?: Photo[]) => { if (inTauri && id >= 0) setViewer({ id, autoplay, list, focus: person?.id !== undefined && !person.memory ? { id: person.id, name: person.name } : undefined }) }
+  const openViewer = (id: number, autoplay = false, list?: Photo[]) => {
+    // Zdjęcia spoza bieżącej listy (np. odfiltrowanego) otwierają się same, zamiast podmiany na pierwsze zdjęcie listy.
+    if (!list && !photos.some((p) => p.id === id)) { const one = all.find((p) => p.id === id); if (one) list = [one] }
+    if (inTauri && id >= 0) setViewer({ id, autoplay, list, focus: person?.id !== undefined && !person.memory ? { id: person.id, name: person.name } : undefined })
+  }
   // Widok osoby: domyślnie wycinki twarzy jak w Picasie (z potwierdzaniem niepewnych), a po przełączeniu zwykła siatka zdjęć.
   const [personFacesMode, setPersonFacesMode] = useState(true)
   useEscape(() => setTogether(null), !!together)
@@ -1609,7 +1613,13 @@ export default function App() {
 
             {faceView && person?.id !== undefined ? (
               <PersonFacesView personId={person.id} name={person.name} say={say} tile={faceSize}
-                onOpen={(pid) => openViewer(pid, false, photos.some((p) => p.id === pid) ? photos : undefined)}
+                onOpen={(pid) => {
+                  // Zdjęcie twarzy może nie być na bieżącej liście (filtry, ukryte): wtedy otwiera się samo, a nie pierwsze zdjęcie z listy.
+                  if (photos.some((p) => p.id === pid)) { openViewer(pid, false, photos); return }
+                  const one = all.find((p) => p.id === pid)
+                  if (one) openViewer(pid, false, [one])
+                  else say('Nie znaleziono tego zdjęcia w bibliotece', 'err')
+                }}
                 onPhotoGone={(pid) => dropFromPerson([pid])} onChanged={() => {}} />
             ) : (
               <>

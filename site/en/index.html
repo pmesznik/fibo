@@ -12,7 +12,7 @@
 <link rel="alternate" hreflang="pl" href="../pl/">
 <link rel="stylesheet" href="../assets/site.css">
 </head>
-<body data-lang="en" data-repo="pmesznik/fibo" data-version="0.4.73">
+<body data-lang="en" data-repo="pmesznik/fibo" data-version="0.4.74">
 <a class="skip" href="#docs">Documentation</a>
 <header class="top">
   <div class="wrap bar">
@@ -190,6 +190,7 @@
         <li><strong>Thumbnail and face size</strong>: next to the title of the library, the people list and a person's faces there is a slider with zoom out and zoom in buttons, and Ctrl with the mouse wheel does the same. Photo size and face size are remembered separately. The header with the back button sticks below the top bar with its own background, so nothing overlaps it. While dragging selected photos, the list scrolls by itself when the pointer nears the top or bottom edge. Enabled features are marked more clearly, and automatic face matching has a switch labelled on or off.</li>
         <li><strong>Rectangle selection</strong>: press the left mouse button on free space next to the photos (margin, gap between rows, year header) and drag to select the photos inside the rectangle. When you reach the top or bottom edge, the list scrolls by itself, so you can select more than fits on screen. Ctrl adds to the current selection, Esc cancels. In <em>Select multiple</em> mode the rectangle can also start on a photo. Outside that mode, dragging a photo still moves it to an album or folder.</li>
         <li><strong>Consistent look</strong>: the menu groups quick actions (adding photos, viewing, search and tidying, creating, app), and an enabled feature is clearly filled. Status colours (warning, error, success, rating stars) are the same across the app and lighter in the dark theme for readability. Section headings and text sizes follow one scale.</li>
+        <li><strong>The right photo after clicking a face</strong>: when the photo of the clicked face was not on the current list (for example because of filters), the app opened the first photo of the list instead. It now opens exactly that photo.</li>
         <li><strong>Order of a person's faces</strong>: in a person's faces view you choose <em>Most certain</em>, <em>Oldest first</em> or <em>Newest first</em>. The camera date counts, or the file date when there is none. When sorted by date, each face shows the year, so it is easy to see how someone changed. Your choice is remembered.</li>
         <li><strong>Organize by date</strong>: "Organize by date" in the menu moves selected or visible photos into YEAR, YEAR/MONTH or YEAR/YEAR-MM-DD folders. You see the plan first and nothing changes on disk, files are never overwritten, locked folders are skipped, and the whole run can be undone in one click (with XMP files, edits and original backups).</li>
         <li><strong>Non-destructive editing</strong>: in the editor, "Save edit (original untouched)" stores your changes as a recipe (in the database, in a history of the last 20 versions, and in a <code>photo.jpg.fibo.json</code> file next to the photo when metadata saving is on). The photo file never changes, the library thumbnail shows the edited look, and you can change, undo or restore the edit from history later.</li>
