@@ -92,7 +92,7 @@ Lista powstała z pamięci o Picasie 3, z przeglądu FIBO i z oficjalnego podrę
 - [x] **Kolaż: tryby** (stos zdjęć, mozaika, arkusz kontaktowy, plakat z wieloma rozmiarami). P3 T M Już były: mozaika, siatka, stos zdjęć i arkusz kontaktowy.
 - [x] **Pokaz slajdów: przejścia, czas na zdjęcie, muzyka z pliku, podpisy**. P2 T M Gotowe: płynne przejście, czas slajdu, muzyka z pliku, opisy.
 - [x] **Film ze zdjęć** (eksport pokazu slajdów do wideo MP4). P3 T L Gotowe: Eksport → „Film”: czas na zdjęcie, przejście, HD lub Full HD, powolne przybliżenie, opcjonalna muzyka; nagrywanie lokalnie w oknie programu (trwa tyle, ile film), zapis MP4 (WebM, gdy okno nie umie MP4).
-- [ ] **Wygaszacz ekranu** ze zdjęć z biblioteki. P4 T M
+- [x] **Wygaszacz ekranu** ze zdjęć z biblioteki. P4 T M Gotowe jako wygaszacz w programie (po bezczynności, tylko gdy FIBO jest na wierzchu). Prawdziwy wygaszacz Windows (.scr) poza zakresem.
 - [x] **Animowany GIF** z kilku zdjęć. P4 T S Gotowe w oknie eksportu.
 
 ## 7. Metadane i pliki

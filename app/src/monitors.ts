@@ -48,3 +48,12 @@ export async function leaveFullscreen(): Promise<void> {
     await w.getCurrentWindow().setFullscreen(false)
   } catch { /* podgląd bez programu */ }
 }
+
+/** Włącza pełny ekran okna (bez gestu użytkownika, w odróżnieniu od przeglądarkowego requestFullscreen). */
+export async function enterFullscreen(): Promise<void> {
+  try {
+    if (!('__TAURI_INTERNALS__' in window)) return
+    const w = await import('@tauri-apps/api/window')
+    await w.getCurrentWindow().setFullscreen(true)
+  } catch { /* podgląd bez programu */ }
+}

@@ -46,6 +46,8 @@ import { TextSearch } from './TextSearch'
 import { Photobook } from './Photobook'
 import { beginPointerDrag, dragJustEnded } from './pointerDrag'
 import { collapseStacks, findStacks, stackCount } from './stacks'
+import { SAVER_CHOICES, nextSaver, saverLabel, shouldStartSaver, shuffled } from './saver'
+import { ScreenSaver } from './ScreenSaver'
 import {
   Images, FolderOpen, Users, MapPin, Heart, Star, Plus, Play, Maximize2, X,
   Compare, SlidersHorizontal, Search as SearchIcon, ImageUp, Ruler, LayoutDashboard, Check, ListChecks, Tag, CalendarDays, Copy, RefreshCw, Download, Save, Pencil, Trash2, Eye, EyeOff, ChevronLeft, Wand2, Info, RotateCw, RotateCcw,
@@ -128,6 +130,10 @@ export default function App() {
   const [original, setOriginal] = useState(() => { try { return localStorage.getItem('grid-original') !== '0' } catch { return true } })
   const selected = sel.length === 1 ? sel[0] : null
   const setSelected = (id: number | null) => { setSel(id === null ? [] : [id]); setAnchor(id) }
+  // Wygaszacz w programie: po bezczynności pokazuje zdjęcia z bieżącego widoku w losowej kolejności.
+  const [saverMin, setSaverMinState] = useState(() => { try { const v = +(localStorage.getItem('saver-min') ?? 0); return (SAVER_CHOICES as readonly number[]).includes(v) ? v : 0 } catch { return 0 } })
+  const [saverList, setSaverList] = useState<Photo[] | null>(null)
+  const idleSince = useRef(Date.now())
   const [viewer, setViewer] = useState<{ id: number; autoplay: boolean; list?: Photo[]; focus?: { id: number; name: string | null } } | null>(null)
   const [dupOpen, setDupOpen] = useState(false)
   const [drawer, setDrawer] = useState(false)
@@ -906,6 +912,29 @@ export default function App() {
     }
     document.querySelector('main')?.scrollTo({ top: 0 })
   }, [mode, person?.id, albumId, folder])
+  const cycleSaver = () => {
+    const n = nextSaver(saverMin)
+    setSaverMinState(n)
+    try { localStorage.setItem('saver-min', String(n)) } catch { /* brak pamięci */ }
+    say(n ? `Wygaszacz włączy się po ${n} min bez ruchu, gdy FIBO jest otwarte i nic innego nie jest na wierzchu` : 'Wygaszacz wyłączony', 'ok')
+  }
+  useEffect(() => {
+    const touch = () => { idleSince.current = Date.now() }
+    const evs = ['pointermove', 'pointerdown', 'keydown', 'wheel'] as const
+    evs.forEach((e) => window.addEventListener(e, touch, { passive: true }))
+    return () => evs.forEach((e) => window.removeEventListener(e, touch))
+  }, [])
+  const saverBusy = () => !!viewer || !!saverList || document.hidden || !document.hasFocus() || !!document.querySelector('[role="dialog"], [role="alertdialog"]')
+  useEffect(() => {
+    if (!saverMin || !inTauri) return
+    const t = window.setInterval(() => {
+      if (shouldStartSaver({ minutes: saverMin, idleMs: Date.now() - idleSince.current, busy: saverBusy(), photos: photos.length })) {
+        setDrawer(false)
+        setSaverList(shuffled(photos.filter((p) => p.id >= 0 && !p.video)))
+      }
+    }, 15000)
+    return () => window.clearInterval(t)
+  })
   const slideshow = () => {
     if (!photos.length) return say('Brak zdjęć do pokazu. Dodaj folder przyciskiem +.')
     setDrawer(false)
@@ -1200,6 +1229,7 @@ export default function App() {
                 { icon: CalendarDays, label: 'Widok kalendarza', fn: () => { setDrawer(false); setDayViewOpen(true) }, on: false },
                 { icon: CalendarDays, label: 'Kalendarz do wydruku', fn: () => { setDrawer(false); setCalOpen(true) }, on: false },
                 { icon: Copy, label: 'Duplikaty', fn: () => { setDrawer(false); setDupOpen(true) }, on: false },
+                { icon: Play, label: saverLabel(saverMin), fn: cycleSaver, on: saverMin > 0 },
                 { icon: RefreshCw, label: refreshing ? 'Odświeżanie…' : 'Odśwież dane zdjęć', fn: () => { setDrawer(false); refresh() }, on: false },
                 { icon: Download, label: updater.phase === 'checking' ? 'Sprawdzam…' : 'Sprawdź aktualizacje', fn: () => { setDrawer(false); updater.checkNow(true) }, on: false },
                 // Ręczne sprawdzenie pokazuje wynik w oknie na środku; automatycznie FIBO pyta raz dziennie.
@@ -1987,6 +2017,7 @@ export default function App() {
         />
       )}
 
+      {saverList && <ScreenSaver photos={saverList} onClose={() => { idleSince.current = Date.now(); setSaverList(null) }} />}
       {viewer && (
         <Viewer
           photos={viewer.list ?? photos}
