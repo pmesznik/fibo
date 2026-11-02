@@ -25,6 +25,9 @@ let blockClickUntil = 0
 /** Tuż po przeciąganiu przeglądarka wysyła jeszcze „click” na źródle. Kafelek sprawdza to i nie reaguje na takie kliknięcie. */
 export const dragJustEnded = () => Date.now() < blockClickUntil
 
+/** Po zaznaczaniu prostokątem też pomijamy kliknięcie, które przeglądarka wysyła po puszczeniu przycisku. */
+export const blockNextClick = () => { blockClickUntil = Date.now() + 80 }
+
 /** Klucz celu upuszczenia w punkcie ekranu (z pominięciem podpisu przy kursorze). */
 function targetAt(x: number, y: number, ghost: HTMLElement | null): string | null {
   if (ghost) ghost.style.display = 'none'

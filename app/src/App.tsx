@@ -44,6 +44,7 @@ import { QualityDialog } from './QualityDialog'
 import { TagSuggestDialog } from './TagSuggestDialog'
 import { PetsDialog } from './PetsDialog'
 import { ZoomControl, stepZoom, useCtrlWheelZoom } from './Zoom'
+import { beginMarquee, combine } from './marquee'
 import { TextSearch } from './TextSearch'
 import { Photobook } from './Photobook'
 import { beginPointerDrag, dragJustEnded } from './pointerDrag'
@@ -1121,6 +1122,16 @@ export default function App() {
     else if (key.startsWith('photo:')) dropOnPhoto(Number(key.slice(6)), ids)
   }
   const selSet = useMemo(() => new Set(sel), [sel])
+  /** Zaznaczanie prostokątem (przeciąganie myszą od wolnego miejsca albo w trybie „Zaznaczanie wielu”), z przewijaniem przy krawędzi. */
+  const startMarquee = (e: React.PointerEvent, scroller: HTMLElement) => {
+    const before = sel
+    const add = e.ctrlKey || e.metaKey || selectMode
+    beginMarquee(e, {
+      scroller,
+      onChange: (ids) => setSel(combine(before, ids, add)),
+      onCancel: () => setSel(before),
+    })
+  }
   const tile = (p: Photo, ratio43: boolean) => {
     const on = selSet.has(p.id)
     const sb = collapsed?.badges.get(p.id)
@@ -1136,8 +1147,11 @@ export default function App() {
         }}
         onKeyDown={(e) => { if (e.key === 'Enter') openViewer(p.id) }}
         data-drop={reorderMode && p.id >= 0 ? `photo:${p.id}` : undefined}
+        data-pid={p.id >= 0 ? p.id : undefined}
         onPointerDown={(e) => {
           if (p.id < 0) return
+          // W trybie „Zaznaczanie wielu” przeciąganie po zdjęciach zaznacza je prostokątem zamiast przenosić.
+          if (selectMode && !reorderMode) { const m = document.querySelector('main'); if (m) startMarquee(e, m); return }
           const ids = sel.includes(p.id) ? sel.filter((i) => i >= 0) : [p.id]
           beginPointerDrag(e, {
             label: ids.length > 1 ? `${ids.length} ${pl(ids.length, 'zdjęcie', 'zdjęcia', 'zdjęć')}` : p.name,
@@ -1479,7 +1493,13 @@ export default function App() {
         </div>
       </aside>
 
-      <main className="h-full overflow-y-auto" onScroll={syncTimeline} style={{ padding: `calc(82px + var(--sat)) ${railOn ? 58 : 20}px 100px 20px` }}>
+      <main className="h-full overflow-y-auto" onScroll={syncTimeline}
+        onPointerDown={(e) => {
+          // Przeciąganie od wolnego miejsca listy zdjęć rysuje prostokąt zaznaczenia.
+          if ((mode !== 'library' && mode !== 'favs') || faceView) return
+          if ((e.target as HTMLElement).closest('button, a, input, select, textarea, label, [role=dialog], [role=toolbar], [role=region], .glass, .chip, .page-head, .title-row, [data-pid]')) return
+          startMarquee(e, e.currentTarget)
+        }} style={{ padding: `calc(82px + var(--sat)) ${railOn ? 58 : 20}px 100px 20px` }}>
         {(mode === 'library' || mode === 'favs') && (
           <>
             {/* Nagłówek z przyciskiem powrotu przykleja się pod paskiem górnym (z własnym tłem), więc po przewinięciu nic na niego nie nachodzi. */}
