@@ -924,7 +924,7 @@ export default function App() {
     evs.forEach((e) => window.addEventListener(e, touch, { passive: true }))
     return () => evs.forEach((e) => window.removeEventListener(e, touch))
   }, [])
-  const saverBusy = () => !!viewer || !!saverList || document.hidden || !document.hasFocus() || !!document.querySelector('[role="dialog"], [role="alertdialog"]')
+  const saverBusy = () => !!viewer || !!saverList || document.hidden || !document.hasFocus() || !!document.querySelector('[role=dialog], [role=alertdialog]')
   useEffect(() => {
     if (!saverMin || !inTauri) return
     const t = window.setInterval(() => {
