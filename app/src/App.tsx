@@ -43,6 +43,7 @@ import { LibraryCalendar } from './LibraryCalendar'
 import { QualityDialog } from './QualityDialog'
 import { TagSuggestDialog } from './TagSuggestDialog'
 import { PetsDialog } from './PetsDialog'
+import { ZoomControl, stepZoom, useCtrlWheelZoom } from './Zoom'
 import { TextSearch } from './TextSearch'
 import { Photobook } from './Photobook'
 import { beginPointerDrag, dragJustEnded } from './pointerDrag'
@@ -102,6 +103,9 @@ export default function App() {
   // Wielkość miniatur jest zapamiętywana między uruchomieniami.
   const [size, setSizeState] = useState(() => { try { const v = +(localStorage.getItem('thumb-size') ?? ''); return v >= 120 && v <= 360 ? v : 200 } catch { return 200 } })
   const setSize = (v: number) => { setSizeState(v); try { localStorage.setItem('thumb-size', String(v)) } catch { /* brak pamięci */ } }
+  // Wielkość twarzy (lista osób i twarze jednej osoby), osobno od miniatur zdjęć.
+  const [faceSize, setFaceSizeState] = useState(() => { try { const v = +(localStorage.getItem('face-size') ?? ''); return v >= 90 && v <= 240 ? v : 150 } catch { return 150 } })
+  const setFaceSize = (v: number) => { setFaceSizeState(v); try { localStorage.setItem('face-size', String(v)) } catch { /* brak pamięci */ } }
   const [sel, setSel] = useState<number[]>([])
   const [anchor, setAnchor] = useState<number | null>(null)
   const [selectMode, setSelectMode] = useState(false)
@@ -894,6 +898,11 @@ export default function App() {
   const [personFacesMode, setPersonFacesMode] = useState(true)
   useEscape(() => setTogether(null), !!together)
   const faceView = mode === 'library' && person?.id !== undefined && personFacesMode
+  const zoomFaces = mode === 'people' || faceView
+  useCtrlWheelZoom(mode === 'library' || mode === 'favs' || mode === 'people', (dir) => {
+    if (zoomFaces) setFaceSize(stepZoom(faceSize, dir, 90, 240, 15))
+    else setSize(stepZoom(size, dir, 120, 360, 20))
+  })
   const timelineAvailable = sections.length > 3 && sections[0].key !== 'all' && !faceView && (mode === 'library' || mode === 'favs')
   const railOn = timelineMode === 'rail' && timelineAvailable
   const jumpToSection = (i: number) => { setTimelineIdx(i); document.getElementById(`g-${sections[i]?.key}`)?.scrollIntoView({ block: 'start' }) }
@@ -1473,21 +1482,27 @@ export default function App() {
       <main className="h-full overflow-y-auto" onScroll={syncTimeline} style={{ padding: `calc(82px + var(--sat)) ${railOn ? 58 : 20}px 100px 20px` }}>
         {(mode === 'library' || mode === 'favs') && (
           <>
-            {/* Przycisk powrotu przykleja się pod paskiem górnym, więc jest widoczny także po przewinięciu długiej listy twarzy lub zdjęć. */}
+            {/* Nagłówek z przyciskiem powrotu przykleja się pod paskiem górnym (z własnym tłem), więc po przewinięciu nic na niego nie nachodzi. */}
             {(() => {
               const back = person && !person.memory ? { label: 'Osoby', aria: 'Wróć do listy osób', fn: () => { setPerson(null); setMode('people') } }
                 : person?.memory ? { label: 'Biblioteka', aria: 'Wróć do biblioteki', fn: () => setPerson(null) }
                 : mode === 'library' && (albumId !== null || folder) ? { label: 'Albumy', aria: 'Wróć do albumów i folderów', fn: () => { setAlbumId(null); setFolder(null); setMode('albums') } }
                 : null
-              return back && (
-                <div style={{ position: 'sticky', top: 10, zIndex: 6, width: 'fit-content', marginBottom: 8, marginTop: -4 }}>
-                  <button className="chip glass" style={{ minHeight: 38, fontWeight: 600 }} aria-label={back.aria} onClick={back.fn}><ChevronLeft size={16} /> {back.label}</button>
+              const title = mode === 'favs' ? 'Ulubione' : person ? person.name : albumId !== null ? (albums.find((a) => a.id === albumId)?.name ?? 'Album') : folder ? folderName(folder) : 'Biblioteka'
+              return (
+                <div className={back ? 'page-head' : 'title-row'}>
+                  {back && <button className="chip" style={{ flex: 'none', fontWeight: 600 }} aria-label={back.aria} onClick={back.fn}><ChevronLeft size={16} /> {back.label}</button>}
+                  <div style={{ minWidth: 0 }}>
+                    <h1 className="page-title" title={title}>{title}</h1>
+                    <div style={{ color: 'var(--muted)', fontSize: 13 }}>{subtitle}</div>
+                  </div>
+                  <span style={{ marginLeft: 'auto' }} />
+                  {faceView ? <ZoomControl what="twarzy" value={faceSize} min={90} max={240} step={15} onChange={setFaceSize} />
+                    : photos.length > 0 && <ZoomControl what="miniatur" value={size} min={120} max={360} step={20} onChange={setSize} />}
                 </div>
               )
             })()}
             <div style={{ marginBottom: 14 }}>
-              <h1 style={{ margin: 0, font: '700 22px/1.2 system-ui' }}>{mode === 'favs' ? 'Ulubione' : person ? person.name : albumId !== null ? (albums.find((a) => a.id === albumId)?.name ?? 'Album') : folder ? folderName(folder) : 'Biblioteka'}</h1>
-              <div style={{ color: 'var(--muted)', fontSize: 13 }}>{subtitle}</div>
               {(() => {
                 const pr = albumId !== null ? propOf.get(`album:${albumId}`) : folder ? propOf.get(`folder:${folder}`) : undefined
                 if (!pr) return null
@@ -1560,7 +1575,7 @@ export default function App() {
             )}
 
             {faceView && person?.id !== undefined ? (
-              <PersonFacesView personId={person.id} name={person.name} say={say}
+              <PersonFacesView personId={person.id} name={person.name} say={say} tile={faceSize}
                 onOpen={(pid) => openViewer(pid, false, photos.some((p) => p.id === pid) ? photos : undefined)}
                 onPhotoGone={(pid) => dropFromPerson([pid])} onChanged={() => {}} />
             ) : (
@@ -1679,7 +1694,7 @@ export default function App() {
         )}
 
         {mode === 'people' && (
-          <People say={say} ask={setConfirm} onChanged={() => {}}
+          <People say={say} ask={setConfirm} onChanged={() => {}} faceSize={faceSize} onFaceSize={setFaceSize}
             onOpenPerson={(name, ids, id) => { if (id !== undefined) peopleReturn.current = { id, top: document.querySelector('main')?.scrollTop ?? 0 }; setPersonFacesMode(true); setPerson({ id, name, ids: new Set(ids) }); setAlbumId(null); setFolder(null); setMode('library') }} />
         )}
       </main>

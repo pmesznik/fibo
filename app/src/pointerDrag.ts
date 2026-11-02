@@ -33,6 +33,13 @@ function targetAt(x: number, y: number, ghost: HTMLElement | null): string | nul
   return el?.closest('[data-drop]')?.getAttribute('data-drop') ?? null
 }
 
+/** Prędkość przewijania (px na klatkę) przy krawędzi obszaru od `top` do `bottom`: 0 poza strefą 70 px, rośnie ku krawędzi, najwyżej 28. */
+export function edgeScrollSpeed(y: number, top: number, bottom: number, zone = 70): number {
+  if (y < top + zone) return -Math.min(28, Math.ceil((top + zone - y) / 3))
+  if (y > bottom - zone) return Math.min(28, Math.ceil((y - (bottom - zone)) / 3))
+  return 0
+}
+
 export function beginPointerDrag(e: { button: number; pointerType: string; clientX: number; clientY: number }, d: PointerDrag) {
   // Dotyk przewija listę, więc przeciąganie dotyczy myszy i rysika.
   if (e.button !== 0 || e.pointerType === 'touch') return
@@ -40,8 +47,20 @@ export function beginPointerDrag(e: { button: number; pointerType: string; clien
   let active = false
   let ghost: HTMLElement | null = null
   let hover: string | null = null
+  // Przewijanie przy krawędzi: gdy kursor z przeciąganymi zdjęciami zbliża się do góry albo dołu listy, lista sama się przesuwa.
+  const scroller = document.querySelector('main') as HTMLElement | null
+  let lastY = sy
+  let raf = 0
+  const tick = () => {
+    raf = 0
+    if (!active || !scroller) return
+    const r = scroller.getBoundingClientRect()
+    const v = edgeScrollSpeed(lastY, r.top + 80, r.bottom)
+    if (v !== 0) { scroller.scrollTop += v; raf = requestAnimationFrame(tick) }
+  }
 
   const cleanup = () => {
+    if (raf) cancelAnimationFrame(raf)
     window.removeEventListener('pointermove', move)
     window.removeEventListener('pointerup', up)
     window.removeEventListener('pointercancel', cancel)
@@ -68,6 +87,8 @@ export function beginPointerDrag(e: { button: number; pointerType: string; clien
       document.body.appendChild(ghost)
       document.body.classList.add('fibo-dragging')
     }
+    lastY = ev.clientY
+    if (!raf) raf = requestAnimationFrame(tick)
     if (ghost) { ghost.style.left = `${ev.clientX + 14}px`; ghost.style.top = `${ev.clientY + 14}px` }
     const k = targetAt(ev.clientX, ev.clientY, ghost)
     if (k !== hover) { hover = k; d.onHover(k) }

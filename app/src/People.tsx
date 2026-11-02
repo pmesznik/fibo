@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { listen } from '@tauri-apps/api/event'
+import { ZoomControl } from './Zoom'
 import { EyeOff, Eye, Pencil, Star, Pause, Play, Trash2, Users, X } from './FiboIcons'
 import {
   facesDeleteAll, facesReanalyze, facesRegroup, facesStart, setFacesAutolearn, personFaces, setPersonCover, facesStatus, facesStop, ignorePerson, listPeople, personPhotos, deletePerson, mergeSuggestions, restoreRejectedFaces,
@@ -17,7 +18,9 @@ const pl = (n: number, one: string, few: string, many: string) =>
   n === 1 ? one : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? few : many
 
 /** Zakładka Osoby: zgoda na rozpoznawanie twarzy, postęp analizy i lista osób. Wszystko liczy się na tym komputerze. */
-export function People({ say, ask, onOpenPerson, onChanged }: {
+export function People({ say, ask, onOpenPerson, onChanged, faceSize = 150, onFaceSize }: {
+  faceSize?: number
+  onFaceSize?: (v: number) => void
   say: (m: string, kind?: 'ok' | 'err') => void
   ask: (c: { text: string; yes: string; run: () => void }) => void
   onOpenPerson: (name: string, ids: number[], id: number) => void
@@ -138,40 +141,44 @@ export function People({ say, ask, onOpenPerson, onChanged }: {
   return (
     <div>
       <div style={{ marginBottom: 14 }}>
-        <h1 style={{ margin: 0, font: '700 22px/1.2 system-ui' }}>Osoby</h1>
-        <div style={{ color: 'var(--muted)', fontSize: 13 }}>{st.people} {pl(st.people, 'osoba', 'osoby', 'osób')} · {st.faces} {pl(st.faces, 'twarz', 'twarze', 'twarzy')}{st.unassigned > 0 ? ` (${st.unassigned} bez grupy: za mało pewne)` : ''} · przeciągnij osobę na inną albo użyj przycisku „Połącz”</div>
-        <div className="glass" style={{ borderRadius: 'var(--r-lg)', padding: '10px 14px', marginTop: 10, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <div style={{ flex: '1 1 220px', minWidth: 0 }}>
-            <div style={{ fontSize: 13.5 }}>
-              {prog?.grouping ? 'Grupuję twarze w osoby…' : st.running ? 'Analizuję zdjęcia na tym komputerze…' : pending <= 0 ? 'Wszystkie zdjęcia przeanalizowane' : st.scanned === 0 ? 'Analiza jeszcze nie ruszyła' : `${fmt(pending)} ${pl(pending, 'zdjęcie czeka', 'zdjęcia czekają', 'zdjęć czeka')} na analizę`} ({st.scanned} z {st.photos})
+        <div className="title-row">
+          <div style={{ minWidth: 0 }}>
+            <h1 className="page-title">Osoby</h1>
+            <div style={{ color: 'var(--muted)', fontSize: 13 }}>{fmt(st.people)} {pl(st.people, 'osoba', 'osoby', 'osób')} · {fmt(st.faces)} {pl(st.faces, 'twarz', 'twarze', 'twarzy')}{st.unassigned > 0 ? ` (${fmt(st.unassigned)} bez grupy: za mało pewne)` : ''} · przeciągnij osobę na inną albo użyj przycisku „Połącz”</div>
+          </div>
+          <span style={{ marginLeft: 'auto' }} />
+          {onFaceSize && <ZoomControl what="twarzy" value={faceSize} min={90} max={240} step={15} onChange={onFaceSize} />}
+        </div>
+        {/* Jeden pasek: stan analizy z postępem, obok działania (od najczęstszych), a usuwanie danych osobno na końcu. */}
+        <div className="glass toolbar" role="toolbar" aria-label="Rozpoznawanie twarzy">
+          <div className="tb-status">
+            <div style={{ fontSize: 13.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {prog?.grouping ? 'Grupuję twarze w osoby…' : st.running ? 'Analizuję zdjęcia na tym komputerze…' : pending <= 0 ? 'Wszystkie zdjęcia przeanalizowane' : st.scanned === 0 ? 'Analiza jeszcze nie ruszyła' : `${fmt(pending)} ${pl(pending, 'zdjęcie czeka', 'zdjęcia czekają', 'zdjęć czeka')} na analizę`}
+              <span style={{ color: 'var(--muted)' }}> · {fmt(st.scanned)} z {fmt(st.photos)}</span>
             </div>
             <div role="progressbar" aria-label="Postęp analizy twarzy" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}
               style={{ height: 6, borderRadius: 3, background: 'var(--tonal)', marginTop: 6, overflow: 'hidden' }}>
               <div style={{ width: `${pct}%`, height: '100%', background: 'var(--accent)', transition: 'width .3s' }} />
             </div>
-            {prog && !prog.finished && <div style={{ color: 'var(--muted)', fontSize: 12, marginTop: 4 }}>Przetworzono w tej sesji: {prog.done} z {prog.total}</div>}
+            {prog && !prog.finished && <div style={{ color: 'var(--muted)', fontSize: 12, marginTop: 4 }}>Przetworzono w tej sesji: {fmt(prog.done)} z {fmt(prog.total)}</div>}
           </div>
           {(st.running || pending > 0) && (
-            <button className="chip" onClick={toggleRun}>{st.running ? <><Pause size={15} /> Wstrzymaj</> : <><Play size={15} /> Wznów</>}</button>
+            <button className="chip primary" onClick={toggleRun}>{st.running ? <><Pause size={15} /> Wstrzymaj</> : <><Play size={15} /> Wznów</>}</button>
           )}
-          <button className={`chip${st.autolearn ? ' on' : ''}`} aria-pressed={st.autolearn} onClick={async () => { try { await setFacesAutolearn(!st.autolearn); say(st.autolearn ? 'Samodzielne dopasowywanie twarzy wyłączone' : 'Program będzie co jakiś czas sam dopasowywał nierozpoznane twarze do znanych osób', 'ok'); await refresh() } catch (e) { say(`Błąd: ${e}`, 'err') } }}
-            title="Co kilka minut, gdy nic innego nie działa, program dopasowuje twarze bez osoby do znanych osób, które po Twoich poprawkach lepiej wie, jak wyglądają, i łączy bardzo podobne grupy. Nie otwiera zdjęć i nie obciąża komputera.">
-            Samodzielne dopasowywanie: {st.autolearn ? 'włączone' : 'wyłączone'}{st.autolearn && st.learned > 0 ? ` (dopasowano ${st.learned})` : ''}
+          <button className={`chip${st.autolearn ? ' on' : ''}`} role="switch" aria-checked={st.autolearn} onClick={async () => { try { await setFacesAutolearn(!st.autolearn); say(st.autolearn ? 'Samodzielne dopasowywanie twarzy wyłączone' : 'Program będzie co jakiś czas sam dopasowywał nierozpoznane twarze do znanych osób', 'ok'); await refresh() } catch (e) { say(`Błąd: ${e}`, 'err') } }}
+            title={`${st.autolearn ? 'Włączone. ' : 'Wyłączone. '}Co kilka minut, gdy nic innego nie działa, program dopasowuje twarze bez osoby do znanych osób i łączy bardzo podobne grupy. Nie otwiera zdjęć i nie obciąża komputera.${st.learned > 0 ? ` Dopasowano dotąd: ${st.learned}.` : ''}`}>
+            <span className={`sw${st.autolearn ? ' is-on' : ''}`} aria-hidden /> Samodzielne dopasowywanie: <b className={st.autolearn ? 'state-on' : 'state-off'}>{st.autolearn ? 'włączone' : 'wyłączone'}</b>{st.autolearn && st.learned > 0 ? <span style={{ color: 'var(--muted)', fontWeight: 500 }}> · {fmt(st.learned)}</span> : null}
           </button>
           {!st.running && <button className="chip" onClick={regroup} title="Grupuje twarze w osoby od nowa (szybko). Imiona i ręczne poprawki zostają.">Pogrupuj od nowa</button>}
           {!st.running && <button className="chip" onClick={reanalyze} title="Analizuje wszystkie zdjęcia od nowa, dokładniej">Przeanalizuj ponownie</button>}
-          <button className="chip" onClick={wipe}><Trash2 size={15} /> Usuń dane twarzy</button>
+          {st.rejected > 0 && !st.running && (
+            <button className="chip" onClick={restoreRejected} title="Odrzucone twarze wracają do automatycznego grupowania">Przywróć odrzucone ({fmt(st.rejected)})</button>
+          )}
+          {people.some((p) => p.ignored) && (
+            <button className={`chip${showIgnored ? ' on' : ''}`} aria-pressed={showIgnored} onClick={() => setShowIgnored((v) => !v)}>{showIgnored ? 'Ukryj pominięte' : 'Pokaż pominięte'}</button>
+          )}
+          <button className="chip danger tb-end" onClick={wipe}><Trash2 size={15} /> Usuń dane twarzy</button>
         </div>
-        {st.rejected > 0 && !st.running && (
-          <div className="chips" style={{ marginTop: 10 }}>
-            <button className="chip" onClick={restoreRejected} title="Odrzucone twarze wracają do automatycznego grupowania">Przywróć odrzucone twarze ({st.rejected})</button>
-          </div>
-        )}
-        {people.some((p) => p.ignored) && (
-          <div className="chips" style={{ marginTop: 10 }}>
-            <button className="chip" onClick={() => setShowIgnored((v) => !v)}>{showIgnored ? 'Ukryj pominięte osoby' : 'Pokaż pominięte osoby'}</button>
-          </div>
-        )}
       </div>
 
       {shown.length === 0 && (
@@ -182,7 +189,7 @@ export function People({ say, ask, onOpenPerson, onChanged }: {
           </div>
         </div>
       )}
-      <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))' }}>
+      <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${Math.max(150, Math.round(faceSize * 0.8) + 70)}px, 1fr))` }}>
         {shown.map((p) => (
           <div key={p.id} aria-grabbed={dragId === p.id} data-drop={`person:${p.id}`}
             onPointerDown={(e) => beginPointerDrag(e, {
@@ -197,7 +204,7 @@ export function People({ say, ask, onOpenPerson, onChanged }: {
             })}
             style={{ opacity: p.ignored ? 0.55 : dragId === p.id ? 0.4 : 1, borderRadius: 'var(--r-lg)', outline: overId === p.id ? '3px solid var(--accent)' : 'none', outlineOffset: 4, cursor: 'grab' }}>
             <button className="bare block w-full text-center" aria-label={`${p.name ?? 'Nieznana osoba'}, ${p.photos} ${pl(p.photos, 'zdjęcie', 'zdjęcia', 'zdjęć')}`} onClick={() => { if (!dragJustEnded()) open(p) }}>
-              <div style={{ width: 120, height: 120, margin: '0 auto', borderRadius: '50%', overflow: 'hidden', boxShadow: 'var(--elev-1)', background: 'var(--tonal)' }}>
+              <div style={{ width: Math.round(faceSize * 0.8), height: Math.round(faceSize * 0.8), margin: '0 auto', borderRadius: '50%', overflow: 'hidden', boxShadow: 'var(--elev-1)', background: 'var(--tonal)' }}>
                 {p.cover !== null && <FaceImg id={p.cover} />}
               </div>
               <div className="mt-2 truncate" style={{ fontWeight: 600 }}>{p.name ?? 'Nieznana osoba'}</div>

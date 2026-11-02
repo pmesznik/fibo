@@ -92,9 +92,32 @@ details.sec > .sec-body { padding:0 14px 14px; }
 /* Chipy */
 .chip { display:inline-flex; align-items:center; gap:6px; min-height:36px; padding:6px 13px; border-radius:999px; border:1px solid var(--line);
         background:var(--panel); color:var(--text); font:500 13px system-ui; }
-.chip.on { background:var(--tonal); border-color:var(--accent); font-weight:600; }
+.chip.on { background:color-mix(in srgb, var(--accent) 28%, var(--panel)); border-color:var(--accent); box-shadow:inset 0 0 0 1px var(--accent); font-weight:600; }
+/* Główne działanie w pasku (np. Wznów): wypełnione kolorem akcentu. */
+.chip.primary { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600; }
+/* Przełącznik w chipie: jednoznacznie pokazuje, czy funkcja jest włączona. */
+.sw { position:relative; flex:none; width:30px; height:18px; border-radius:9px; background:color-mix(in srgb, var(--muted) 45%, transparent); transition:background .2s ease; }
+.sw::after { content:''; position:absolute; top:2px; left:2px; width:14px; height:14px; border-radius:50%; background:#fff; box-shadow:0 1px 2px rgba(0,0,0,.3); transition:transform .2s ease; }
+.sw.is-on { background:var(--accent); }
+.sw.is-on::after { transform:translateX(12px); }
+.state-on { color:var(--text); }
+.state-off { color:var(--muted); font-weight:600; }
+@media (prefers-reduced-motion: reduce) { .sw, .sw::after { transition:none; } }
 .chip.off { opacity:.6; text-decoration:line-through; }
 .chips { display:flex; flex-wrap:wrap; gap:8px; }
+/* Nagłówek widoku z przyciskiem powrotu: przyklejony pod paskiem górnym, z własnym tłem, żeby przewijane treści pod nim nie prześwitywały. */
+.page-head { position:sticky; top:calc(var(--bar-h) - 64px); /* liczone od górnego odstępu <main> (82px + --sat), czyli 6px pod paskiem */ z-index:6; display:flex; align-items:center; gap:14px; margin:-6px -12px 8px; padding:8px 12px;
+  border-radius:0 0 var(--r-lg) var(--r-lg); background:var(--bg); }
+.title-row { display:flex; align-items:center; gap:8px 14px; flex-wrap:wrap; margin-bottom:4px; }
+.title-row > div:first-child, .page-head > div:nth-child(2) { flex:1 1 260px; }
+.page-title { margin:0; font:700 22px/1.2 system-ui; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+/* Pasek narzędzi widoku: stan i postęp po lewej, działania obok w jednym rzędzie, działanie niszczące na końcu. */
+.toolbar { display:flex; align-items:center; flex-wrap:wrap; gap:8px 10px; border-radius:var(--r-lg); padding:10px 12px; margin-top:10px; }
+.toolbar .tb-status { flex:1 1 240px; min-width:0; }
+.toolbar .tb-sep { width:1px; align-self:stretch; background:var(--line); margin:4px 2px; }
+.toolbar .tb-end { margin-left:auto; }
+.chip.danger { color:color-mix(in srgb, var(--err) 72%, var(--text)); border-color:color-mix(in srgb, var(--err) 35%, var(--line)); background:transparent; }
+.chip.danger:hover { background:color-mix(in srgb, var(--err) 11%, var(--surface)); }
 
 /* Wiersz listy */
 .item { display:flex; align-items:center; gap:4px; background:var(--surface); border:1px solid var(--glass-line); border-radius:14px; padding:8px 8px 8px 12px; margin:8px 0; }

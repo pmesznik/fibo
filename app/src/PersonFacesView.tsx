@@ -6,13 +6,14 @@ import { confirmFaces, personFaceCards, unassignFaces, type FaceCard } from './a
 const pl = (n: number, one: string, few: string, many: string) =>
   n === 1 ? one : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? few : many
 
-const TILE = 150
 
 /**
  * Widok twarzy jednej osoby jak w Picasie: kafelki to wycinki twarzy (nie całe zdjęcia). Twarze, których program nie jest pewien,
  * mają pomarańczowy znak „?” i przyciski „to ta osoba” oraz „to nie ta osoba”. Całe zdjęcie otwiera się dopiero po kliknięciu twarzy.
  */
-export function PersonFacesView({ personId, name, onOpen, onPhotoGone, onChanged, say }: {
+export function PersonFacesView({ personId, name, onOpen, onPhotoGone, onChanged, say, tile: TILE = 150 }: {
+  /** Wielkość kafelka twarzy w pikselach (powiększanie i pomniejszanie). */
+  tile?: number
   personId: number
   name: string
   onOpen: (photoId: number) => void
