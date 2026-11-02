@@ -43,4 +43,4 @@ opt-level = 3
 
 # Szyfrowanie danych twarzy kluczem konta Windows (DPAPI).
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.59", features = ["Win32_Security_Cryptography", "Win32_Foundation"] }
+windows-sys = { version = "0.61", features = ["Win32_Security_Cryptography", "Win32_Foundation"] }
