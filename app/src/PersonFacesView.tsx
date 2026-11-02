@@ -22,6 +22,7 @@ export function PersonFacesView({ personId, name, onOpen, onPhotoGone, onChanged
 }) {
   const [cards, setCards] = useState<FaceCard[] | null>(null)
   const [sure, setSure] = useState(false)
+  const [sureNo, setSureNo] = useState(false)
   /** Stosy twarzy do potwierdzenia, które użytkownik rozwinął (numer stosu). */
   const [open, setOpen] = useState<Set<number>>(new Set())
 
@@ -60,6 +61,21 @@ export function PersonFacesView({ personId, name, onOpen, onPhotoGone, onChanged
     const ids = (cards ?? []).filter((c) => c.unsure).map((c) => c.face)
     setSure(false)
     try { await confirmFaces(ids); setCards((l) => l?.map((x) => ({ ...x, unsure: false })) ?? l); onChanged(); say(`Potwierdzono ${ids.length} ${pl(ids.length, 'twarz', 'twarze', 'twarzy')}`, 'ok') } catch (e) { say(`Błąd: ${e}`, 'err') }
+  }
+
+  /** Odpięcie wszystkich twarzy z sekcji „Do potwierdzenia”: wracają do nierozpoznanych (nie są odrzucane na stałe). */
+  const rejectAll = async () => {
+    if (!sureNo) { setSureNo(true); return }
+    setSureNo(false)
+    const members = (cards ?? []).filter((c) => c.unsure)
+    const ids = members.map((c) => c.face)
+    if (!ids.length) return
+    try {
+      await unassignFaces(ids)
+      setCards((l) => l?.filter((x) => !ids.includes(x.face)) ?? l)
+      members.forEach((c) => onPhotoGone(c.photo)); onChanged()
+      say(`To nie „${name}”: ${ids.length} ${pl(ids.length, 'twarz wróciła', 'twarze wróciły', 'twarzy wróciło')} do nierozpoznanych`, 'ok')
+    } catch (e) { say(`Błąd: ${e}`, 'err') }
   }
 
   if (!cards) return <div className="empty" style={{ height: '40vh' }}>Wczytuję twarze…</div>
@@ -129,6 +145,7 @@ export function PersonFacesView({ personId, name, onOpen, onPhotoGone, onChanged
             Do potwierdzenia
             <span style={{ font: '400 13px system-ui', color: 'var(--muted)' }}>{unsure.length} {pl(unsure.length, 'twarz', 'twarze', 'twarzy')}</span>
             <button className="chip" onClick={confirmAll} onBlur={() => setSure(false)}>{sure ? `Na pewno? To wszystkie ${name}` : 'Potwierdź wszystkie'}</button>
+            <button className="chip" onClick={rejectAll} onBlur={() => setSureNo(false)} title="Odpina wszystkie te twarze od osoby. Wracają do nierozpoznanych, nic nie jest usuwane">{sureNo ? `Na pewno? To nie ${name}` : 'Odrzuć wszystkie'}</button>
           </h2>
           <p style={{ margin: '0 0 12px', color: 'var(--muted)', fontSize: 13 }}>
             Program nie jest pewien, czy te twarze to „{name}”, albo dopasował je sam. Zatwierdź te, które pasują, a pozostałe odepnij. Podobne twarze z kilku zdjęć są ułożone w stosy z liczbą ×N: stos potwierdzasz lub odpinasz jednym kliknięciem albo rozwijasz.
