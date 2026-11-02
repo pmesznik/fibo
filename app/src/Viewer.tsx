@@ -5,7 +5,7 @@ import {
   ZoomIn, ZoomOut, Compare, Sliders, Sparkles, Info, Tag, Crop as CropIcon, Trash2, Sun, Palette, Aperture, Pencil, Zap, Users, Plus,
 } from './FiboIcons'
 import { decodeBitmap } from './imageDecode'
-import { pickFile, readAudio, hasOriginal, photoPeople, addManualFace, readImage, restoreOriginal, saveEdit, setCaption, setPersonCover, photoExif, listPeople, reassignPersonFaces, type Person, setFavorite, setRating, setFlag, setLabel, videoUrl, developRaw, isRawName, RAW_NEUTRAL, getEdit, saveEditRecipe, putEditThumbnail, deleteEdit, listEditHistory, getEditVersion, type EditVersion, type RawParams, type Photo, type PhotoPerson } from './api'
+import { pickFile, readAudio, hasOriginal, photoPeople, photoFaceBoxes, addManualFace, readImage, restoreOriginal, saveEdit, setCaption, setPersonCover, photoExif, listPeople, reassignPersonFaces, type Person, type FaceBox, setFavorite, setRating, setFlag, setLabel, videoUrl, developRaw, isRawName, RAW_NEUTRAL, getEdit, saveEditRecipe, putEditThumbnail, deleteEdit, listEditHistory, getEditVersion, type EditVersion, type RawParams, type Photo, type PhotoPerson } from './api'
 import { FaceImg } from './People'
 import { CurveEditor, HistogramView, HslPanel } from './editor/ToneUi'
 import { cleanHsl, cleanPoints } from './editor/tone'
@@ -91,7 +91,7 @@ function Slider({ label, value, min, max, onChange, onStart }: {
   )
 }
 
-export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onClose, onPatch, onSaved, onOpenPerson }: {
+export function Viewer({ photos, startId, autoplay = false, focusPerson, allTags, onTag, onClose, onPatch, onSaved, onOpenPerson }: {
   photos: Photo[]
   startId: number
   autoplay?: boolean
@@ -101,6 +101,8 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
   onPatch: (id: number, change: Partial<Photo>) => void
   onSaved: (newId: number) => void
   onOpenPerson?: (personId: number, name: string | null) => void
+  /** Osoba, z której widoku otwarto zdjęcie: jej twarz na zdjęciu jest domyślnie obrysowana delikatną ramką (można ją wyłączyć). */
+  focusPerson?: { id: number; name: string | null }
 }) {
   const [id, setId] = useState(startId)
   const index = Math.max(0, photos.findIndex((p) => p.id === id))
@@ -275,6 +277,16 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
   const [tagPick, setTagPick] = useState<{ x: number; y: number; w: number; h: number; options: Person[] } | null>(null)
   /** Znaczniki osób: ile pokazać od razu, rozwinięcie reszty i otwarte menu osoby. */
   const [showAllPeople, setShowAllPeople] = useState(false)
+  /** Ramki twarzy: twarze tych osób są obrysowane na zdjęciu (domyślnie osoba, z której widoku otwarto zdjęcie). */
+  const [framed, setFramed] = useState<Set<number>>(() => new Set(focusPerson ? [focusPerson.id] : []))
+  const [faceBoxes, setFaceBoxes] = useState<FaceBox[]>([])
+  const [, setLayoutTick] = useState(0)
+  useEffect(() => { const t = window.setTimeout(() => setLayoutTick((n) => n + 1), 360); return () => window.clearTimeout(t) }, [sheet, zoom, pan.x, pan.y, tagMode])
+  useEffect(() => {
+    const on = () => setLayoutTick((t) => t + 1)
+    window.addEventListener('resize', on)
+    return () => window.removeEventListener('resize', on)
+  }, [])
   const [personMenu, setPersonMenu] = useState<number | null>(null)
   const [reassign, setReassign] = useState<{ from: PhotoPerson; options: Person[] } | null>(null)
   const [exifRows, setExifRows] = useState<[string, string][]>([])
@@ -283,7 +295,8 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
     let dead = false
     setPeople([]); setExifRows([])
     if (photo && photo.id >= 0) photoExif(photo.id).then((v) => { if (!dead) setExifRows(v) }).catch(() => {})
-    setShowAllPeople(false); setPersonMenu(null)
+    setShowAllPeople(false); setPersonMenu(null); setFaceBoxes([])
+    if (photo && photo.id >= 0 && !photo.video) photoFaceBoxes(photo.id).then((v) => { if (!dead) setFaceBoxes(v) }).catch(() => {})
     if (photo && photo.id >= 0) photoPeople(photo.id).then((v) => { if (!dead) setPeople(v) }).catch(() => {})
     return () => { dead = true }
   }, [photo?.id])
@@ -705,6 +718,24 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
             </div>
           )
         })()}
+        {framed.size > 0 && faceBoxes.length > 0 && !tagMode && !inkTool && !eraseMode && !photo.video && JSON.stringify(edit.geo) === JSON.stringify(EMPTY_EDIT.geo) && (() => {
+          const r = canvasRef.current?.getBoundingClientRect()
+          if (!r || r.width < 2) return null
+          const shown = faceBoxes.filter((b) => b.person !== null && framed.has(b.person))
+          if (!shown.length) return null
+          return (
+            <div aria-hidden style={{ position: 'fixed', left: r.left, top: r.top, width: r.width, height: r.height, pointerEvents: 'none', zIndex: 3 }}>
+              {shown.map((b) => {
+                const who = people.find((p) => p.id === b.person)
+                return (
+                  <span key={b.face} style={{ position: 'absolute', left: `${b.rect[0] * 100}%`, top: `${b.rect[1] * 100}%`, width: `${b.rect[2] * 100}%`, height: `${b.rect[3] * 100}%`, border: '2px solid rgba(255,255,255,.85)', borderRadius: 6, boxShadow: '0 0 0 1.5px rgba(0,0,0,.45), 0 0 10px rgba(255,255,255,.35)' }}>
+                    {who && <span style={{ position: 'absolute', left: -2, bottom: 'calc(100% + 3px)', background: 'rgba(0,0,0,.6)', color: '#fff', font: '600 11.5px system-ui', padding: '1px 7px', borderRadius: 999, whiteSpace: 'nowrap' }}>{who.name ?? 'Nieznana osoba'}</span>}
+                  </span>
+                )
+              })}
+            </div>
+          )
+        })()}
         {compare && (
           <div className="chip on" style={{ position: 'absolute', left: '50%', bottom: 'calc(112px + var(--sab))', transform: 'translateX(-50%)', background: 'var(--panel)', pointerEvents: 'none' }}>Oryginał (bez zmian)</div>
         )}
@@ -792,6 +823,13 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
           <button className={`chip glass${tagMode ? ' on' : ''}`} style={{ gap: 6 }} aria-pressed={tagMode} title="Zaznacz twarz, której program nie wykrył, i wskaż, kto to jest" onClick={() => (tagMode ? setTagMode(false) : startTagging())}>
             <Users size={14} /> Dodaj twarz
           </button>
+          {focusPerson && people.some((p) => p.id === focusPerson.id) && (
+            <button className={`chip glass${framed.has(focusPerson.id) ? ' on' : ''}`} style={{ minHeight: 32, fontSize: 13 }} aria-pressed={framed.has(focusPerson.id)}
+              title={`Obrysuj na zdjęciu twarz: ${focusPerson.name ?? 'Nieznana osoba'}`}
+              onClick={() => setFramed((f) => { const n = new Set(f); if (n.has(focusPerson.id)) n.delete(focusPerson.id); else n.add(focusPerson.id); return n })}>
+              <Eye size={14} /> Ramka: {focusPerson.name ?? 'Nieznana osoba'}
+            </button>
+          )}
           {(showAllPeople ? people : people.slice(0, PEOPLE_SHOWN)).map((p) => {
             const label = p.name ?? 'Nieznana osoba'
             return (
@@ -805,6 +843,7 @@ export function Viewer({ photos, startId, autoplay = false, allTags, onTag, onCl
                 {personMenu === p.id && (
                   <div className="glass" role="menu" aria-label={`Działania dla: ${label}`} style={{ position: 'absolute', left: 0, bottom: 'calc(100% + 6px)', zIndex: 5, minWidth: 220, padding: 6, borderRadius: 'var(--r-md)', display: 'grid', gap: 2 }}>
                     <button className="text menu-item" role="menuitem" onClick={() => { setPersonMenu(null); onOpenPerson(p.id, p.name) }}><Users size={16} /> Pokaż zdjęcia: {label}</button>
+                    <button className="text menu-item" role="menuitem" aria-checked={framed.has(p.id)} onClick={() => { setPersonMenu(null); setFramed((f) => { const n = new Set(f); if (n.has(p.id)) n.delete(p.id); else n.add(p.id); return n }) }}><Eye size={16} /> {framed.has(p.id) ? 'Ukryj ramkę twarzy' : 'Pokaż ramkę twarzy'}</button>
                     <button className="text menu-item" role="menuitem" title="Źle rozpoznana twarz: przenieś ją do innej osoby"
                       onClick={async () => { setPersonMenu(null); try { setReassign({ from: p, options: (await listPeople()).filter((o) => o.id !== p.id && !o.ignored) }) } catch (e) { say(`Błąd: ${e}`, 'err') } }}><Pencil size={16} /> To nie ta osoba…</button>
                     <button className="text menu-item" role="menuitem" title="Ta twarz będzie okładką osoby na liście"

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Check, Search, Users, X } from './FiboIcons'
 import { FaceImg } from './FaceImg'
-import { listPeople, mergePeople, mergeSuggestions, movePersonFaces, personFaces, type MergeSuggestion, type Person } from './api'
+import { listPeople, mergePeople, mergeSuggestions, movePersonFaces, personFaces, rejectFaces, sharedPhotos, thumbnailBlob, type MergeSuggestion, type Person, type SharedPhoto } from './api'
 import { useEscape } from './ui'
 
 const pl = (n: number, one: string, few: string, many: string) =>
@@ -105,8 +105,78 @@ function FaceStrip({ id, n = 10 }: { id: number; n?: number }) {
  * Łączenie dwóch osób z podglądem obu: zdjęcie okładkowe, przykładowe twarze, liczby zdjęć, imię i podobieństwo twarzy.
  * Użytkownik wybiera, która osoba zostaje (druga do niej dołącza) i które imię zostaje, gdy obie je mają.
  */
-export function MergeDialog({ people, a, b: initialB, onClose, onDone, say }: {
-  people: Person[]; a: Person; b: Person | null; onClose: () => void; onDone: () => void; say: (m: string, kind?: 'ok' | 'err') => void
+/**
+ * Zdjęcia, na których są razem obie osoby. Obie twarze są obwiedzione (A i B), żeby od razu było widać, czy to rzeczywiście dwie różne osoby,
+ * czy któraś twarz została źle przypisana. Przy każdym zdjęciu można usunąć błędne przypisanie (twarz wraca do nierozpoznanych), a po tym
+ * ostrzeżenie znika samo, gdy nie ma już zdjęć ze wspólnymi osobami.
+ */
+function SharedPhotos({ a, b, onChanged }: { a: Person; b: Person; onChanged: () => void }) {
+  const [list, setList] = useState<SharedPhoto[] | null>(null)
+  const [urls, setUrls] = useState<Map<number, string>>(new Map())
+  const [busy, setBusy] = useState<number | null>(null)
+  const [err, setErr] = useState<string | null>(null)
+  useEffect(() => {
+    let dead = false
+    const made: string[] = []
+    setList(null)
+    sharedPhotos(a.id, b.id).then(async (l) => {
+      if (dead) return
+      setList(l)
+      for (const sp of l.slice(0, 12)) {
+        try {
+          const u = URL.createObjectURL(await thumbnailBlob(sp.photo))
+          made.push(u)
+          if (dead) return
+          setUrls((m) => new Map(m).set(sp.photo, u))
+        } catch { /* brak miniatury */ }
+      }
+    }).catch((e) => setErr(String(e)))
+    return () => { dead = true; made.forEach((u) => URL.revokeObjectURL(u)) }
+  }, [a.id, b.id])
+
+  const unassign = async (sp: SharedPhoto, which: 'a' | 'b') => {
+    setBusy(sp.photo); setErr(null)
+    try {
+      await rejectFaces([which === 'a' ? sp.face_a : sp.face_b])
+      setList((l) => l?.filter((x) => x.photo !== sp.photo) ?? l)
+      onChanged()
+    } catch (e) { setErr(String(e)) } finally { setBusy(null) }
+  }
+  const box = (r: [number, number, number, number], color: string, label: string) => (
+    <span aria-hidden style={{ position: 'absolute', left: `${r[0] * 100}%`, top: `${r[1] * 100}%`, width: `${r[2] * 100}%`, height: `${r[3] * 100}%`, border: `2px solid ${color}`, borderRadius: 4, boxShadow: '0 0 0 1px rgba(0,0,0,.55)' }}>
+      <span style={{ position: 'absolute', left: -2, top: -18, background: color, color: '#fff', font: '700 11px system-ui', padding: '0 5px', borderRadius: 3 }}>{label}</span>
+    </span>
+  )
+  if (list === null) return <div style={{ marginTop: 8, fontSize: 13, color: 'var(--muted)' }}>Wczytuję wspólne zdjęcia…</div>
+  if (list.length === 0) return null
+  return (
+    <div style={{ marginTop: 10 }}>
+      <div style={{ fontSize: 13.5, fontWeight: 600 }}>Zdjęcia, na których są obie osoby ({list.length})</div>
+      <div style={{ fontSize: 12.5, color: 'var(--muted)', margin: '2px 0 8px' }}>
+        A to „{nm(a)}”, B to „{nm(b)}”. Jeśli na zdjęciu to dwie różne twarze, osoby nie powinny być łączone. Jeśli któraś twarz jest przypisana błędnie, usuń to przypisanie przyciskiem pod zdjęciem.
+      </div>
+      <div style={{ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 6 }}>
+        {list.slice(0, 12).map((sp) => (
+          <div key={sp.photo} style={{ flex: 'none', width: 230 }}>
+            <div style={{ position: 'relative', width: 230, minHeight: 130, background: 'var(--tonal)', borderRadius: 8, overflow: 'hidden' }}>
+              {urls.get(sp.photo) && <img src={urls.get(sp.photo)} alt="Zdjęcie z obiema osobami" style={{ display: 'block', width: '100%' }} draggable={false} />}
+              {urls.get(sp.photo) && <>{box(sp.rect_a, '#2f8cff', 'A')}{box(sp.rect_b, '#ff8a1c', 'B')}</>}
+            </div>
+            <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
+              <button className="chip" style={{ minHeight: 30, fontSize: 12.5 }} disabled={busy === sp.photo} onClick={() => unassign(sp, 'a')} title={`Ta twarz (A) to nie „${nm(a)}”: wróci do nierozpoznanych`}>To nie A</button>
+              <button className="chip" style={{ minHeight: 30, fontSize: 12.5 }} disabled={busy === sp.photo} onClick={() => unassign(sp, 'b')} title={`Ta twarz (B) to nie „${nm(b)}”: wróci do nierozpoznanych`}>To nie B</button>
+            </div>
+          </div>
+        ))}
+      </div>
+      {list.length > 12 && <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>Pokazuję 12 z {list.length} zdjęć.</div>}
+      {err && <div role="alert" style={{ color: 'var(--err)', fontSize: 13 }}>{err}</div>}
+    </div>
+  )
+}
+
+export function MergeDialog({ people, a, b: initialB, onClose, onDone, onFacesChanged, say }: {
+  people: Person[]; a: Person; b: Person | null; onClose: () => void; onDone: () => void; onFacesChanged?: () => void; say: (m: string, kind?: 'ok' | 'err') => void
 }) {
   const [b, setB] = useState<Person | null>(initialB)
   const [sugg, setSugg] = useState<Map<number, MergeSuggestion>>(new Map())
@@ -114,6 +184,7 @@ export function MergeDialog({ people, a, b: initialB, onClose, onDone, say }: {
   const [nameFrom, setNameFrom] = useState<'a' | 'b'>('a')
   const [busy, setBusy] = useState(false)
 
+  const loadSugg = () => mergeSuggestions(a.id).then((l) => setSugg(new Map(l.map((s) => [s.other, s])))).catch(() => {})
   useEffect(() => {
     let dead = false
     mergeSuggestions(a.id).then((l) => { if (!dead) setSugg(new Map(l.map((s) => [s.other, s]))) }).catch(() => {})
@@ -192,9 +263,10 @@ export function MergeDialog({ people, a, b: initialB, onClose, onDone, say }: {
             </div>
             {s?.conflict && (
               <div role="alert" style={{ marginTop: 8, padding: '8px 10px', borderRadius: 'var(--r-md)', background: 'color-mix(in srgb, var(--err) 14%, transparent)', color: 'var(--err)', fontSize: 13.5 }}>
-                Te osoby występują razem na tym samym zdjęciu, więc to prawdopodobnie dwie różne osoby.
+                Te osoby występują razem na tym samym zdjęciu, więc to prawdopodobnie dwie różne osoby. Obejrzyj zdjęcia poniżej i zdecyduj.
               </div>
             )}
+            {s?.conflict && <SharedPhotos a={a} b={b} onChanged={() => { loadSugg(); onFacesChanged?.() }} />}
           </div>
 
           {bothNamed && (

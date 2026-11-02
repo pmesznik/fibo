@@ -278,6 +278,10 @@ export const rejectPersonInPhotos = (person: number, photos: number[]) => invoke
 /** Przenosi twarze osoby na wskazanych zdjęciach do innej osoby albo (to = null) do nowej. */
 export const movePersonFaces = (person: number, photos: number[], to: number | null) => invoke<number>('move_person_faces', { person, photos, to })
 export const moveFaces = (ids: number[], to: number | null) => invoke<number>('move_faces', { ids, to })
+export type FaceBox = { face: number; person: number | null; rect: [number, number, number, number] }
+export const photoFaceBoxes = (id: number) => invoke<FaceBox[]>('photo_face_boxes', { id })
+export type SharedPhoto = { photo: number; face_a: number; face_b: number; rect_a: [number, number, number, number]; rect_b: [number, number, number, number] }
+export const sharedPhotos = (a: number, b: number) => invoke<SharedPhoto[]>('shared_photos', { a, b })
 export const rejectFaces = (ids: number[]) => invoke<number>('reject_faces', { ids })
 export const deletePerson = (id: number) => invoke<number>('delete_person', { id })
 export const restoreRejectedFaces = () => invoke<number>('restore_rejected_faces')

@@ -245,7 +245,7 @@ export function People({ say, ask, onOpenPerson, onChanged }: {
       )}
 
       {merge && (
-        <MergeDialog people={people} a={merge.a} b={merge.b} say={say} onClose={() => setMerge(null)} onDone={() => { refresh(); onChanged() }} />
+        <MergeDialog people={people} a={merge.a} b={merge.b} say={say} onClose={() => setMerge(null)} onDone={() => { refresh(); onChanged() }} onFacesChanged={() => { refresh(); onChanged() }} />
       )}
       {renaming && (
         <PromptDialog title="Imię osoby" label="Imię lub nazwa" initial={renaming.name ?? ''} confirm="Zapisz"

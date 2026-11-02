@@ -1322,6 +1322,68 @@ pub fn reassign_person_faces(state: State<'_, AppState>, photo_id: i64, from: i6
     reassign_core(&conn, photo_id, from, to)
 }
 
+/// Twarz na zdjęciu: numer, osoba (jeśli przypisana) i prostokąt w ułamkach zdjęcia po obrocie z EXIF (x, y, szerokość, wysokość).
+#[derive(Serialize, Debug, PartialEq)]
+pub struct FaceBox {
+    face: i64,
+    person: Option<i64>,
+    rect: [f32; 4],
+}
+
+pub fn face_boxes_core(conn: &Connection, photo_id: i64) -> Result<Vec<FaceBox>, String> {
+    let mut stmt = conn.prepare("SELECT id, person_id, x, y, w, h FROM faces WHERE photo_id = ?1 ORDER BY x").map_err(|e| e.to_string())?;
+    let v = stmt
+        .query_map([photo_id], |r| Ok(FaceBox { face: r.get(0)?, person: r.get(1)?, rect: [r.get::<_, f64>(2)? as f32, r.get::<_, f64>(3)? as f32, r.get::<_, f64>(4)? as f32, r.get::<_, f64>(5)? as f32] }))
+        .map_err(|e| e.to_string())?
+        .filter_map(Result::ok)
+        .collect();
+    Ok(v)
+}
+
+/// Wszystkie twarze na zdjęciu z ich prostokątami: do zaznaczania wybranej osoby ramką w podglądzie i do porównywania twarzy.
+#[tauri::command]
+pub fn photo_face_boxes(state: State<'_, AppState>, id: i64) -> Result<Vec<FaceBox>, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    face_boxes_core(&conn, id)
+}
+
+/// Zdjęcie, na którym występują naraz dwie osoby: ich twarze (numery i prostokąty).
+#[derive(Serialize, Debug, PartialEq)]
+pub struct SharedPhoto {
+    photo: i64,
+    face_a: i64,
+    face_b: i64,
+    rect_a: [f32; 4],
+    rect_b: [f32; 4],
+}
+
+pub fn shared_photos_core(conn: &Connection, a: i64, b: i64) -> Result<Vec<SharedPhoto>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT fa.photo_id, fa.id, fb.id, fa.x, fa.y, fa.w, fa.h, fb.x, fb.y, fb.w, fb.h
+             FROM faces fa JOIN faces fb ON fb.photo_id = fa.photo_id AND fb.person_id = ?2
+             JOIN photos p ON p.id = fa.photo_id AND p.hidden = 0
+             WHERE fa.person_id = ?1 ORDER BY fa.photo_id LIMIT 60",
+        )
+        .map_err(|e| e.to_string())?;
+    let v = stmt
+        .query_map(params![a, b], |r| {
+            let f = |i: usize| -> rusqlite::Result<f32> { Ok(r.get::<_, f64>(i)? as f32) };
+            Ok(SharedPhoto { photo: r.get(0)?, face_a: r.get(1)?, face_b: r.get(2)?, rect_a: [f(3)?, f(4)?, f(5)?, f(6)?], rect_b: [f(7)?, f(8)?, f(9)?, f(10)?] })
+        })
+        .map_err(|e| e.to_string())?
+        .filter_map(Result::ok)
+        .collect();
+    Ok(v)
+}
+
+/// Zdjęcia, na których są razem obie osoby (do rozstrzygnięcia, czy to na pewno dwie różne osoby, przed łączeniem).
+#[tauri::command]
+pub fn shared_photos(state: State<'_, AppState>, a: i64, b: i64) -> Result<Vec<SharedPhoto>, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    shared_photos_core(&conn, a, b)
+}
+
 #[derive(Serialize)]
 pub struct PhotoPerson {
     id: i64,
@@ -1914,6 +1976,29 @@ mod tests {
     }
 
     #[cfg(windows)]
+    #[test]
+    fn face_boxes_and_shared_photos_show_where_two_people_meet() {
+        let c = db();
+        c.execute_batch("INSERT INTO photos (id) VALUES (1), (2), (3); INSERT INTO people (id, name) VALUES (10, 'Dziadek'), (20, NULL);").unwrap();
+        init_schema(&c).unwrap();
+        let ins = |photo: i64, person: Option<i64>, x: f64| c.execute("INSERT INTO faces (photo_id, person_id, x, y, w, h, score, emb) VALUES (?1, ?2, ?3, 0.2, 0.1, 0.2, 0.9, x'00')", params![photo, person, x]).unwrap();
+        ins(1, Some(10), 0.1); ins(1, Some(20), 0.6); ins(1, None, 0.8); // zdjęcie 1: obie osoby i twarz bez osoby
+        ins(2, Some(10), 0.3);                                            // zdjęcie 2: tylko Dziadek
+        ins(3, Some(20), 0.4);                                            // zdjęcie 3: tylko druga osoba
+        let boxes = face_boxes_core(&c, 1).unwrap();
+        assert_eq!(boxes.len(), 3);
+        assert_eq!(boxes.iter().map(|b| b.person).collect::<Vec<_>>(), vec![Some(10), Some(20), None], "posortowane od lewej");
+        assert!((boxes[0].rect[0] - 0.1).abs() < 1e-6 && (boxes[0].rect[3] - 0.2).abs() < 1e-6);
+        let shared = shared_photos_core(&c, 10, 20).unwrap();
+        assert_eq!(shared.len(), 1);
+        assert_eq!(shared[0].photo, 1);
+        assert!((shared[0].rect_a[0] - 0.1).abs() < 1e-6 && (shared[0].rect_b[0] - 0.6).abs() < 1e-6);
+        assert!(shared_photos_core(&c, 10, 99).unwrap().is_empty());
+        // Ukryte zdjęcie nie jest pokazywane.
+        c.execute("UPDATE photos SET hidden = 1 WHERE id = 1", []).unwrap();
+        assert!(shared_photos_core(&c, 10, 20).unwrap().is_empty());
+    }
+
     #[test]
     fn manual_faces_are_added_checked_and_survive_reanalysis() {
         let (c, tmp) = lib_with_photos(2);

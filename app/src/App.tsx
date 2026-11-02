@@ -128,7 +128,7 @@ export default function App() {
   const [original, setOriginal] = useState(() => { try { return localStorage.getItem('grid-original') !== '0' } catch { return true } })
   const selected = sel.length === 1 ? sel[0] : null
   const setSelected = (id: number | null) => { setSel(id === null ? [] : [id]); setAnchor(id) }
-  const [viewer, setViewer] = useState<{ id: number; autoplay: boolean; list?: Photo[] } | null>(null)
+  const [viewer, setViewer] = useState<{ id: number; autoplay: boolean; list?: Photo[]; focus?: { id: number; name: string | null } } | null>(null)
   const [dupOpen, setDupOpen] = useState(false)
   const [drawer, setDrawer] = useState(false)
   const [query, setQuery] = useState('')
@@ -871,7 +871,7 @@ export default function App() {
     patch(current.id, { favorite: !current.favorite })
     if (inTauri) setFavorite(current.id, !current.favorite)
   }
-  const openViewer = (id: number, autoplay = false, list?: Photo[]) => { if (inTauri && id >= 0) setViewer({ id, autoplay, list }) }
+  const openViewer = (id: number, autoplay = false, list?: Photo[]) => { if (inTauri && id >= 0) setViewer({ id, autoplay, list, focus: person?.id !== undefined && !person.memory ? { id: person.id, name: person.name } : undefined }) }
   // Widok osoby: domyślnie wycinki twarzy jak w Picasie (z potwierdzaniem niepewnych), a po przełączeniu zwykła siatka zdjęć.
   const [personFacesMode, setPersonFacesMode] = useState(true)
   useEscape(() => setTogether(null), !!together)
@@ -1981,6 +1981,7 @@ export default function App() {
         <Viewer
           photos={viewer.list ?? photos}
           startId={viewer.id}
+          focusPerson={viewer.focus}
           autoplay={viewer.autoplay}
           allTags={allTags}
           onTag={tagPhotos}
