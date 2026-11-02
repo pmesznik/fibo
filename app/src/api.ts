@@ -289,7 +289,8 @@ export const setFacesAutolearn = (on: boolean) => invoke('set_faces_autolearn', 
 export const rejectFaces = (ids: number[]) => invoke<number>('reject_faces', { ids })
 export const deletePerson = (id: number) => invoke<number>('delete_person', { id })
 export const restoreRejectedFaces = () => invoke<number>('restore_rejected_faces')
-export const ignorePerson = (id: number, ignored: boolean) => invoke('ignore_person', { id, ignored })
+export const splitPerson = (id: number) => invoke<number>('split_person', { id })
+export const ignorePerson =(id: number, ignored: boolean) => invoke('ignore_person', { id, ignored })
 
 export async function pickFile(title: string, extensions: string[], filterName = 'Kopia biblioteki FIBO') {
   const f = await open({ directory: false, multiple: false, title, filters: [{ name: filterName, extensions }] })

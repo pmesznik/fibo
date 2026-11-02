@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { listen } from '@tauri-apps/api/event'
 import { ZoomControl } from './Zoom'
-import { EyeOff, Eye, Pencil, Star, Pause, Play, Trash2, Users, X } from './FiboIcons'
+import { EyeOff, Eye, Pencil, Shuffle, Star, Pause, Play, Trash2, Users, X } from './FiboIcons'
 import {
-  facesDeleteAll, facesReanalyze, facesRegroup, facesStart, setFacesAutolearn, personFaces, setPersonCover, facesStatus, facesStop, ignorePerson, listPeople, personPhotos, deletePerson, mergeSuggestions, restoreRejectedFaces,
+  facesDeleteAll, facesReanalyze, facesRegroup, facesStart, setFacesAutolearn, personFaces, setPersonCover, facesStatus, facesStop, ignorePerson, splitPerson, listPeople, personPhotos, deletePerson, mergeSuggestions, restoreRejectedFaces,
   renamePerson, setFacesEnabled, type FacesProgress, type FacesStatus, type MergeSuggestion, type Person,
 } from './api'
 import { PromptDialog } from './Dialogs'
@@ -103,6 +103,18 @@ export function People({ say, ask, onOpenPerson, onChanged, faceSize = 150, onFa
     text: `Usunąć osobę „${p.name ?? 'Nieznana osoba'}” (${p.photos} ${pl(p.photos, 'zdjęcie', 'zdjęcia', 'zdjęć')})? Znika cała grupa, a jej twarze nie zostaną już nikomu przypisane. Same zdjęcia zostają nietknięte. Twarze możesz przywrócić przyciskiem „Przywróć odrzucone twarze”.`,
     yes: 'Usuń osobę',
     run: async () => { try { await deletePerson(p.id); await refresh(); onChanged(); say('Osoba usunięta', 'ok') } catch (e) { say(`Błąd: ${e}`, 'err') } },
+  })
+  const splitUp = (p: Person) => ask({
+    text: `Rozbić grupę „Nieznana osoba” (${p.photos} ${pl(p.photos, 'zdjęcie', 'zdjęcia', 'zdjęć')})? Wszystkie jej twarze wrócą do nierozpoznanych, a program ułoży je w osoby od nowa (to szybkie, bez ponownej analizy zdjęć). Same zdjęcia zostają nietknięte, a osoby z imieniem i Twoje poprawki bez zmian.`,
+    yes: 'Rozbij osobę',
+    run: async () => {
+      try {
+        const n = await splitPerson(p.id)
+        await facesRegroup()
+        setTimeout(refresh, 800); onChanged()
+        say(`Rozbito grupę: ${n} ${pl(n, 'twarz', 'twarze', 'twarzy')} jest grupowanych od nowa`, 'ok')
+      } catch (e) { say(`Błąd: ${e}`, 'err') }
+    },
   })
   const restoreRejected = async () => {
     try { const n = await restoreRejectedFaces(); await facesRegroup(); setTimeout(refresh, 800); say(`Przywrócono ${n} ${pl(n, 'twarz', 'twarze', 'twarzy')} do grupowania`, 'ok') } catch (e) { say(`Błąd: ${e}`, 'err') }
@@ -230,6 +242,9 @@ export function People({ say, ask, onOpenPerson, onChanged, faceSize = 150, onFa
               <button className="ico" style={{ minWidth: 34, minHeight: 36 }} aria-label={`Połącz ${p.name ?? 'osobę'} z inną osobą`} title="To ta sama osoba co inna: połącz (z podglądem)" onClick={() => setMerge({ a: p, b: null })}><Users size={16} /></button>
               <button className="ico" style={{ minWidth: 34, minHeight: 36 }} aria-label={p.ignored ? 'Przywróć osobę na listę' : 'Pomiń tę osobę'} title={p.ignored ? 'Przywróć' : 'Pomiń (np. przypadkowy przechodzień)'}
                 onClick={async () => { try { await ignorePerson(p.id, !p.ignored) } catch (e) { say(`Błąd: ${e}`, 'err') } refresh() }}>{p.ignored ? <Eye size={16} /> : <EyeOff size={16} />}</button>
+              {!p.name && !p.ignored && (
+                <button className="ico" style={{ minWidth: 34, minHeight: 36 }} aria-label="Rozbij tę grupę na nowe osoby" title="Rozbij grupę: twarze zostaną pogrupowane od nowa (zdjęcia zostają)" onClick={() => splitUp(p)}><Shuffle size={16} /></button>
+              )}
               <button className="ico" style={{ minWidth: 34, minHeight: 36 }} aria-label={`Wybierz okładkę osoby ${p.name ?? 'Nieznana osoba'}`} title="Wybierz twarz na okładkę" onClick={() => pickCover(p)}><Star size={16} /></button>
               <button className="ico" style={{ minWidth: 34, minHeight: 36 }} aria-label={`Usuń osobę ${p.name ?? 'Nieznana osoba'}`} title="Usuń całą grupę (zdjęcia zostają)" onClick={() => removePerson(p)}><Trash2 size={16} /></button>
             </div>

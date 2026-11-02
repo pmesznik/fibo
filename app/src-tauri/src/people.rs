@@ -15,7 +15,7 @@ use std::{
 };
 
 use image::{imageops::FilterType, DynamicImage, RgbImage};
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use tauri::{Emitter, Manager, State};
@@ -1858,6 +1858,27 @@ pub fn unassign_faces(state: State<'_, AppState>, ids: Vec<i64>) -> Result<usize
     unassign_faces_core(&conn, &ids)
 }
 
+/// „Rozbij osobę”: wszystkie twarze grupy bez imienia wracają do nierozpoznanych (bez żadnych wyłączeń i bez odrzucenia), a grupa znika.
+/// Zdjęcia zostają nietknięte; kolejne grupowanie ułoży te twarze od nowa. Osoby z imieniem nie da się rozbić (to utrata pracy użytkownika).
+pub fn split_person_core(conn: &Connection, id: i64) -> Result<usize, String> {
+    let named: Option<Option<String>> = conn.query_row("SELECT name FROM people WHERE id = ?1", [id], |r| r.get(0)).optional().map_err(|e| e.to_string())?;
+    match named {
+        None => return Err("Nie ma takiej osoby".into()),
+        Some(Some(_)) => return Err("Osoby z imieniem nie da się rozbić. Najpierw usuń jej imię albo odepnij twarze po jednej".into()),
+        Some(None) => {}
+    }
+    let n = conn.execute("UPDATE faces SET person_id = NULL, manual = 0, conf = NULL, auto = 0 WHERE person_id = ?1", [id]).map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM people WHERE id = ?1", [id]).map_err(|e| e.to_string())?;
+    mark_dirty();
+    Ok(n)
+}
+
+#[tauri::command]
+pub fn split_person(state: State<'_, AppState>, id: i64) -> Result<usize, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    split_person_core(&conn, id)
+}
+
 /// Usuwa osobę (całą grupę): jej twarze są odrzucane, więc nie wrócą do żadnej osoby. Zdjęcia zostają nietknięte.
 pub fn delete_person_core(conn: &Connection, id: i64) -> Result<usize, String> {
     let n = conn.execute("UPDATE faces SET person_id = NULL, rejected = 1, manual = 0 WHERE person_id = ?1", [id]).map_err(|e| e.to_string())?;
@@ -2294,6 +2315,29 @@ mod tests {
         learn_once(&c);
         let after: Option<i64> = c.query_row("SELECT person_id FROM faces WHERE id = ?1", [f3], |r| r.get(0)).unwrap();
         assert_ne!(after, Some(a));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn splitting_an_unnamed_person_frees_all_faces_without_rejecting_them_and_refuses_named_people() {
+        let (c, tmp) = lib_with_photos(4);
+        for ph in 1..=3 { store_faces(&c, &tmp, ph, 5, vec![new_face(near(0, 40 + ph as usize, 0.05), 0.9)]).unwrap(); }
+        store_faces(&c, &tmp, 4, 5, vec![new_face(unit(110), 0.9)]).unwrap();
+        regroup(&c).unwrap();
+        let a: i64 = c.query_row("SELECT person_id FROM faces WHERE photo_id = 1", [], |r| r.get(0)).unwrap();
+        assert_eq!(split_person_core(&c, a).unwrap(), 3);
+        let (free, rejected): (i64, i64) = c.query_row("SELECT COUNT(*), SUM(rejected) FROM faces WHERE photo_id IN (1,2,3) AND person_id IS NULL", [], |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
+        assert_eq!((free, rejected), (3, 0), "twarze są nierozpoznane, ale nie odrzucone");
+        assert_eq!(c.query_row::<i64, _, _>("SELECT COUNT(*) FROM people WHERE id = ?1", [a], |r| r.get(0)).unwrap(), 0);
+        assert_eq!(c.query_row::<i64, _, _>("SELECT COUNT(*) FROM face_not", [], |r| r.get(0)).unwrap(), 0, "żadna osoba nie jest dla tych twarzy wyłączona");
+        // Po ponownym grupowaniu twarze znów trafiają do osoby.
+        regroup(&c).unwrap();
+        assert!(c.query_row::<Option<i64>, _, _>("SELECT person_id FROM faces WHERE photo_id = 1", [], |r| r.get(0)).unwrap().is_some());
+        // Osoby z imieniem nie rozbijamy.
+        let b: i64 = c.query_row("SELECT person_id FROM faces WHERE photo_id = 1", [], |r| r.get(0)).unwrap();
+        c.execute("UPDATE people SET name = 'Ala' WHERE id = ?1", [b]).unwrap();
+        assert!(split_person_core(&c, b).is_err());
+        assert!(split_person_core(&c, 9999).is_err());
     }
 
     #[cfg(windows)]
