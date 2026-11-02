@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Check, X } from './FiboIcons'
 import { FaceImg } from './FaceImg'
 import { confirmFaces, personFaceCards, unassignFaces, type FaceCard } from './api'
+import { FACE_SORTS, faceYear, sortFaces, type FaceSort } from './faceSort'
 
 const pl = (n: number, one: string, few: string, many: string) =>
   n === 1 ? one : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? few : many
@@ -24,6 +25,9 @@ export function PersonFacesView({ personId, name, onOpen, onPhotoGone, onChanged
   const [cards, setCards] = useState<FaceCard[] | null>(null)
   const [sure, setSure] = useState(false)
   const [sureNo, setSureNo] = useState(false)
+  // Kolejność twarzy: według pewności programu (domyślnie) albo według daty zrobienia zdjęcia; zapamiętywana.
+  const [order, setOrderState] = useState<FaceSort>(() => { try { const v = localStorage.getItem('face-sort'); return v === 'old' || v === 'new' ? v : 'best' } catch { return 'best' } })
+  const setOrder = (v: FaceSort) => { setOrderState(v); try { localStorage.setItem('face-sort', v) } catch { /* brak pamięci */ } }
   /** Stosy twarzy do potwierdzenia, które użytkownik rozwinął (numer stosu). */
   const [open, setOpen] = useState<Set<number>>(new Set())
 
@@ -80,8 +84,10 @@ export function PersonFacesView({ personId, name, onOpen, onPhotoGone, onChanged
   }
 
   if (!cards) return <div className="empty" style={{ height: '40vh' }}>Wczytuję twarze…</div>
-  const unsure = cards.filter((c) => c.unsure)
-  const done = cards.filter((c) => !c.unsure)
+  const sorted = sortFaces(cards, order)
+  const unsure = sorted.filter((c) => c.unsure)
+  const done = sorted.filter((c) => !c.unsure)
+  const byDate = order !== 'best'
   if (!cards.length) return <div className="empty" style={{ height: '40vh' }}>Ta osoba nie ma już żadnych twarzy.</div>
 
   /** Stosy: twarze do potwierdzenia o tym samym numerze stosu. Stos z jedną twarzą to zwykły kafelek. */
@@ -129,6 +135,7 @@ export function PersonFacesView({ personId, name, onOpen, onPhotoGone, onChanged
             style={{ position: 'absolute', right: 4, top: 4, width: 26, height: 26, borderRadius: '50%', background: 'rgba(0,0,0,.6)', color: '#fff', display: 'grid', placeItems: 'center' }} onClick={() => rejectOne(c)}><X size={15} /></button>
         )}
       </div>
+      {byDate && <div style={{ textAlign: 'center', fontSize: 12, color: 'var(--muted)', marginTop: 3 }} title={c.taken ? 'Data z aparatu' : 'Data pliku (brak daty z aparatu)'}>{faceYear(c) ?? 'bez daty'}</div>}
       {c.unsure && (
         <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: 5 }}>
           <button className="fc-btn fc-yes" aria-label={`Potwierdź: to ${name}`} title="To ta osoba" onClick={() => confirmOne(c)}><Check size={14} strokeWidth={3} /></button>
@@ -140,6 +147,13 @@ export function PersonFacesView({ personId, name, onOpen, onPhotoGone, onChanged
 
   return (
     <div>
+      <div className="chips" role="radiogroup" aria-label="Kolejność twarzy" style={{ alignItems: 'center', marginBottom: 14 }}>
+        <span style={{ color: 'var(--muted)', fontSize: 13 }}>Kolejność:</span>
+        {FACE_SORTS.map(([v, l]) => (
+          <button key={v} className={`chip${order === v ? ' on' : ''}`} role="radio" aria-checked={order === v} onClick={() => setOrder(v)}
+            title={v === 'best' ? 'Najpierw twarze, których program jest najbardziej pewien' : 'Według daty zrobienia zdjęcia (z aparatu, a bez niej daty pliku)'}>{l}</button>
+        ))}
+      </div>
       {unsure.length > 0 && (
         <section style={{ marginBottom: 26 }}>
           <h2 className="h-sec" style={{ marginBottom: 6 }}>

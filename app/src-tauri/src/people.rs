@@ -1319,6 +1319,10 @@ pub struct FaceCard {
     unsure: bool,
     /** Stos twarzy do potwierdzenia: numer pierwszej twarzy stosu (twarz bez stosu ma stos równy własnemu numerowi). */
     stack: i64,
+    /// Data zrobienia zdjęcia z aparatu (EXIF), jeśli jest; do sortowania twarzy od najstarszych do najnowszych.
+    taken: Option<String>,
+    /// Czas modyfikacji pliku (sekundy), gdy brak daty z aparatu.
+    modified: i64,
 }
 
 /// Od jakiego podobieństwa dwie twarze do potwierdzenia trafiają na jeden stos (wysokie, bo stos ma wyglądać jak jedna twarz z serii zdjęć).
@@ -1356,14 +1360,14 @@ pub async fn person_face_cards(app: tauri::AppHandle, id: i64) -> Result<Vec<Fac
         }
         let mut stmt = conn
             .prepare(
-                "SELECT f.id, f.photo_id, (f.manual = 0 AND ((f.conf IS NOT NULL AND f.conf < ?2) OR f.auto = 1)) AS unsure
+                "SELECT f.id, f.photo_id, (f.manual = 0 AND ((f.conf IS NOT NULL AND f.conf < ?2) OR f.auto = 1)) AS unsure, ph.taken, ph.modified
                  FROM faces f JOIN photos ph ON ph.id = f.photo_id AND ph.hidden = 0
                  WHERE f.person_id = ?1
                  ORDER BY unsure DESC, CASE WHEN unsure THEN f.conf END ASC, f.score * f.w DESC LIMIT 3000",
             )
             .map_err(|e| e.to_string())?;
         let rows = stmt
-            .query_map(params![id, UNSURE_BELOW as f64], |r| Ok(FaceCard { face: r.get(0)?, photo: r.get(1)?, unsure: r.get::<_, i64>(2)? != 0, stack: r.get(0)? }))
+            .query_map(params![id, UNSURE_BELOW as f64], |r| Ok(FaceCard { face: r.get(0)?, photo: r.get(1)?, unsure: r.get::<_, i64>(2)? != 0, stack: r.get(0)?, taken: r.get(3)?, modified: r.get(4)? }))
             .map_err(|e| e.to_string())?
             .filter_map(Result::ok)
             .collect();

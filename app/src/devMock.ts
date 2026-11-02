@@ -97,7 +97,7 @@ for (const [i, name, taken] of [[10, "IMG_5000.ARW", "2026-01-05 09:00:00"], [11
 }
 
 const faceCards = (personId: number) =>
-  Array.from({ length: 26 }, (_, k) => ({ face: personId * 100 + k, photo: ((personId * 7 + k * 3) % PHOTO_N) + 1, unsure: k < 5 && personId % 2 === 1 }))
+  Array.from({ length: 26 }, (_, k) => ({ face: personId * 100 + k, photo: ((personId * 7 + k * 3) % PHOTO_N) + 1, unsure: k < 5 && personId % 2 === 1, stack: personId * 100 + k, taken: k % 7 === 6 ? null : `${2008 + ((k * 5) % 17)}:0${1 + (k % 9)}:1${k % 10} 12:00:00`, modified: 0 }))
 
 function respond(cmd: string, args: Record<string, unknown> = {}): unknown | Promise<unknown> {
   switch (cmd) {
