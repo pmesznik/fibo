@@ -131,7 +131,7 @@ export function PersonFacesView({ personId, name, onOpen, onPhotoGone, onChanged
             <button className="chip" onClick={confirmAll} onBlur={() => setSure(false)}>{sure ? `Na pewno? To wszystkie ${name}` : 'Potwierdź wszystkie'}</button>
           </h2>
           <p style={{ margin: '0 0 12px', color: 'var(--muted)', fontSize: 13 }}>
-            Program nie jest pewien, czy te twarze to „{name}”. Zatwierdź te, które pasują, a pozostałe odepnij. Podobne twarze z kilku zdjęć są ułożone w stosy z liczbą ×N: stos potwierdzasz lub odpinasz jednym kliknięciem albo rozwijasz.
+            Program nie jest pewien, czy te twarze to „{name}”, albo dopasował je sam. Zatwierdź te, które pasują, a pozostałe odepnij. Podobne twarze z kilku zdjęć są ułożone w stosy z liczbą ×N: stos potwierdzasz lub odpinasz jednym kliknięciem albo rozwijasz.
           </p>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14 }}>{[...stacks.entries()].map(([k, m]) => stackTile(k, m))}</div>
         </section>
