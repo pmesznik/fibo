@@ -152,7 +152,7 @@ export function People({ say, ask, onOpenPerson, onChanged, faceSize = 150, onFa
         {/* Jeden pasek: stan analizy z postępem, obok działania (od najczęstszych), a usuwanie danych osobno na końcu. */}
         <div className="glass toolbar" role="toolbar" aria-label="Rozpoznawanie twarzy">
           <div className="tb-status">
-            <div style={{ fontSize: 13.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <div style={{ fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {prog?.grouping ? 'Grupuję twarze w osoby…' : st.running ? 'Analizuję zdjęcia na tym komputerze…' : pending <= 0 ? 'Wszystkie zdjęcia przeanalizowane' : st.scanned === 0 ? 'Analiza jeszcze nie ruszyła' : `${fmt(pending)} ${pl(pending, 'zdjęcie czeka', 'zdjęcia czekają', 'zdjęć czeka')} na analizę`}
               <span style={{ color: 'var(--muted)' }}> · {fmt(st.scanned)} z {fmt(st.photos)}</span>
             </div>
@@ -163,7 +163,7 @@ export function People({ say, ask, onOpenPerson, onChanged, faceSize = 150, onFa
             {prog && !prog.finished && <div style={{ color: 'var(--muted)', fontSize: 12, marginTop: 4 }}>Przetworzono w tej sesji: {fmt(prog.done)} z {fmt(prog.total)}</div>}
           </div>
           {(st.running || pending > 0) && (
-            <button className="chip primary" onClick={toggleRun}>{st.running ? <><Pause size={15} /> Wstrzymaj</> : <><Play size={15} /> Wznów</>}</button>
+            <button className="chip accent" onClick={toggleRun}>{st.running ? <><Pause size={15} /> Wstrzymaj</> : <><Play size={15} /> Wznów</>}</button>
           )}
           <button className={`chip${st.autolearn ? ' on' : ''}`} role="switch" aria-checked={st.autolearn} onClick={async () => { try { await setFacesAutolearn(!st.autolearn); say(st.autolearn ? 'Samodzielne dopasowywanie twarzy wyłączone' : 'Program będzie co jakiś czas sam dopasowywał nierozpoznane twarze do znanych osób', 'ok'); await refresh() } catch (e) { say(`Błąd: ${e}`, 'err') } }}
             title={`${st.autolearn ? 'Włączone. ' : 'Wyłączone. '}Co kilka minut, gdy nic innego nie działa, program dopasowuje twarze bez osoby do znanych osób i łączy bardzo podobne grupy. Nie otwiera zdjęć i nie obciąża komputera.${st.learned > 0 ? ` Dopasowano dotąd: ${st.learned}.` : ''}`}>
@@ -209,7 +209,7 @@ export function People({ say, ask, onOpenPerson, onChanged, faceSize = 150, onFa
               </div>
               <div className="mt-2 truncate" style={{ fontWeight: 600 }}>{p.name ?? 'Nieznana osoba'}</div>
               <div style={{ color: 'var(--muted)', fontSize: 13 }}>{p.photos} {pl(p.photos, 'zdjęcie', 'zdjęcia', 'zdjęć')}</div>
-              {p.unsure > 0 && <div style={{ color: '#d97706', fontSize: 12.5, fontWeight: 600 }} title="Twarze, których program nie jest pewien">? {p.unsure} do potwierdzenia</div>}
+              {p.unsure > 0 && <div style={{ color: 'var(--warn)', fontSize: 13, fontWeight: 600 }} title="Twarze, których program nie jest pewien">? {p.unsure} do potwierdzenia</div>}
             </button>
             {(() => {
               const sg = !p.name && !p.ignored ? sugg.get(p.id) : undefined

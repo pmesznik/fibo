@@ -210,7 +210,7 @@ export function Duplicates({ all, suspended, onClose, onOpen, onTrashed, say }: 
                   <div key={dir} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <button className={`chip${rank >= 0 ? ' on' : ''}`} aria-pressed={rank >= 0} aria-label={`${rank >= 0 ? `Ważność ${rank + 1}: ` : 'Ustaw jako ważniejszy: '}${dir}`} onClick={() => pickFolder(dir)}
                       style={{ minWidth: 44, justifyContent: 'center' }}>{rank >= 0 ? `${rank + 1}` : '○'}</button>
-                    <span style={{ flex: 1, minWidth: 0, wordBreak: 'break-all', fontSize: 13.5, userSelect: 'text' }} title={dir}>{dir} <span style={{ color: 'var(--muted)' }}>({n})</span></span>
+                    <span style={{ flex: 1, minWidth: 0, wordBreak: 'break-all', fontSize: 14, userSelect: 'text' }} title={dir}>{dir} <span style={{ color: 'var(--muted)' }}>({n})</span></span>
                     <button className="ico" aria-label={`Pokaż w Eksploratorze: ${dir}`} title="Pokaż katalog w Eksploratorze" onClick={() => revealInExplorer(dir).catch((e) => say(`Nie udało się otworzyć Eksploratora: ${e}`, 'err'))}><FolderOpen size={17} /></button>
                   </div>
                 )
@@ -243,7 +243,7 @@ export function Duplicates({ all, suspended, onClose, onOpen, onTrashed, say }: 
                           <span className="chip" style={{ position: 'absolute', left: 6, top: 6, minHeight: 26, padding: '2px 9px', fontSize: 12, background: 'var(--panel)' }}>Duplikat</span>
                         )}
                       </button>
-                      <div className="truncate" style={{ fontWeight: 600, fontSize: 13.5, marginTop: 6 }} title={p.path}>{p.name}</div>
+                      <div className="truncate" style={{ fontWeight: 600, fontSize: 14, marginTop: 6 }} title={p.path}>{p.name}</div>
                       <small style={{ display: 'block', color: 'var(--muted)', fontSize: 12 }}>
                         {p.width ? `${p.width}×${p.height} px · ` : ''}{mb(p.size)}
                       </small>
@@ -265,7 +265,7 @@ export function Duplicates({ all, suspended, onClose, onOpen, onTrashed, say }: 
 
       {shown.length > 0 && (
         <div className="glass" style={{ position: 'fixed', zIndex: 5, left: '50%', transform: 'translateX(-50%)', bottom: 'calc(20px + var(--sab))', width: 'min(94vw, 560px)', borderRadius: 'var(--r-lg)', padding: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ flex: 1, minWidth: 0, paddingLeft: 6, fontSize: 13.5 }}>
+          <div style={{ flex: 1, minWidth: 0, paddingLeft: 6, fontSize: 14 }}>
             <b>{markedList.length}</b> do Kosza<div style={{ color: 'var(--muted)', fontSize: 12 }}>{mb(markedBytes)} do odzyskania</div>
           </div>
           <button className="danger" style={{ minHeight: 46 }} disabled={!markedList.length || deleting} onClick={() => setConfirm(true)}>

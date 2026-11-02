@@ -78,7 +78,7 @@ export function PersonPicker({ people, exclude, sugg, onPick, onNew }: {
       </div>
       {onNew && <button className="wide" style={{ marginTop: 0, marginBottom: 8 }} onClick={onNew}><Users size={16} /> Nowa osoba (osobna grupa)</button>}
       <div style={{ maxHeight: '38vh', overflowY: 'auto' }}>
-        {found ? (found.length ? found.map((p) => row(p, true)) : <p style={{ color: 'var(--muted)', fontSize: 13.5 }}>Nikogo takiego nie ma na liście.</p>) : (
+        {found ? (found.length ? found.map((p) => row(p, true)) : <p style={{ color: 'var(--muted)', fontSize: 14 }}>Nikogo takiego nie ma na liście.</p>) : (
           <>
             {ranked.length > 0 && <div style={{ fontSize: 12.5, color: 'var(--muted)', margin: '4px 2px' }}>Najbardziej podobne twarze</div>}
             {ranked.map((p) => row(p, true))}
@@ -151,7 +151,7 @@ function SharedPhotos({ a, b, onChanged }: { a: Person; b: Person; onChanged: ()
   if (list.length === 0) return null
   return (
     <div style={{ marginTop: 10 }}>
-      <div style={{ fontSize: 13.5, fontWeight: 600 }}>Zdjęcia, na których są obie osoby ({list.length})</div>
+      <div style={{ fontSize: 14, fontWeight: 600 }}>Zdjęcia, na których są obie osoby ({list.length})</div>
       <div style={{ fontSize: 12.5, color: 'var(--muted)', margin: '2px 0 8px' }}>
         A to „{nm(a)}”, B to „{nm(b)}”. Jeśli na zdjęciu to dwie różne twarze, osoby nie powinny być łączone. Jeśli któraś twarz jest przypisana błędnie, usuń to przypisanie przyciskiem pod zdjęciem.
       </div>
@@ -227,7 +227,7 @@ export function MergeDialog({ people, a, b: initialB, onClose, onDone, onFacesCh
         </div>
       </div>
       <FaceStrip id={p.id} />
-      <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, cursor: 'pointer', fontSize: 13.5 }}>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, cursor: 'pointer', fontSize: 14 }}>
         <input type="radio" name="keep" checked={keep === side} onChange={() => { setKeep(side); if (!bothNamed) setNameFrom(side) }} /> Zostaw tę osobę (druga do niej dołączy)
       </label>
     </div>
@@ -235,7 +235,7 @@ export function MergeDialog({ people, a, b: initialB, onClose, onDone, onFacesCh
 
   return (
     <Modal title="Połącz osoby" onClose={onClose} width={700}>
-      <p style={{ margin: '0 0 10px', color: 'var(--muted)', fontSize: 13.5 }}>
+      <p style={{ margin: '0 0 10px', color: 'var(--muted)', fontSize: 14 }}>
         Łącz tylko wtedy, gdy to na pewno ta sama osoba (np. dziecko w różnym wieku). Twarze obu osób trafią do jednej grupy.
       </p>
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'stretch' }}>
@@ -251,7 +251,7 @@ export function MergeDialog({ people, a, b: initialB, onClose, onDone, onFacesCh
       {b && (
         <>
           <div role="group" aria-label="Podobieństwo twarzy" style={{ marginTop: 14 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13.5 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>
               <span>Podobieństwo twarzy</span>
               <b>{s ? pct(s.score) : '…'}</b>
             </div>
@@ -262,7 +262,7 @@ export function MergeDialog({ people, a, b: initialB, onClose, onDone, onFacesCh
               {s ? (s.score >= 0.55 ? 'Bardzo podobne twarze.' : s.score >= 0.4 ? 'Podobne twarze (np. ta sama osoba w innym wieku).' : 'Twarze niezbyt podobne: obejrzyj dokładnie przed połączeniem.') : 'Liczę podobieństwo…'}
             </div>
             {s?.conflict && (
-              <div role="alert" style={{ marginTop: 8, padding: '8px 10px', borderRadius: 'var(--r-md)', background: 'color-mix(in srgb, var(--err) 14%, transparent)', color: 'var(--err)', fontSize: 13.5 }}>
+              <div role="alert" style={{ marginTop: 8, padding: '8px 10px', borderRadius: 'var(--r-md)', background: 'color-mix(in srgb, var(--err) 14%, transparent)', color: 'var(--err)', fontSize: 14 }}>
                 Te osoby występują razem na tym samym zdjęciu, więc to prawdopodobnie dwie różne osoby. Obejrzyj zdjęcia poniżej i zdecyduj.
               </div>
             )}
@@ -271,7 +271,7 @@ export function MergeDialog({ people, a, b: initialB, onClose, onDone, onFacesCh
 
           {bothNamed && (
             <fieldset style={{ border: 0, padding: 0, margin: '12px 0 0' }}>
-              <legend style={{ fontSize: 13.5, marginBottom: 4 }}>Obie osoby mają imię. Które zostaje?</legend>
+              <legend style={{ fontSize: 14, marginBottom: 4 }}>Obie osoby mają imię. Które zostaje?</legend>
               {(['a', 'b'] as const).map((side) => (
                 <label key={side} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginRight: 16, cursor: 'pointer' }}>
                   <input type="radio" name="nm" checked={nameFrom === side} onChange={() => setNameFrom(side)} /> {side === 'a' ? a.name : b.name}
@@ -322,7 +322,7 @@ export function MoveFacesDialog({ personId, personName, photoIds, onClose, onDon
   }
   return (
     <Modal title="Przenieś do innej osoby" onClose={onClose} width={520}>
-      <p style={{ margin: '0 0 8px', color: 'var(--muted)', fontSize: 13.5 }}>
+      <p style={{ margin: '0 0 8px', color: 'var(--muted)', fontSize: 14 }}>
         Na {photoIds.length === 1 ? 'tym zdjęciu' : `tych ${photoIds.length} zdjęciach`} twarz „{personName}” nie pasuje. Wskaż, kim jest naprawdę. Pomyłkę można poprawić tą samą drogą.
       </p>
       <div aria-busy={busy}>

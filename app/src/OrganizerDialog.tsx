@@ -126,7 +126,7 @@ export function OrganizerDialog({ selected, visible, onDone, onClose, say }: {
 
           {last && (
             <section className="sec" style={{ marginTop: 12 }}>
-              <b style={{ fontSize: 14.5 }}>Ostatnie porządkowanie</b>
+              <b style={{ fontSize: 15 }}>Ostatnie porządkowanie</b>
               <div style={{ color: 'var(--muted)', fontSize: 13, margin: '2px 0 8px' }}>
                 {new Date(last.batch).toLocaleString('pl-PL', { dateStyle: 'medium', timeStyle: 'short' })}: {last.count} {pl(last.count, 'zdjęcie', 'zdjęcia', 'zdjęć')}. Cofnięcie przenosi je na dawne miejsca i usuwa puste foldery.
               </div>

@@ -44,8 +44,8 @@ export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
       <dl style={{ margin: 0 }}>
         {SHORTCUTS.map(([k, d]) => (
           <div key={k} style={{ display: 'flex', gap: 12, padding: '6px 0', borderBottom: '1px solid var(--glass-line)' }}>
-            <dt style={{ flex: '0 0 180px', fontWeight: 650, fontSize: 13.5 }}>{k}</dt>
-            <dd style={{ margin: 0, color: 'var(--muted)', fontSize: 13.5 }}>{d}</dd>
+            <dt style={{ flex: '0 0 180px', fontWeight: 650, fontSize: 14 }}>{k}</dt>
+            <dd style={{ margin: 0, color: 'var(--muted)', fontSize: 14 }}>{d}</dd>
           </div>
         ))}
       </dl>
@@ -104,7 +104,7 @@ export function StatsDialog({ photos, onClose }: { photos: Photo[]; onClose: () 
         <>
           <h3 style={{ margin: '14px 0 6px', fontSize: 14 }}>Najczęstsze aparaty</h3>
           {s.cams.map(([c, n]) => (
-            <div key={c} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13.5, padding: '3px 0' }}><span className="truncate">{c}</span><b>{n}</b></div>
+            <div key={c} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, padding: '3px 0' }}><span className="truncate">{c}</span><b>{n}</b></div>
           ))}
         </>
       )}

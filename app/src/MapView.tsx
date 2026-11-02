@@ -304,7 +304,7 @@ export function MapView({ photos, total, refreshing, onRefresh, onOpen }: {
         <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', pointerEvents: 'none' }}><div className="glass" style={{ width: 'min(92vw,380px)', borderRadius: 'var(--r-lg)', padding: 24, textAlign: 'center', color: 'var(--muted)', pointerEvents: 'auto' }}>
           <div>
             <p style={{ margin: '0 0 6px', fontWeight: 650, color: 'var(--text)', fontSize: 16 }}>Nie można wczytać mapy</p>
-            <p style={{ margin: 0, fontSize: 13.5 }}>Mapa pobiera kafelki z internetu. Sprawdź połączenie i wróć do tej zakładki.</p>
+            <p style={{ margin: 0, fontSize: 14 }}>Mapa pobiera kafelki z internetu. Sprawdź połączenie i wróć do tej zakładki.</p>
           </div></div>
         </div>
       )}
@@ -341,7 +341,7 @@ export function MapView({ photos, total, refreshing, onRefresh, onOpen }: {
         style={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)', bottom: 'calc(12px + var(--sab))', width: 'min(94vw, 560px)', padding: '8px 12px', borderRadius: 'var(--r-lg)', display: 'flex', alignItems: 'center', gap: 8, zIndex: 5 }}>
         <span aria-hidden style={{ color: 'var(--accent)', display: 'inline-flex' }}><Sun size={20} /></span>
         <div style={{ minWidth: 0, flex: '0 0 auto', lineHeight: 1.2 }}>
-          <div style={{ fontWeight: 650, fontSize: 13.5 }} aria-live="off">{clockText}</div>
+          <div style={{ fontWeight: 650, fontSize: 14 }} aria-live="off">{clockText}</div>
           <div style={{ color: 'var(--muted)', fontSize: 12 }}>{mode === 'live' ? 'teraz, czas lokalny' : offsetLabel(offset)}</div>
         </div>
         <input type="range" min={-RANGE} max={RANGE} step={5} value={Math.round(offset)} aria-label="Godzina na mapie względem teraz"

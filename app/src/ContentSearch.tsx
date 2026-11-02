@@ -87,7 +87,7 @@ export function ContentSearch({ onResults, onClose, say }: {
           <div className="chips" style={{ marginTop: 10 }} aria-label="Przykłady">
             {EXAMPLES.map((w) => <button key={w} className="chip" onClick={() => { setQ(w); search(w) }}>{w}</button>)}
           </div>
-          {note && <p role="status" style={{ margin: '12px 0 0', fontSize: 13.5 }}>{note}</p>}
+          {note && <p role="status" style={{ margin: '12px 0 0', fontSize: 14 }}>{note}</p>}
 
           <section className="sec" style={{ marginTop: 16 }}>
             <h3 className="sec-h" style={{ margin: 0 }}>Indeksowanie zdjęć</h3>
@@ -95,7 +95,7 @@ export function ContentSearch({ onResults, onClose, say }: {
             {st && !st.models_ok && <p style={{ color: 'var(--err)', fontSize: 13 }}>Ta wersja programu nie ma modelu rozpoznawania treści zdjęć.</p>}
             {st && st.models_ok && (
               <>
-                <p style={{ margin: '6px 0 8px', fontSize: 13.5 }}>
+                <p style={{ margin: '6px 0 8px', fontSize: 14 }}>
                   {pending <= 0 ? 'Wszystkie zdjęcia są zaindeksowane.' : st.running ? 'Indeksuję zdjęcia w tle…' : st.indexed === 0 ? 'Zdjęcia nie zostały jeszcze zaindeksowane.' : 'Część zdjęć czeka na zaindeksowanie.'}{' '}
                   <b>{st.indexed.toLocaleString('pl-PL')}</b> z {st.total.toLocaleString('pl-PL')} ({pct}%)
                 </p>

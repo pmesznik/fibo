@@ -55,7 +55,7 @@ export function CheckDialog({ onClose, onChanged, say }: { onClose: () => void; 
                 {result.slice(0, 200).map((b) => (
                   <div key={b.id} className="item" style={{ display: 'flex', alignItems: 'center', gap: 8, margin: 0 }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ wordBreak: 'break-all', fontSize: 13.5, userSelect: 'text' }}>{b.path}</div>
+                      <div style={{ wordBreak: 'break-all', fontSize: 14, userSelect: 'text' }}>{b.path}</div>
                       <small style={{ color: 'var(--err)' }}>{b.error}</small>
                     </div>
                     <button className="ico" aria-label={`Pokaż w Eksploratorze: ${b.path}`} title="Pokaż w Eksploratorze" onClick={() => revealInExplorer(b.path).catch((e) => say(`Nie udało się otworzyć Eksploratora: ${e}`, 'err'))}><FolderOpen size={17} /></button>

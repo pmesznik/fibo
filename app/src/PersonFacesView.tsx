@@ -91,7 +91,7 @@ export function PersonFacesView({ personId, name, onOpen, onPhotoGone, onChanged
     if (members.length < 2) return tile(members[0])
     if (open.has(key)) {
       return (
-        <div key={`s${key}`} style={{ display: 'flex', flexWrap: 'wrap', gap: 14, padding: 8, borderRadius: 'var(--r-card)', outline: '2px dashed #f28b1c', outlineOffset: -2 }}>
+        <div key={`s${key}`} style={{ display: 'flex', flexWrap: 'wrap', gap: 14, padding: 8, borderRadius: 'var(--r-card)', outline: '2px dashed var(--warn)', outlineOffset: -2 }}>
           {members.map(tile)}
           <button className="chip" style={{ alignSelf: 'center' }} onClick={() => setOpen((o) => { const n = new Set(o); n.delete(key); return n })}>Zwiń stos</button>
         </div>
@@ -106,7 +106,7 @@ export function PersonFacesView({ personId, name, onOpen, onPhotoGone, onChanged
             onClick={() => setOpen((o) => new Set(o).add(key))}>
             <FaceImg id={members[0].face} size={TILE} />
           </button>
-          <span style={{ position: 'absolute', right: 6, bottom: 6, background: '#f28b1c', color: '#fff', borderRadius: 999, padding: '1px 9px', font: '700 13px system-ui' }}>×{members.length}</span>
+          <span style={{ position: 'absolute', right: 6, bottom: 6, background: 'var(--warn)', color: '#fff', borderRadius: 999, padding: '1px 9px', font: '700 13px system-ui' }}>×{members.length}</span>
         </div>
         <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: 5 }}>
           <button className="fc-btn fc-yes" aria-label={`Potwierdź cały stos: to ${name} (${members.length} twarzy)`} title="To ta osoba: cały stos" onClick={() => confirmStack(members)}><Check size={14} strokeWidth={3} /></button>
@@ -122,7 +122,7 @@ export function PersonFacesView({ personId, name, onOpen, onPhotoGone, onChanged
           <FaceImg id={c.face} size={TILE} />
         </button>
         {c.unsure && (
-          <span aria-hidden title="Program nie jest pewien, czy to ta osoba" style={{ position: 'absolute', left: 0, bottom: 0, width: 38, height: 38, background: '#f28b1c', clipPath: 'polygon(0 0, 0 100%, 100% 100%)', color: '#fff', fontWeight: 800, fontSize: 14, display: 'flex', alignItems: 'flex-end', paddingLeft: 6, paddingBottom: 3 }}>?</span>
+          <span aria-hidden title="Program nie jest pewien, czy to ta osoba" style={{ position: 'absolute', left: 0, bottom: 0, width: 38, height: 38, background: 'var(--warn)', clipPath: 'polygon(0 0, 0 100%, 100% 100%)', color: '#fff', fontWeight: 800, fontSize: 14, display: 'flex', alignItems: 'flex-end', paddingLeft: 6, paddingBottom: 3 }}>?</span>
         )}
         {!c.unsure && (
           <button className="bare opacity-0 transition group-hover:opacity-100 focus:opacity-100" aria-label={`To nie ${name}: odepnij twarz`} title="To nie ta osoba"
@@ -142,9 +142,9 @@ export function PersonFacesView({ personId, name, onOpen, onPhotoGone, onChanged
     <div>
       {unsure.length > 0 && (
         <section style={{ marginBottom: 26 }}>
-          <h2 style={{ margin: '0 0 6px', font: '650 18px/1.2 system-ui', display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+          <h2 className="h-sec" style={{ marginBottom: 6 }}>
             Do potwierdzenia
-            <span style={{ font: '400 13px system-ui', color: 'var(--muted)' }}>{unsure.length} {pl(unsure.length, 'twarz', 'twarze', 'twarzy')}</span>
+            <small>{unsure.length} {pl(unsure.length, 'twarz', 'twarze', 'twarzy')}</small>
             <button className="chip" onClick={confirmAll} onBlur={() => setSure(false)}>{sure ? `Na pewno? To wszystkie ${name}` : 'Potwierdź wszystkie'}</button>
             <button className="chip" onClick={rejectAll} onBlur={() => setSureNo(false)} title="Odpina wszystkie te twarze od osoby. Wracają do nierozpoznanych, nic nie jest usuwane">{sureNo ? `Na pewno? To nie ${name}` : 'Odrzuć wszystkie'}</button>
           </h2>
@@ -155,9 +155,9 @@ export function PersonFacesView({ personId, name, onOpen, onPhotoGone, onChanged
         </section>
       )}
       <section>
-        <h2 style={{ margin: '0 0 12px', font: '650 18px/1.2 system-ui', display: 'flex', alignItems: 'baseline', gap: 10 }}>
+        <h2 className="h-sec">
           {unsure.length > 0 ? 'Potwierdzone' : 'Twarze'}
-          <span style={{ font: '400 13px system-ui', color: 'var(--muted)' }}>{done.length} {pl(done.length, 'twarz', 'twarze', 'twarzy')}</span>
+          <small>{done.length} {pl(done.length, 'twarz', 'twarze', 'twarzy')}</small>
         </h2>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14 }}>{done.map(tile)}</div>
       </section>

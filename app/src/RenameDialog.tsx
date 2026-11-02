@@ -55,7 +55,7 @@ export function RenameDialog({ photos, onClose, onDone, say }: {
           <label htmlFor="rn-start">Numer początkowy</label>
           <input id="rn-start" type="number" min={0} max={1000000} value={start} onChange={(e) => setStart(Math.max(0, Math.min(1000000, Math.floor(+e.target.value || 0))))} />
           <div style={{ marginTop: 12, fontSize: 13, color: 'var(--muted)' }}>Podgląd:</div>
-          <ul style={{ margin: '4px 0 0', paddingLeft: 18, fontSize: 13.5 }}>
+          <ul style={{ margin: '4px 0 0', paddingLeft: 18, fontSize: 14 }}>
             {photos.slice(0, 3).map((p, i) => <li key={p.id}>{p.name} → <b>{stem(p, i)}{ext(p)}</b></li>)}
             {photos.length > 3 && <li style={{ color: 'var(--muted)' }}>… i {photos.length - 3} więcej</li>}
           </ul>

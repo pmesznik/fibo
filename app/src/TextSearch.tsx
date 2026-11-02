@@ -87,7 +87,7 @@ export function TextSearch({ onResults, onClose, say }: {
                 <input id="ocr-q" type="search" autoComplete="off" maxLength={200} placeholder="np. paragon, Biedronka, 123-456" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') search() }} />
                 <button className="chip on" disabled={busy || !q.trim()} onClick={search}>{busy ? 'Szukam…' : 'Szukaj'}</button>
               </div>
-              {note && <p style={{ margin: '10px 0 4px', fontSize: 13.5 }} aria-live="polite">{note}</p>}
+              {note && <p style={{ margin: '10px 0 4px', fontSize: 14 }} aria-live="polite">{note}</p>}
               {snips.length > 0 && (
                 <ul style={{ margin: 0, padding: 0, listStyle: 'none', fontSize: 13, color: 'var(--muted)' }}>
                   {snips.map((s) => <li key={s.id} style={{ padding: '2px 0' }}>{s.text}</li>)}

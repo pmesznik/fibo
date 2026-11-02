@@ -74,7 +74,7 @@ export function LibraryCalendar({ photos, onOpenDay, onClose }: {
                   onClick={() => { onOpenDay(list.map((p) => p.id), `${d} ${MONTHS_GEN[cur.month - 1]} ${cur.year}`); onClose() }}>
                   <Thumb photo={list[0]} />
                   <span className="absolute left-1 top-1 rounded px-1" style={{ background: 'rgba(0,0,0,.6)', color: '#fff', fontSize: 12, fontWeight: 700 }}>{d}</span>
-                  {list.length > 1 && <span className="absolute bottom-1 right-1 rounded-full px-1.5" style={{ background: 'var(--accent)', color: '#fff', fontSize: 11.5, fontWeight: 700 }}>{list.length}</span>}
+                  {list.length > 1 && <span className="absolute bottom-1 right-1 rounded-full px-1.5" style={{ background: 'var(--accent)', color: '#fff', fontSize: 12, fontWeight: 700 }}>{list.length}</span>}
                 </button>
               )
             })}

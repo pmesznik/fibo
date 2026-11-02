@@ -125,7 +125,7 @@ function Card({ job, min, compact, onMin, onStop, onResume }: { job: Job; min: b
   return (
     <div className={`glass pd-card${compact ? ' pd-compact' : ''}${halted || job.stopping ? ' pd-halt' : ''}`} role="group" aria-label={title}>
       <div className="pd-head">
-        <span className="pd-ico" style={{ color: halted || job.stopping ? '#e0900f' : job.finished && !job.error ? 'var(--ok, #2e9d5b)' : 'var(--accent)' }}>{halted || job.stopping ? <Pause size={18} /> : job.finished && !job.error ? <Check size={18} /> : <Icon size={18} />}</span>
+        <span className="pd-ico" style={{ color: halted || job.stopping ? 'var(--warn)' : job.finished && !job.error ? 'var(--ok)' : 'var(--accent)' }}>{halted || job.stopping ? <Pause size={18} /> : job.finished && !job.error ? <Check size={18} /> : <Icon size={18} />}</span>
         <span className="pd-title">{title}</span>
         <button className="ico pd-btn" aria-label={min ? 'Rozwiń okno postępu' : 'Zwiń okno postępu'} title={min ? 'Rozwiń' : 'Zwiń'} onClick={onMin}>{min ? '▴' : '▾'}</button>
       </div>

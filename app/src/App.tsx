@@ -1191,8 +1191,8 @@ export default function App() {
           <span className="absolute bottom-2 right-2 flex items-center gap-1" aria-hidden>
             {p.edited && <span title="Zdjęcie ma zapisaną edycję (oryginał bez zmian)" style={{ display: 'grid', placeItems: 'center', width: 20, height: 20, borderRadius: 6, background: 'rgba(0,0,0,.62)', color: '#fff' }}><Pencil size={12} /></span>}
             {labelOf(p) !== 0 && <span style={{ width: 15, height: 15, borderRadius: '50%', background: LABELS[labelOf(p) - 1].css, border: '1.5px solid #fff', boxShadow: '0 1px 3px rgba(0,0,0,.5)' }} />}
-            {flagOf(p) === 1 && <span style={{ display: 'grid', placeItems: 'center', width: 20, height: 20, borderRadius: 6, background: '#30a46c', color: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,.5)' }}><Check size={13} strokeWidth={3} /></span>}
-            {flagOf(p) === -1 && <span style={{ display: 'grid', placeItems: 'center', width: 20, height: 20, borderRadius: 6, background: '#e5484d', color: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,.5)' }}><X size={13} strokeWidth={3} /></span>}
+            {flagOf(p) === 1 && <span style={{ display: 'grid', placeItems: 'center', width: 20, height: 20, borderRadius: 6, background: 'var(--ok)', color: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,.5)' }}><Check size={13} strokeWidth={3} /></span>}
+            {flagOf(p) === -1 && <span style={{ display: 'grid', placeItems: 'center', width: 20, height: 20, borderRadius: 6, background: 'var(--err)', color: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,.5)' }}><X size={13} strokeWidth={3} /></span>}
           </span>
         )}
         {p.favorite && <Heart size={16} className="absolute right-2 top-2 fill-rose-400 text-rose-400" style={{ filter: 'drop-shadow(0 1px 2px rgba(0,0,0,.6))' }} />}
@@ -1248,41 +1248,54 @@ export default function App() {
             <input id="q" type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="np. wakacje" />
           </div>
 
-          <div>
-            <h5>Szybkie akcje</h5>
-            <div className="grid grid-cols-2 gap-2">
-              {[
+          <div style={{ display: 'grid', gap: 16 }}>
+            {/* Szybkie akcje w grupach według tego, do czego służą; włączona funkcja ma wyraźne wypełnienie i aria-pressed. */}
+            {([
+              ['Dodawanie zdjęć', [
                 { icon: ImageUp, label: 'Dodaj folder', fn: () => addFolder(true), on: false },
                 { icon: ImageUp, label: 'Dodaj folder jednorazowo', fn: () => addFolder(false), on: false },
-                { icon: Info, label: 'Sprawdź pliki', fn: () => { setDrawer(false); setHelpDlg('check') }, on: false },
                 { icon: Download, label: 'Importuj z karty', fn: () => importFromCard(), on: false },
-                { icon: ListChecks, label: 'Statystyki', fn: () => { setDrawer(false); setHelpDlg('stats') }, on: false },
-                { icon: SlidersHorizontal, label: 'Skróty klawiszowe', fn: () => { setDrawer(false); setHelpDlg('keys') }, on: false },
+                { icon: Info, label: 'Sprawdź pliki', fn: () => { setDrawer(false); setHelpDlg('check') }, on: false },
+                { icon: RefreshCw, label: refreshing ? 'Odświeżanie…' : 'Odśwież dane zdjęć', fn: () => { setDrawer(false); refresh() }, on: false },
+              ]],
+              ['Oglądanie', [
                 { icon: Play, label: 'Pokaz slajdów', fn: slideshow, on: false },
+                { icon: Play, label: saverLabel(saverMin), fn: cycleSaver, on: saverMin > 0 },
                 { icon: ListChecks, label: selectMode ? 'Zaznaczanie włączone' : 'Zaznaczanie wielu', fn: () => { setSelectMode((v) => !v); setDrawer(false) }, on: selectMode },
-                { icon: LayoutDashboard, label: chosen.length > 1 ? `Kolaż (${chosen.length})` : 'Kolaż', fn: () => { setDrawer(false); startCollage() }, on: false },
-                { icon: FolderOpen, label: 'Porządkuj według daty', fn: () => { setDrawer(false); setOrganizeOpen(true) }, on: false },
-                { icon: SearchIcon, label: 'Szukaj po treści zdjęć', fn: () => { setDrawer(false); setContentOpen(true) }, on: false },
+                { icon: CalendarDays, label: 'Widok kalendarza', fn: () => { setDrawer(false); setDayViewOpen(true) }, on: false },
                 { icon: CalendarDays, label: 'Wydarzenia i podróże', fn: () => { setDrawer(false); setEventsOpen(true) }, on: false },
-                { icon: Images, label: 'Fotoksiążka (PDF)', fn: () => { setDrawer(false); setBookOpen(true) }, on: false },
+              ]],
+              ['Szukanie i porządki', [
+                { icon: SearchIcon, label: 'Szukaj po treści zdjęć', fn: () => { setDrawer(false); setContentOpen(true) }, on: false },
                 { icon: SearchIcon, label: 'Szukaj tekstu na zdjęciach', fn: () => { setDrawer(false); setTextSearchOpen(true) }, on: false },
                 { icon: Tag, label: 'Podpowiedzi tagów', fn: () => { setDrawer(false); setTagSuggestOpen(true) }, on: false },
                 { icon: Heart, label: 'Zwierzęta domowe', fn: () => { setDrawer(false); setPetsOpen(true) }, on: false },
-                { icon: Compare, label: 'Przegląd jakości zdjęć', fn: () => { setDrawer(false); setQualityOpen(true) }, on: false },
-                { icon: CalendarDays, label: 'Widok kalendarza', fn: () => { setDrawer(false); setDayViewOpen(true) }, on: false },
-                { icon: CalendarDays, label: 'Kalendarz do wydruku', fn: () => { setDrawer(false); setCalOpen(true) }, on: false },
                 { icon: Copy, label: 'Duplikaty', fn: () => { setDrawer(false); setDupOpen(true) }, on: false },
-                { icon: Play, label: saverLabel(saverMin), fn: cycleSaver, on: saverMin > 0 },
-                { icon: RefreshCw, label: refreshing ? 'Odświeżanie…' : 'Odśwież dane zdjęć', fn: () => { setDrawer(false); refresh() }, on: false },
+                { icon: Compare, label: 'Przegląd jakości zdjęć', fn: () => { setDrawer(false); setQualityOpen(true) }, on: false },
+                { icon: FolderOpen, label: 'Porządkuj według daty', fn: () => { setDrawer(false); setOrganizeOpen(true) }, on: false },
+              ]],
+              ['Tworzenie', [
+                { icon: LayoutDashboard, label: chosen.length > 1 ? `Kolaż (${chosen.length})` : 'Kolaż', fn: () => { setDrawer(false); startCollage() }, on: false },
+                { icon: Images, label: 'Fotoksiążka (PDF)', fn: () => { setDrawer(false); setBookOpen(true) }, on: false },
+                { icon: CalendarDays, label: 'Kalendarz do wydruku', fn: () => { setDrawer(false); setCalOpen(true) }, on: false },
+              ]],
+              ['Program', [
+                { icon: ListChecks, label: 'Statystyki', fn: () => { setDrawer(false); setHelpDlg('stats') }, on: false },
+                { icon: SlidersHorizontal, label: 'Skróty klawiszowe', fn: () => { setDrawer(false); setHelpDlg('keys') }, on: false },
                 { icon: Download, label: updater.phase === 'checking' ? 'Sprawdzam…' : 'Sprawdź aktualizacje', fn: () => { setDrawer(false); updater.checkNow(true) }, on: false },
-                // Ręczne sprawdzenie pokazuje wynik w oknie na środku; automatycznie FIBO pyta raz dziennie.
-              ].map((a) => (
-                <button key={a.label} onClick={a.fn} aria-pressed={a.on} className="flex flex-col items-center gap-2 text-center"
-                  style={{ background: a.on ? 'color-mix(in srgb, var(--accent) 28%, var(--panel))' : 'var(--tonal)', border: 0, minHeight: 84, fontWeight: 600, fontSize: 13.5 }}>
-                  <a.icon size={24} strokeWidth={1.7} style={{ color: 'var(--accent)' }} />{a.label}
-                </button>
-              ))}
-            </div>
+              ]],
+            ] as [string, { icon: typeof Play; label: string; fn: () => void; on: boolean }[]][]).map(([title, list]) => (
+              <div key={title}>
+                <h5>{title}</h5>
+                <div className="qa-grid">
+                  {list.map((a) => (
+                    <button key={a.label} onClick={a.fn} aria-pressed={a.on} className={`qa${a.on ? ' on' : ''}`}>
+                      <a.icon size={22} strokeWidth={1.7} />{a.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
 
           <div>
@@ -1527,13 +1540,13 @@ export default function App() {
                 const pr = albumId !== null ? propOf.get(`album:${albumId}`) : folder ? propOf.get(`folder:${folder}`) : undefined
                 if (!pr) return null
                 const meta = [pr.date && pr.date.split('-').reverse().join('.'), pr.place].filter(Boolean).join(' · ')
-                return <div style={{ marginTop: 6, fontSize: 13.5 }}>{meta && <b>{meta}</b>}{meta && pr.description ? ' · ' : ''}<span style={{ color: 'var(--muted)' }}>{pr.description}</span></div>
+                return <div style={{ marginTop: 6, fontSize: 14 }}>{meta && <b>{meta}</b>}{meta && pr.description ? ' · ' : ''}<span style={{ color: 'var(--muted)' }}>{pr.description}</span></div>
               })()}
               {mode === 'library' && !person && !folder && albumId === null && !query && !trayView && !memDismissed && memories.length > 0 && (
                 <div className="glass" role="region" aria-label="Wspomnienia z tego dnia" style={{ marginTop: 12, borderRadius: 'var(--r-lg)', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                   <CalendarDays size={18} style={{ color: 'var(--accent)', flex: 'none' }} />
                   <div style={{ flex: '1 1 160px', minWidth: 0 }}>
-                    <b style={{ fontSize: 14.5 }}>Tego dnia ({dayLabel(today)})</b>
+                    <b style={{ fontSize: 15 }}>Tego dnia ({dayLabel(today)})</b>
                     <div style={{ color: 'var(--muted)', fontSize: 13 }}>{memories.reduce((n, m) => n + m.ids.length, 0)} {pl(memories.reduce((n, m) => n + m.ids.length, 0), 'zdjęcie', 'zdjęcia', 'zdjęć')} z poprzednich lat</div>
                   </div>
                   <div className="chips" style={{ flex: '2 1 240px' }}>
@@ -1615,7 +1628,7 @@ export default function App() {
             {sections.map((s) => (
               <section key={s.key} id={`g-${s.key}`} style={{ marginBottom: 28, scrollMarginTop: 'calc(82px + var(--sat))' }}>
                 {s.title && (
-                  <h2 style={{ margin: '0 0 12px', font: '650 18px/1.2 system-ui', display: 'flex', alignItems: 'baseline', gap: 10 }}>
+                  <h2 className="h-sec">
                     {s.title}<span style={{ font: '400 13px system-ui', color: 'var(--muted)' }}>{s.items.length} {pl(s.items.length, 'zdjęcie', 'zdjęcia', 'zdjęć')}</span>
                   </h2>
                 )}
@@ -1636,7 +1649,7 @@ export default function App() {
             <h1 style={{ margin: '0 0 14px', font: '700 22px/1.2 system-ui' }}>Albumy</h1>
 
             <section style={{ marginBottom: 28 }}>
-              <h2 style={{ margin: '0 0 12px', font: '650 18px/1.2 system-ui', display: 'flex', alignItems: 'center', gap: 12 }}>
+              <h2 className="h-sec" style={{ alignItems: 'center' }}>
                 Moje albumy
                 <button className="chip" onClick={() => { setSel([]); newAlbum(false) }}><Plus size={14} /> Nowy album</button>
                 {hiddenAlbums.length > 0 && <button className="chip" onClick={() => setShowHiddenAlbums((v) => !v)}>{showHiddenAlbums ? <EyeOff size={14} /> : <Eye size={14} />} {showHiddenAlbums ? 'Schowaj ukryte albumy' : `Pokaż ukryte albumy (${hiddenAlbums.length})`}</button>}
@@ -1672,7 +1685,7 @@ export default function App() {
             </section>
 
             <section style={{ marginBottom: 28 }}>
-              <h2 style={{ margin: '0 0 12px', font: '650 18px/1.2 system-ui' }}>Albumy inteligentne</h2>
+              <h2 className="h-sec">Albumy inteligentne</h2>
               {smart.length === 0 ? (
                 <p style={{ margin: 0, color: 'var(--muted)', fontSize: 14 }}>Ustaw filtry w bibliotece (szukanie, ocena, daty, braki, tagi) i kliknij „Zapisz jako album inteligentny”. Album sam pokaże wszystkie pasujące zdjęcia, także te dodane później.</p>
               ) : (
@@ -1687,11 +1700,11 @@ export default function App() {
               )}
             </section>
 
-            <h2 style={{ margin: '0 0 12px', font: '650 18px/1.2 system-ui' }}>Foldery</h2>
+            <h2 className="h-sec">Foldery</h2>
             {folders.length === 0 && <div className="empty" style={{ height: '30vh' }}>Brak folderów. Kliknij „Dodaj folder” i wskaż folder ze zdjęciami.</div>}
             {foldersByYear.map((g) => (
               <section key={g.year} style={{ marginBottom: 28 }}>
-                <h2 style={{ margin: '0 0 12px', font: '650 18px/1.2 system-ui' }}>{g.year}</h2>
+                <h2 className="h-sec">{g.year}</h2>
                 <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${size + 40}px, 1fr))` }}>
                   {g.items.map(([dir, list, newest]) => (
                     <div key={dir}>
@@ -1825,7 +1838,7 @@ export default function App() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 2, padding: '2px 6px' }} role="group" aria-label="Ocena">
               <span style={{ fontSize: 13, color: 'var(--muted)', width: 52 }}>Ocena</span>
               {[1, 2, 3, 4, 5].map((n) => (
-                <button key={n} className="ico" style={{ minWidth: 34, minHeight: 36, color: '#f5b301' }} aria-label={`Ocena ${n}`} onClick={() => rateSelected(n)}><Star size={17} /></button>
+                <button key={n} className="ico" style={{ minWidth: 34, minHeight: 36, color: 'var(--star)' }} aria-label={`Ocena ${n}`} onClick={() => rateSelected(n)}><Star size={17} /></button>
               ))}
               <button className="ico" style={{ minWidth: 34, minHeight: 36 }} aria-label="Wyczyść ocenę" title="Wyczyść ocenę" onClick={() => rateSelected(0)}><X size={16} /></button>
             </div>
@@ -1917,7 +1930,7 @@ export default function App() {
       {tray.length > 0 && (
         <div className="glass fixed flex flex-wrap items-center gap-1" role="group" aria-label="Taca zdjęć"
           style={{ left: 16, bottom: 'calc(16px + var(--sab))', zIndex: 1040, padding: '6px 8px 6px 14px', borderRadius: 'var(--r-lg)', maxWidth: 'min(94vw, 760px)' }}>
-          <span style={{ fontWeight: 650, fontSize: 13.5, marginRight: 4 }}>Taca: {tray.length}</span>
+          <span style={{ fontWeight: 650, fontSize: 14, marginRight: 4 }}>Taca: {tray.length}</span>
           {realIds().length > 0 && <button className="chip" title="Dodaj zaznaczone zdjęcia do tacy" onClick={() => { const n = new Set([...tray, ...realIds()]); setTray([...n]); say(`Dodano do tacy (razem ${n.size})`, 'ok') }}>Zatrzymaj zaznaczone</button>}
           <button className={`chip${trayView ? ' on' : ''}`} aria-pressed={trayView} onClick={() => { setTrayView((v) => !v); setMode('library'); setAlbumId(null); setFolder(null) }}>{trayView ? 'Pokaż wszystko' : 'Pokaż tacę'}</button>
           <button className="chip" onClick={() => { setSel([...tray]); say(`Zaznaczono z tacy: ${tray.length}. Kliknij prawym przyciskiem, żeby wybrać akcję`, 'ok') }}>Zaznacz</button>

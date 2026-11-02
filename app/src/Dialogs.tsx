@@ -48,7 +48,7 @@ export function PromptDialog({ title, label, initial = '', confirm, hint, onSubm
       <input id="prompt-input" ref={input} type="text" value={value} onChange={(e) => { setValue(e.target.value); setError(null) }}
         onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submit() } }} autoComplete="off" />
       {hint && !error && <p style={{ margin: '8px 2px 0', fontSize: 13, color: 'var(--muted)' }}>{hint}</p>}
-      {error && <p role="alert" style={{ margin: '8px 2px 0', fontSize: 13.5, color: 'var(--err)' }}>{error}</p>}
+      {error && <p role="alert" style={{ margin: '8px 2px 0', fontSize: 14, color: 'var(--err)' }}>{error}</p>}
       <button className="primary" style={{ marginTop: 14 }} disabled={busy || !value.trim()} onClick={submit}>{busy ? 'Chwila…' : confirm}</button>
       <button className="wide" onClick={onClose}>Anuluj</button>
     </Shell>
@@ -65,11 +65,11 @@ export function AlbumPicker({ albums, count, onPick, onCreate, onClose }: {
 }) {
   return (
     <Shell title="Dodaj do albumu" onClose={onClose} label="Dodaj do albumu">
-      <p style={{ margin: '0 0 10px', color: 'var(--muted)', fontSize: 13.5 }}>
+      <p style={{ margin: '0 0 10px', color: 'var(--muted)', fontSize: 14 }}>
         {count} {pl(count, 'zdjęcie', 'zdjęcia', 'zdjęć')}. Zdjęcie może być w wielu albumach, a pliki zostają na swoim miejscu.
       </p>
       <button className="wide" style={{ marginTop: 0 }} onClick={onCreate}><Plus size={18} /> Nowy album…</button>
-      {albums.length === 0 && <p style={{ margin: '12px 2px 0', color: 'var(--muted)', fontSize: 13.5 }}>Nie masz jeszcze albumów. Załóż pierwszy przyciskiem powyżej.</p>}
+      {albums.length === 0 && <p style={{ margin: '12px 2px 0', color: 'var(--muted)', fontSize: 14 }}>Nie masz jeszcze albumów. Załóż pierwszy przyciskiem powyżej.</p>}
       {albums.map((a) => (
         <button key={a.id} className="item" style={{ width: '100%', textAlign: 'left', cursor: 'pointer', color: 'var(--text)' }} onClick={() => onPick(a)}>
           <span className="ico" style={{ display: 'grid', placeItems: 'center', color: 'var(--accent)' }}><FolderOpen size={20} /></span>

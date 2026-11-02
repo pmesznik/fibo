@@ -155,7 +155,7 @@ export function UpdateDialog({ u }: { u: UpdaterApi }) {
           {i.kind === 'error' && (
             <>
               <h2 style={{ margin: 0, font: '700 20px/1.2 system-ui' }}>Nie udało się sprawdzić aktualizacji</h2>
-              <p role="alert" style={{ margin: '8px 0 6px', color: 'var(--err)', fontSize: 13.5, wordBreak: 'break-word' }}>{i.text}</p>
+              <p role="alert" style={{ margin: '8px 0 6px', color: 'var(--err)', fontSize: 14, wordBreak: 'break-word' }}>{i.text}</p>
               <p style={{ margin: '0 0 16px', color: 'var(--muted)', fontSize: 13 }}>Sprawdź połączenie z internetem i spróbuj ponownie.</p>
               <button className="primary" onClick={() => u.checkNow(true)}>Spróbuj ponownie</button>
               <button className="wide" onClick={u.closeInfo}>Zamknij</button>
@@ -176,13 +176,13 @@ export function UpdateDialog({ u }: { u: UpdaterApi }) {
       <div className="fixed inset-0 z-[2100]" style={backdrop} onClick={u.later} />
       <div className="glass fixed left-1/2 top-1/2 z-[2200] flex max-h-[88vh] w-[min(94vw,460px)] -translate-x-1/2 -translate-y-1/2 flex-col p-5"
         style={{ borderRadius: 'var(--r-lg)' }} role="alertdialog" aria-modal="true" aria-label="Aktualizacja FIBO">
-        <h2 style={{ margin: 0, font: '700 21px/1.2 system-ui' }}>Dostępna nowa wersja</h2>
+        <h2 style={{ margin: 0, font: '700 20px/1.2 system-ui' }}>Dostępna nowa wersja</h2>
         <p style={{ margin: '6px 0 12px', color: 'var(--muted)' }}>
           FIBO <b style={{ color: 'var(--text)' }}>{u.update.version}</b> jest gotowe do pobrania. Masz wersję {u.current || '?'}. Czy chcesz zaktualizować?
         </p>
 
         {notes && !working && (
-          <div style={{ overflowY: 'auto', maxHeight: '28vh', background: 'var(--surface-2)', border: '1px solid var(--glass-line)', borderRadius: 14, padding: '10px 12px', fontSize: 13.5, whiteSpace: 'pre-wrap', marginBottom: 12 }}>
+          <div style={{ overflowY: 'auto', maxHeight: '28vh', background: 'var(--surface-2)', border: '1px solid var(--glass-line)', borderRadius: 14, padding: '10px 12px', fontSize: 14, whiteSpace: 'pre-wrap', marginBottom: 12 }}>
             {notes}
           </div>
         )}
@@ -192,7 +192,7 @@ export function UpdateDialog({ u }: { u: UpdaterApi }) {
             <div style={{ height: 10, borderRadius: 99, background: 'var(--tonal)', overflow: 'hidden' }}>
               <div style={{ width: u.phase === 'installing' ? '100%' : `${pct}%`, height: '100%', background: 'var(--accent)', transition: 'width .2s var(--ease)' }} />
             </div>
-            <div style={{ marginTop: 8, fontSize: 13.5, color: 'var(--muted)' }}>
+            <div style={{ marginTop: 8, fontSize: 14, color: 'var(--muted)' }}>
               {u.phase === 'installing'
                 ? 'Instaluję aktualizację. FIBO zamknie się i uruchomi ponownie…'
                 : u.total ? `Pobieranie… ${mb(u.done)} MB z ${mb(u.total)} MB (${pct}%)` : 'Pobieranie…'}
@@ -201,7 +201,7 @@ export function UpdateDialog({ u }: { u: UpdaterApi }) {
         )}
 
         {u.phase === 'error' && (
-          <p role="alert" style={{ margin: '0 0 12px', color: 'var(--err)', fontSize: 13.5, wordBreak: 'break-word' }}>Nie udało się zaktualizować: {u.error}</p>
+          <p role="alert" style={{ margin: '0 0 12px', color: 'var(--err)', fontSize: 14, wordBreak: 'break-word' }}>Nie udało się zaktualizować: {u.error}</p>
         )}
 
         {!working && (
