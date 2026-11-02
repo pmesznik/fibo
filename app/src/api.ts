@@ -250,7 +250,7 @@ export async function faceBlob(id: number) {
 }
 
 // ---- Rozpoznawanie twarzy (wszystko lokalnie) ----
-export type FacesStatus = { enabled: boolean; models_ok: boolean; running: boolean; photos: number; scanned: number; faces: number; people: number; unassigned: number; rejected: number }
+export type FacesStatus = { enabled: boolean; models_ok: boolean; running: boolean; photos: number; scanned: number; faces: number; people: number; unassigned: number; rejected: number; autolearn: boolean; learned: number }
 export type FacesProgress = { done: number; total: number; faces: number; finished: boolean; grouping?: boolean; stopped?: boolean; skipped?: number; error: string | null }
 export type Person = { id: number; name: string | null; count: number; photos: number; cover: number | null; ignored: boolean; unsure: number }
 /** Twarz w widoku osoby: `unsure` = program nie jest pewien przypisania (czeka na potwierdzenie). */
@@ -282,6 +282,8 @@ export type FaceBox = { face: number; person: number | null; rect: [number, numb
 export const photoFaceBoxes = (id: number) => invoke<FaceBox[]>('photo_face_boxes', { id })
 export type SharedPhoto = { photo: number; face_a: number; face_b: number; rect_a: [number, number, number, number]; rect_b: [number, number, number, number] }
 export const sharedPhotos = (a: number, b: number) => invoke<SharedPhoto[]>('shared_photos', { a, b })
+export const unassignFaces = (ids: number[]) => invoke<number>('unassign_faces', { ids })
+export const setFacesAutolearn = (on: boolean) => invoke('set_faces_autolearn', { on })
 export const rejectFaces = (ids: number[]) => invoke<number>('reject_faces', { ids })
 export const deletePerson = (id: number) => invoke<number>('delete_person', { id })
 export const restoreRejectedFaces = () => invoke<number>('restore_rejected_faces')

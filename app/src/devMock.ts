@@ -116,7 +116,7 @@ function respond(cmd: string, args: Record<string, unknown> = {}): unknown | Pro
     case 'face_crop': return canvasJpeg(128, 128, (c) => face(c, 128, Number(args.id)))
     case 'list_albums': return [{ id: 1, name: 'Wakacje', count: 32, hidden: false }, { id: 2, name: 'Rodzina', count: 12, hidden: false }, { id: 3, name: 'Prywatny', count: 5, hidden: true }]
     case 'list_roots': return ['C:\\Zdjecia']
-    case 'faces_status': return { enabled: true, models_ok: true, running: false, photos: PHOTO_N, scanned: PHOTO_N, faces: 140, people: 6, unassigned: 3, rejected: 2 }
+    case 'faces_status': return { enabled: true, models_ok: true, running: false, photos: PHOTO_N, scanned: PHOTO_N, faces: 140, people: 6, unassigned: 3, rejected: 2, autolearn: true, learned: 12 }
     case 'list_people':
       return NAMES.map((name, i) => ({ id: i + 1, name, count: 40 - i * 5, photos: 30 - i * 4, cover: (i + 1) * 100, ignored: false, unsure: i % 2 === 0 ? i + 2 : 0 }))
     case 'person_photos': return photos.slice(0, 20).map((p) => p.id)
@@ -134,6 +134,8 @@ function respond(cmd: string, args: Record<string, unknown> = {}): unknown | Pro
     case 'organize_plan': return { moves: photos.slice(0, 5).map((p) => ({ id: p.id, name: p.name, from_dir: 'C:\\Zdjecia', to_dir: 'D:\\Porzadek\\2024\\07', rel: '2024/07', file_date: false })), in_place: 1, skipped: [], file_dates: 0 }
     case 'organize_last': return null
     case 'fill_places': return 0
+    case 'unassign_faces': return 1
+    case 'set_faces_autolearn': return null
     case 'shared_photos': return [{ photo: 1, face_a: 100, face_b: 300, rect_a: [0.1, 0.2, 0.15, 0.25], rect_b: [0.6, 0.25, 0.15, 0.25] }, { photo: 2, face_a: 101, face_b: 301, rect_a: [0.3, 0.3, 0.2, 0.3], rect_b: [0.65, 0.3, 0.2, 0.3] }]
     case 'photo_face_boxes': return [{ face: 100, person: 1, rect: [0.1, 0.2, 0.15, 0.25] }, { face: 300, person: 3, rect: [0.6, 0.25, 0.15, 0.25] }]
     case 'reject_faces': return 1

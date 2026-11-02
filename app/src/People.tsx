@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { listen } from '@tauri-apps/api/event'
 import { EyeOff, Eye, Pencil, Star, Pause, Play, Trash2, Users, X } from './FiboIcons'
 import {
-  facesDeleteAll, facesReanalyze, facesRegroup, facesStart, personFaces, setPersonCover, facesStatus, facesStop, ignorePerson, listPeople, personPhotos, deletePerson, mergeSuggestions, restoreRejectedFaces,
+  facesDeleteAll, facesReanalyze, facesRegroup, facesStart, setFacesAutolearn, personFaces, setPersonCover, facesStatus, facesStop, ignorePerson, listPeople, personPhotos, deletePerson, mergeSuggestions, restoreRejectedFaces,
   renamePerson, setFacesEnabled, type FacesProgress, type FacesStatus, type MergeSuggestion, type Person,
 } from './api'
 import { PromptDialog } from './Dialogs'
@@ -50,6 +50,11 @@ export function People({ say, ask, onOpenPerson, onChanged }: {
   }, [say])
 
   useEffect(() => { refresh() }, [refresh])
+  // Ciche dopasowywanie w tle dołączyło twarze do osób: odświeżamy listę.
+  useEffect(() => {
+    const un = listen<{ faces: number; merged: number }>('faces-learned', () => { refresh(); onChanged() })
+    return () => { un.then((f) => f()) }
+  }, [refresh, onChanged])
   useEffect(() => {
     const un = listen<FacesProgress>('faces-progress', (e) => {
       setProg(e.payload)
@@ -149,6 +154,10 @@ export function People({ say, ask, onOpenPerson, onChanged }: {
           {(st.running || pending > 0) && (
             <button className="chip" onClick={toggleRun}>{st.running ? <><Pause size={15} /> Wstrzymaj</> : <><Play size={15} /> Wznów</>}</button>
           )}
+          <button className={`chip${st.autolearn ? ' on' : ''}`} aria-pressed={st.autolearn} onClick={async () => { try { await setFacesAutolearn(!st.autolearn); say(st.autolearn ? 'Samodzielne dopasowywanie twarzy wyłączone' : 'Program będzie co jakiś czas sam dopasowywał nierozpoznane twarze do znanych osób', 'ok'); await refresh() } catch (e) { say(`Błąd: ${e}`, 'err') } }}
+            title="Co kilka minut, gdy nic innego nie działa, program dopasowuje twarze bez osoby do znanych osób, które po Twoich poprawkach lepiej wie, jak wyglądają, i łączy bardzo podobne grupy. Nie otwiera zdjęć i nie obciąża komputera.">
+            Samodzielne dopasowywanie: {st.autolearn ? 'włączone' : 'wyłączone'}{st.autolearn && st.learned > 0 ? ` (dopasowano ${st.learned})` : ''}
+          </button>
           {!st.running && <button className="chip" onClick={regroup} title="Grupuje twarze w osoby od nowa (szybko). Imiona i ręczne poprawki zostają.">Pogrupuj od nowa</button>}
           {!st.running && <button className="chip" onClick={reanalyze} title="Analizuje wszystkie zdjęcia od nowa, dokładniej">Przeanalizuj ponownie</button>}
           <button className="chip" onClick={wipe}><Trash2 size={15} /> Usuń dane twarzy</button>

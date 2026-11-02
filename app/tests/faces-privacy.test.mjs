@@ -163,3 +163,15 @@ test('prawdziwe pliki modeli (jeśli są) mają przypięte sumy', () => {
 test('pliki modeli nie są śledzone w git (są pobierane przy budowaniu)', () => {
   assert.match(readFileSync(root + '../.gitignore', 'utf8'), /models\/\*\.onnx/)
 })
+
+test('samodzielne dopasowywanie twarzy działa tylko na zapisanych wektorach: nie otwiera zdjęć, nie ładuje modeli i ma wyłącznik', () => {
+  const p = src('people.rs')
+  const from = p.indexOf('fn learn_load')
+  const to = p.indexOf('fn autolearn_on')
+  const body = p.slice(from, to)
+  assert.ok(from > 0 && to > from)
+  assert.ok(!/index_blocking|analyze_photo|load_engine|load_oriented|decode_jpeg|fs::read|image::open/.test(body), 'nauka nie może czytać zdjęć ani ładować modeli')
+  assert.match(body, /autolearn_on\(&c\)/, 'pętla sprawdza wyłącznik')
+  assert.match(body, /enabled\(&c\)/, 'pętla działa tylko przy włączonym rozpoznawaniu twarzy')
+  assert.match(body, /BUSY\.load/, 'nauka ustępuje analizie i grupowaniu')
+})

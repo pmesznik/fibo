@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Check, X } from './FiboIcons'
 import { FaceImg } from './FaceImg'
-import { confirmFaces, personFaceCards, rejectFaces, type FaceCard } from './api'
+import { confirmFaces, personFaceCards, unassignFaces, type FaceCard } from './api'
 
 const pl = (n: number, one: string, few: string, many: string) =>
   n === 1 ? one : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? few : many
@@ -35,10 +35,10 @@ export function PersonFacesView({ personId, name, onOpen, onPhotoGone, onChanged
   }
   const rejectOne = async (c: FaceCard) => {
     try {
-      await rejectFaces([c.face])
+      await unassignFaces([c.face])
       setCards((l) => l?.filter((x) => x.face !== c.face) ?? l)
       onPhotoGone(c.photo); onChanged()
-      say(`To nie „${name}”: twarz wróciła do nierozpoznanych i może trafić do innej osoby`, 'ok')
+      say(`To nie „${name}”: twarz wróciła do nierozpoznanych. Program dopasuje ją do innej osoby, gdy znajdzie pasującą`, 'ok')
     } catch (e) { say(`Błąd: ${e}`, 'err') }
   }
   /** Potwierdzenie albo odrzucenie całego stosu podobnych twarzy jednym kliknięciem. */
@@ -49,7 +49,7 @@ export function PersonFacesView({ personId, name, onOpen, onPhotoGone, onChanged
   const rejectStack = async (members: FaceCard[]) => {
     const ids = members.map((c) => c.face)
     try {
-      await rejectFaces(ids)
+      await unassignFaces(ids)
       setCards((l) => l?.filter((x) => !ids.includes(x.face)) ?? l)
       members.forEach((c) => onPhotoGone(c.photo)); onChanged()
       say(`To nie „${name}”: ${ids.length} ${pl(ids.length, 'twarz wróciła', 'twarze wróciły', 'twarzy wróciło')} do nierozpoznanych`, 'ok')

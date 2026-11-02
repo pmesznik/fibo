@@ -42,6 +42,17 @@ const MAX_HIERARCHICAL: usize = 15000;
 const CROP_SIZE: u32 = 128;
 
 static BUSY: AtomicBool = AtomicBool::new(false);
+/// Ciche dopasowywanie nierozpoznanych twarzy w tle (zob. `start_learning`): trwa, gdy liczy się jeden przebieg.
+static LEARNING: AtomicBool = AtomicBool::new(false);
+/// Coś się zmieniło (nowe twarze, ręczna poprawka), więc warto dopasować nierozpoznane twarze od nowa.
+static DIRTY: AtomicBool = AtomicBool::new(true);
+/// Ile twarzy dopasowano od uruchomienia programu (do pokazania w zakładce Osoby).
+static LEARNED_TOTAL: AtomicUsize = AtomicUsize::new(0);
+
+/// Zaznacza, że dane o osobach się zmieniły i przy najbliższej okazji trzeba dopasować nierozpoznane twarze.
+pub fn mark_dirty() {
+    DIRTY.store(true, Ordering::SeqCst);
+}
 static CANCEL: AtomicBool = AtomicBool::new(false);
 
 pub fn init_schema(conn: &Connection) -> rusqlite::Result<()> {
@@ -773,6 +784,175 @@ fn regroup_in_background(state: &AppState) -> Result<bool, String> {
     Ok(true)
 }
 
+// ---- Ciche dopasowywanie nierozpoznanych twarzy w tle ----------------------------------------------------------------------------------------
+
+/// Wspólne podobieństwo środków, od którego nierozpoznana osoba jest automatycznie dołączana do znanej (wyraźnie wyżej niż próg podpowiedzi 0.42).
+const AUTO_MERGE_SCORE: f32 = 0.62;
+
+/// Dane do dopasowania: wzorce to twarze WSZYSTKICH osób (im więcej twarzy ma osoba, tym lepiej ją zna), a do dopasowania są twarze bez osoby.
+fn learn_load(conn: &Connection) -> Result<RegroupInput, String> {
+    let mut stmt = conn
+        .prepare(&format!("SELECT f.person_id, f.photo_id, f.emb, COALESCE(f.quality, 0.6) FROM faces f JOIN people p ON p.id = f.person_id WHERE {}", current_model_sql()))
+        .map_err(|e| e.to_string())?;
+    let anchors = stmt
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get::<_, f64>(3)? as f32)))
+        .map_err(|e| e.to_string())?
+        .filter_map(Result::ok)
+        .collect();
+    drop(stmt);
+    let mut stmt = conn
+        .prepare(&format!("SELECT id, photo_id, person_id, emb, COALESCE(quality, 0.6) FROM faces WHERE rejected = 0 AND person_id IS NULL AND {}", current_model_sql()))
+        .map_err(|e| e.to_string())?;
+    let faces = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))).map_err(|e| e.to_string())?.filter_map(Result::ok).collect();
+    drop(stmt);
+    let mut stmt = conn.prepare("SELECT face_id, person_id FROM face_not").map_err(|e| e.to_string())?;
+    let barred = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?))).map_err(|e| e.to_string())?.filter_map(Result::ok).collect();
+    drop(stmt);
+    Ok(RegroupInput { anchors, faces, days: photo_days(conn), barred })
+}
+
+/// Łączy nierozpoznane osoby ze znanymi, gdy ich twarze są bardzo podobne i nigdy nie występują razem na zdjęciu. Osoby z imieniem nigdy nie są łączone ze sobą,
+/// a znana osoba zawsze zostaje (imię i okładka przetrwają). Zwraca liczbę połączeń.
+fn auto_merge_known(conn: &Connection) -> Result<usize, String> {
+    let cents = load_cents(conn)?;
+    let mut merged = 0;
+    let mut gone: HashSet<i64> = HashSet::new();
+    for s in suggest_core(&cents, None) {
+        if s.conflict || s.score < AUTO_MERGE_SCORE || gone.contains(&s.id) || gone.contains(&s.other) {
+            continue;
+        }
+        // Twarz, którą użytkownik wyłączył z tej osoby („to nie ta osoba”), nie może wrócić do niej przez łączenie grup.
+        let barred: bool = conn
+            .query_row("SELECT EXISTS(SELECT 1 FROM face_not WHERE person_id = ?2 AND face_id IN (SELECT id FROM faces WHERE person_id = ?1))", params![s.id, s.other], |r| r.get(0))
+            .map_err(|e| e.to_string())?;
+        if barred {
+            continue;
+        }
+        merge_core(conn, s.id, s.other, None)?;
+        gone.insert(s.id);
+        merged += 1;
+    }
+    Ok(merged)
+}
+
+/// Poniżej tej pewności (podobieństwo do środka grupy) twarz w nieznanej grupie uchodzi za obcą: model uznaje ją za inną osobę niż reszta (próg tożsamości to ok. 0.36).
+const OUTLIER_BELOW: f32 = 0.30;
+
+/// Wyrzuca z nieznanych grup (bez imienia, bez ręcznych poprawek, od 3 twarzy) twarze wyraźnie niepasujące do reszty grupy: wracają do nierozpoznanych
+/// i mogą dołączyć do innej osoby albo założyć własną grupę. Dzięki temu grupy pomieszane z różnych osób oczyszczają się same. Grup z imieniem nie ruszamy
+/// (tam niepewne twarze czekają na Twoje potwierdzenie).
+fn release_outliers(conn: &Connection) -> Result<usize, String> {
+    conn.execute(
+        "UPDATE faces SET person_id = NULL, conf = NULL
+         WHERE manual = 0 AND rejected = 0 AND conf IS NOT NULL AND conf < ?1
+           AND person_id IN (SELECT id FROM people WHERE name IS NULL AND ignored = 0)
+           AND person_id NOT IN (SELECT person_id FROM faces WHERE manual = 1 AND person_id IS NOT NULL)
+           AND (SELECT COUNT(*) FROM faces f2 WHERE f2.person_id = faces.person_id) >= 3",
+        [OUTLIER_BELOW as f64],
+    )
+    .map_err(|e| e.to_string())
+}
+
+/// Zapis wyniku dopasowania: przypisania twarzy, pewność przypisań (widok „do potwierdzenia”) i automatyczne łączenie bardzo podobnych osób.
+/// Zwraca (dopasowane twarze, połączone osoby).
+fn learn_apply(conn: &Connection, plan: &RegroupPlan) -> Result<(usize, usize), String> {
+    let attached = plan.changes.iter().filter(|c| c.1.is_none() && !matches!(c.2, Target::Nobody)).count();
+    regroup_apply(conn, plan)?;
+    let merged = auto_merge_known(conn)?;
+    if attached + merged > 0 {
+        let _ = compute_conf(conn, None);
+    }
+    Ok((attached, merged))
+}
+
+/// Jeden przebieg dopasowania. Liczenie idzie bez blokady bazy i co jakiś czas robi krótką przerwę, więc program zostaje responsywny;
+/// przerywa się, gdy ruszy analiza albo grupowanie. Zwraca (dopasowane twarze, połączone osoby).
+fn learn_blocking(state: &AppState) -> Result<(usize, usize), String> {
+    if BUSY.load(Ordering::SeqCst) || LEARNING.swap(true, Ordering::SeqCst) {
+        return Ok((0, 0));
+    }
+    struct Done;
+    impl Drop for Done {
+        fn drop(&mut self) {
+            LEARNING.store(false, Ordering::SeqCst);
+        }
+    }
+    let _done = Done;
+    let input = {
+        let conn = state.db.lock().map_err(|e| e.to_string())?;
+        release_outliers(&conn)?;
+        learn_load(&conn)?
+    };
+    if input.faces.is_empty() {
+        // Nic do dopasowania, ale osoby mogły się upodobnić do siebie po poprawkach.
+        let conn = state.db.lock().map_err(|e| e.to_string())?;
+        let merged = auto_merge_known(&conn)?;
+        if merged > 0 {
+            let _ = compute_conf(&conn, None);
+        }
+        return Ok((0, merged));
+    }
+    let ticks = AtomicUsize::new(0);
+    let stop = || {
+        if BUSY.load(Ordering::SeqCst) {
+            return true;
+        }
+        if ticks.fetch_add(1, Ordering::Relaxed) % 250 == 249 {
+            std::thread::sleep(std::time::Duration::from_millis(3));
+        }
+        false
+    };
+    let Some(plan) = regroup_plan(input, &stop) else { return Ok((0, 0)) };
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    learn_apply(&conn, &plan)
+}
+
+#[derive(Serialize, Clone)]
+struct Learned {
+    faces: usize,
+    merged: usize,
+}
+
+/// Uruchamia w tle spokojny „proces uczenia”: co kilka minut (a po zmianach szybciej) dopasowuje twarze bez osoby do znanych osób i łączy bardzo podobne grupy.
+/// Czyta tylko zapisane wektory twarzy (nie otwiera zdjęć), działa na jednym wątku z przerwami, nie rusza osób z ręcznymi poprawkami i nie startuje,
+/// gdy rozpoznawanie twarzy jest wyłączone albo trwa analiza. Można go wyłączyć w zakładce Osoby.
+pub fn start_learning(app: tauri::AppHandle) {
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_secs(90));
+        loop {
+            let state = app.state::<AppState>();
+            let ready = state.db.lock().map(|c| enabled(&c) && autolearn_on(&c)).unwrap_or(false);
+            if ready && !BUSY.load(Ordering::SeqCst) && DIRTY.swap(false, Ordering::SeqCst) {
+                match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| learn_blocking(&state))) {
+                    Ok(Ok((faces, merged))) if faces + merged > 0 => {
+                        LEARNED_TOTAL.fetch_add(faces, Ordering::SeqCst);
+                        // Po dołączeniu twarzy osoby „poznają” je, więc kolejny przebieg może dołączyć następne.
+                        DIRTY.store(true, Ordering::SeqCst);
+                        let _ = app.emit("faces-learned", Learned { faces, merged });
+                    }
+                    Ok(Err(_)) | Err(_) => {}
+                    _ => {}
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_secs(if DIRTY.load(Ordering::SeqCst) { 60 } else { 300 }));
+        }
+    });
+}
+
+fn autolearn_on(conn: &Connection) -> bool {
+    conn.query_row("SELECT value FROM settings WHERE key = 'faces-autolearn'", [], |r| r.get::<_, String>(0)).map(|v| v != "0").unwrap_or(true)
+}
+
+#[tauri::command]
+pub fn set_faces_autolearn(state: State<'_, AppState>, on: bool) -> Result<(), String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('faces-autolearn', ?1)", [if on { "1" } else { "0" }]).map_err(|e| e.to_string())?;
+    if on {
+        mark_dirty();
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 fn regroup(conn: &Connection) -> Result<usize, String> {
     let plan = regroup_plan(regroup_load(conn)?, &|| false).ok_or("przerwano")?;
@@ -919,6 +1099,9 @@ pub struct FacesStatus {
     unassigned: i64,
     /// Twarze odrzucone przez użytkownika (nie trafiają do żadnej osoby).
     rejected: i64,
+    /// Ciche dopasowywanie nierozpoznanych twarzy w tle jest włączone i ile twarzy dopasowano od uruchomienia programu.
+    autolearn: bool,
+    learned: usize,
 }
 
 #[tauri::command]
@@ -939,6 +1122,8 @@ pub fn faces_status(app: tauri::AppHandle, state: State<'_, AppState>) -> Result
         people: n("SELECT COUNT(DISTINCT person_id) FROM faces f JOIN people p ON p.id = f.person_id WHERE p.ignored = 0"),
         unassigned: n("SELECT COUNT(*) FROM faces WHERE person_id IS NULL AND rejected = 0"),
         rejected: n("SELECT COUNT(*) FROM faces WHERE rejected = 1"),
+        autolearn: autolearn_on(&conn),
+        learned: LEARNED_TOTAL.load(Ordering::SeqCst),
     })
 }
 
@@ -1210,6 +1395,7 @@ pub fn confirm_faces_core(conn: &Connection, ids: &[i64]) -> Result<usize, Strin
 #[tauri::command]
 pub fn confirm_faces(state: State<'_, AppState>, ids: Vec<i64>) -> Result<usize, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
+    mark_dirty();
     confirm_faces_core(&conn, &ids)
 }
 
@@ -1629,6 +1815,28 @@ pub fn reject_faces_core(conn: &Connection, ids: &[i64]) -> Result<usize, String
     Ok(n)
 }
 
+/// „To nie ta osoba”: twarz wraca do nierozpoznanych (bez osoby), a ta jedna osoba jest dla niej wyłączona (`face_not`). Inne osoby i nowe grupy
+/// mogą ją przyjąć, więc przy najbliższym dopasowaniu twarz znajdzie swoje miejsce. W przeciwieństwie do `reject_faces_core` twarz nie jest odrzucona na stałe.
+pub fn unassign_faces_core(conn: &Connection, ids: &[i64]) -> Result<usize, String> {
+    let mut n = 0;
+    for id in ids {
+        let person: Option<i64> = conn.query_row("SELECT person_id FROM faces WHERE id = ?1", [id], |r| r.get(0)).map_err(|_| "Nie ma takiej twarzy".to_string())?;
+        if let Some(p) = person {
+            conn.execute("INSERT OR IGNORE INTO face_not (face_id, person_id) VALUES (?1, ?2)", params![id, p]).map_err(|e| e.to_string())?;
+        }
+        n += conn.execute("UPDATE faces SET person_id = NULL, manual = 0, conf = NULL WHERE id = ?1", [id]).map_err(|e| e.to_string())?;
+    }
+    conn.execute("DELETE FROM people WHERE name IS NULL AND ignored = 0 AND id NOT IN (SELECT person_id FROM faces WHERE person_id IS NOT NULL)", []).map_err(|e| e.to_string())?;
+    mark_dirty();
+    Ok(n)
+}
+
+#[tauri::command]
+pub fn unassign_faces(state: State<'_, AppState>, ids: Vec<i64>) -> Result<usize, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    unassign_faces_core(&conn, &ids)
+}
+
 /// Usuwa osobę (całą grupę): jej twarze są odrzucane, więc nie wrócą do żadnej osoby. Zdjęcia zostają nietknięte.
 pub fn delete_person_core(conn: &Connection, id: i64) -> Result<usize, String> {
     let n = conn.execute("UPDATE faces SET person_id = NULL, rejected = 1, manual = 0 WHERE person_id = ?1", [id]).map_err(|e| e.to_string())?;
@@ -1686,6 +1894,7 @@ pub fn move_faces(state: State<'_, AppState>, ids: Vec<i64>, to: Option<i64>) ->
 #[tauri::command]
 pub fn reject_faces(state: State<'_, AppState>, ids: Vec<i64>) -> Result<usize, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
+    mark_dirty();
     reject_faces_core(&conn, &ids)
 }
 
@@ -1997,6 +2206,116 @@ mod tests {
         // Ukryte zdjęcie nie jest pokazywane.
         c.execute("UPDATE photos SET hidden = 1 WHERE id = 1", []).unwrap();
         assert!(shared_photos_core(&c, 10, 20).unwrap().is_empty());
+    }
+
+    /// Przebieg dopasowania na bazie testowej (bez wątków i bez blokad).
+    fn learn_once(c: &Connection) -> (usize, usize) {
+        release_outliers(c).unwrap();
+        let plan = regroup_plan(learn_load(c).unwrap(), &|| false).unwrap();
+        learn_apply(c, &plan).unwrap()
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn unassigned_faces_return_to_the_pool_and_learning_matches_them_to_known_people() {
+        let (c, tmp) = lib_with_photos(12);
+        // Dwie znane osoby, każda z kilkoma dobrymi twarzami na różnych zdjęciach.
+        for (ph, i) in [(1, 0), (2, 0), (3, 0), (4, 0)] { store_faces(&c, &tmp, ph, 5, vec![new_face(near(i, 20 + ph as usize, 0.05), 0.9)]).unwrap(); }
+        for (ph, i) in [(1, 5), (2, 5), (3, 5), (4, 5)] { let _ = i; }
+        regroup(&c).unwrap();
+        let dz: i64 = c.query_row("SELECT person_id FROM faces WHERE photo_id = 1", [], |r| r.get(0)).unwrap();
+        c.execute("UPDATE people SET name = 'Dziadek' WHERE id = ?1", [dz]).unwrap();
+        let face_of = |photo: i64| -> i64 { c.query_row("SELECT id FROM faces WHERE photo_id = ?1", [photo], |r| r.get(0)).unwrap() };
+        let person_of = |photo: i64| -> Option<i64> { c.query_row("SELECT person_id FROM faces WHERE photo_id = ?1", [photo], |r| r.get(0)).unwrap() };
+        // Nowe twarze: 5 podobna do Dziadka, 6 też, ale użytkownik wyłączył ją z Dziadka, 7 zupełnie inna, 8 podobna, lecz odrzucona na stałe.
+        store_faces(&c, &tmp, 5, 5, vec![new_face(near(0, 30, 0.05), 0.9)]).unwrap();
+        store_faces(&c, &tmp, 6, 5, vec![new_face(near(0, 31, 0.05), 0.9)]).unwrap();
+        store_faces(&c, &tmp, 7, 5, vec![new_face(unit(100), 0.9)]).unwrap();
+        store_faces(&c, &tmp, 8, 5, vec![new_face(near(0, 32, 0.05), 0.9)]).unwrap();
+        c.execute("INSERT INTO face_not (face_id, person_id) VALUES (?1, ?2)", params![face_of(6), dz]).unwrap();
+        reject_faces_core(&c, &[face_of(8)]).unwrap();
+        let (attached, _) = learn_once(&c);
+        assert!(attached >= 2, "dopasowano {attached}");
+        assert_eq!(person_of(5), Some(dz), "podobna twarz dołączyła do znanej osoby");
+        assert_ne!(person_of(6), Some(dz), "twarz wyłączona z tej osoby nie wraca do niej");
+        assert!(person_of(7).is_some() && person_of(7) != Some(dz), "zupełnie inna twarz zakłada własną grupę, a nie wchodzi do Dziadka");
+        assert_eq!(person_of(8), None, "twarz odrzucona na stałe nie trafia do nikogo");
+        // Kolejny przebieg nic już nie zmienia (stan ustalony).
+        assert_eq!(learn_once(&c).0, 0);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn removing_a_face_from_a_person_keeps_it_matchable_by_others_and_cleans_empty_groups() {
+        let (c, tmp) = lib_with_photos(6);
+        for ph in 1..=3 { store_faces(&c, &tmp, ph, 5, vec![new_face(near(0, 40 + ph as usize, 0.05), 0.9)]).unwrap(); }
+        store_faces(&c, &tmp, 4, 5, vec![new_face(unit(110), 0.9)]).unwrap();
+        regroup(&c).unwrap();
+        let a: i64 = c.query_row("SELECT person_id FROM faces WHERE photo_id = 1", [], |r| r.get(0)).unwrap();
+        let f4: i64 = c.query_row("SELECT id FROM faces WHERE photo_id = 4", [], |r| r.get(0)).unwrap();
+        let p4: i64 = c.query_row("SELECT person_id FROM faces WHERE photo_id = 4", [], |r| r.get(0)).unwrap();
+        // „To nie ta osoba”: twarz z osobnej grupy (1 twarz) trafia do nierozpoznanych, a pusta grupa znika.
+        assert_eq!(unassign_faces_core(&c, &[f4]).unwrap(), 1);
+        let (person, rejected, manual): (Option<i64>, i64, i64) = c.query_row("SELECT person_id, rejected, manual FROM faces WHERE id = ?1", [f4], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).unwrap();
+        assert_eq!((person, rejected, manual), (None, 0, 0), "twarz jest nierozpoznana, ale nie odrzucona na stałe");
+        assert_eq!(c.query_row::<i64, _, _>("SELECT COUNT(*) FROM people WHERE id = ?1", [p4], |r| r.get(0)).unwrap(), 0, "pusta grupa bez imienia znika");
+        assert_eq!(c.query_row::<i64, _, _>("SELECT COUNT(*) FROM face_not WHERE face_id = ?1 AND person_id = ?2", params![f4, p4], |r| r.get(0)).unwrap(), 1);
+        // Twarz z osoby A usunięta z A nie wraca do A, choć jest do niej podobna.
+        let f3: i64 = c.query_row("SELECT id FROM faces WHERE photo_id = 3", [], |r| r.get(0)).unwrap();
+        unassign_faces_core(&c, &[f3]).unwrap();
+        learn_once(&c);
+        let after: Option<i64> = c.query_row("SELECT person_id FROM faces WHERE id = ?1", [f3], |r| r.get(0)).unwrap();
+        assert_ne!(after, Some(a));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn learning_releases_a_clear_outlier_from_an_unnamed_group_but_never_touches_named_people() {
+        let (c, tmp) = lib_with_photos(12);
+        for ph in 1..=5 { store_faces(&c, &tmp, ph, 5, vec![new_face(near(0, 70 + ph as usize, 0.05), 0.9)]).unwrap(); }
+        for ph in 6..=10 { store_faces(&c, &tmp, ph, 5, vec![new_face(near(60, 80 + ph as usize, 0.05), 0.9)]).unwrap(); }
+        regroup(&c).unwrap();
+        let a: i64 = c.query_row("SELECT person_id FROM faces WHERE photo_id = 1", [], |r| r.get(0)).unwrap();
+        let b: i64 = c.query_row("SELECT person_id FROM faces WHERE photo_id = 6", [], |r| r.get(0)).unwrap();
+        assert_ne!(a, b);
+        // Obca twarz wepchnięta do grupy A (jak w pomieszanych grupach) i taka sama w grupie B z imieniem.
+        store_faces(&c, &tmp, 11, 5, vec![new_face(unit(100), 0.9)]).unwrap();
+        store_faces(&c, &tmp, 12, 5, vec![new_face(unit(101), 0.9)]).unwrap();
+        c.execute("UPDATE faces SET person_id = ?1 WHERE photo_id = 11", [a]).unwrap();
+        c.execute("UPDATE faces SET person_id = ?1 WHERE photo_id = 12", [b]).unwrap();
+        c.execute("UPDATE people SET name = 'Ewa' WHERE id = ?1", [b]).unwrap();
+        compute_conf(&c, None).unwrap();
+        learn_once(&c);
+        let p11: Option<i64> = c.query_row("SELECT person_id FROM faces WHERE photo_id = 11", [], |r| r.get(0)).unwrap();
+        assert_ne!(p11, Some(a), "obca twarz wyszła z nieznanej grupy");
+        let p12: Option<i64> = c.query_row("SELECT person_id FROM faces WHERE photo_id = 12", [], |r| r.get(0)).unwrap();
+        assert_eq!(p12, Some(b), "w grupie z imieniem nic nie jest ruszane");
+        let kept: i64 = c.query_row("SELECT COUNT(*) FROM faces WHERE person_id = ?1 AND photo_id <= 5", [a], |r| r.get(0)).unwrap();
+        assert_eq!(kept, 5, "pasujące twarze zostają w grupie");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn learning_merges_a_small_unnamed_group_into_the_named_person_it_clearly_matches() {
+        let (c, tmp) = lib_with_photos(10);
+        for ph in 1..=4 { store_faces(&c, &tmp, ph, 5, vec![new_face(near(0, 50 + ph as usize, 0.05), 0.9)]).unwrap(); }
+        regroup(&c).unwrap();
+        let named: i64 = c.query_row("SELECT person_id FROM faces WHERE photo_id = 1", [], |r| r.get(0)).unwrap();
+        c.execute("UPDATE people SET name = 'Babcia' WHERE id = ?1", [named]).unwrap();
+        // Osobna, nieznana grupa tej samej osoby (np. z innego okresu), która powstała, zanim program ją poznał: w osobnych zdjęciach, tylko 1 twarz.
+        c.execute("INSERT INTO people (id, name) VALUES (900, NULL)", []).unwrap();
+        store_faces(&c, &tmp, 6, 5, vec![new_face(near(0, 60, 0.05), 0.9)]).unwrap();
+        c.execute("UPDATE faces SET person_id = 900 WHERE photo_id = 6", []).unwrap();
+        // Druga znana osoba nigdy nie jest łączona z pierwszą: dwie osoby z imieniem zostają.
+        c.execute("INSERT INTO people (id, name) VALUES (901, 'Dziadek')", []).unwrap();
+        store_faces(&c, &tmp, 7, 5, vec![new_face(near(0, 61, 0.05), 0.9)]).unwrap();
+        c.execute("UPDATE faces SET person_id = 901 WHERE photo_id = 7", []).unwrap();
+        let (_, merged) = learn_once(&c);
+        assert!(merged >= 1, "połączono {merged}");
+        let people: i64 = c.query_row("SELECT COUNT(*) FROM people WHERE name IS NOT NULL", [], |r| r.get(0)).unwrap();
+        assert_eq!(people, 2, "osoby z imieniem nie łączą się ze sobą");
+        let p6: i64 = c.query_row("SELECT person_id FROM faces WHERE photo_id = 6", [], |r| r.get(0)).unwrap();
+        assert!(p6 == named || p6 == 901, "nieznana grupa dołączyła do znanej osoby");
     }
 
     #[test]

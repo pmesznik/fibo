@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Check, Search, Users, X } from './FiboIcons'
 import { FaceImg } from './FaceImg'
-import { listPeople, mergePeople, mergeSuggestions, movePersonFaces, personFaces, rejectFaces, sharedPhotos, thumbnailBlob, type MergeSuggestion, type Person, type SharedPhoto } from './api'
+import { listPeople, mergePeople, mergeSuggestions, movePersonFaces, personFaces, unassignFaces, sharedPhotos, thumbnailBlob, type MergeSuggestion, type Person, type SharedPhoto } from './api'
 import { useEscape } from './ui'
 
 const pl = (n: number, one: string, few: string, many: string) =>
@@ -137,7 +137,7 @@ function SharedPhotos({ a, b, onChanged }: { a: Person; b: Person; onChanged: ()
   const unassign = async (sp: SharedPhoto, which: 'a' | 'b') => {
     setBusy(sp.photo); setErr(null)
     try {
-      await rejectFaces([which === 'a' ? sp.face_a : sp.face_b])
+      await unassignFaces([which === 'a' ? sp.face_a : sp.face_b])
       setList((l) => l?.filter((x) => x.photo !== sp.photo) ?? l)
       onChanged()
     } catch (e) { setErr(String(e)) } finally { setBusy(null) }

@@ -288,6 +288,16 @@ export default function App() {
     return () => { un.then((f) => f()) }
   }, [reload, reloadRoots, say])
 
+  // Ciche dopasowywanie twarzy w tle: krótka informacja, gdy program dołączył twarze do znanych osób albo połączył bardzo podobne grupy.
+  useEffect(() => {
+    if (!inTauri) return
+    const un = listen<{ faces: number; merged: number }>('faces-learned', (e) => {
+      const { faces, merged } = e.payload
+      say([faces ? `dopasowano ${faces} ${pl(faces, 'twarz', 'twarze', 'twarzy')} do osób` : '', merged ? `połączono ${merged} ${pl(merged, 'grupę', 'grupy', 'grup')}` : ''].filter(Boolean).join(', ').replace(/^./, (c) => c.toUpperCase()), 'ok')
+    })
+    return () => { un.then((f) => f()) }
+  }, [say])
+
   // Natychmiastowo: system zgłasza zmiany w obserwowanych folderach, a po chwili ciszy robimy to samo sprawdzenie. Lista folderów zmienia się rzadko, więc obserwowanie ustawiamy od nowa przy jej zmianie.
   useEffect(() => { if (inTauri) watchRoots().catch(() => {}) }, [roots])
   useEffect(() => {
