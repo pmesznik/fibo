@@ -14,6 +14,7 @@ import { Thumb } from './Thumb'
 import { Chip, Sec, Toast } from './ui'
 import { TagEditor, type TagCount } from './TagEditor'
 import { pl } from './pl'
+import { leaveFullscreen, monitorCount, sendToNextMonitor } from './monitors'
 import { flagOf, labelOf, nextMark } from './marks'
 import {
   EFFECTS, EMPTY_EDIT, ZERO_ADJUST, MAX_INK, MAX_INK_POINTS, isEdited, renderEdit, renderGeometry, MAX_SPOTS, neutralFromSample, MAX_TEXTS, MAX_TEXT_LEN, type TextItem,
@@ -352,6 +353,19 @@ export function Viewer({ photos, startId, autoplay = false, focusPerson, allTags
     if (document.fullscreenElement) document.exitFullscreen()
     else document.documentElement.requestFullscreen().catch(() => {})
   }
+  // Pokaz na innym monitorze: chip jest tylko wtedy, gdy system widzi co najmniej dwa monitory.
+  const [monitors, setMonitors] = useState(0)
+  const [onMonitor, setOnMonitor] = useState<number | null>(null)
+  const monitorFs = useRef(false)
+  useEffect(() => { monitorCount().then(setMonitors) }, [])
+  const toNextMonitor = async () => {
+    try {
+      const r = await sendToNextMonitor()
+      if (r) { monitorFs.current = true; setOnMonitor(r.index); setPlaying(true) }
+    } catch { /* okno nie dało się przenieść: zostaje, gdzie jest */ }
+  }
+  const endMonitorFs = () => { monitorFs.current = false; setOnMonitor(null); leaveFullscreen() }
+  useEffect(() => () => { if (monitorFs.current) leaveFullscreen() }, [])
   const requestClose = () => { if (dirty) setPendingNav(-1); else onClose() }
 
   const save = async (mode: 'overwrite' | 'copy') => {
@@ -406,6 +420,7 @@ export function Viewer({ photos, startId, autoplay = false, focusPerson, allTags
         else if (retouchMode) setRetouchMode(false)
         else if (pendingNav !== null) setPendingNav(null)
         else if (sheet) setSheet(false)
+        else if (monitorFs.current) endMonitorFs()
         else if (document.fullscreenElement) document.exitFullscreen()
         else requestClose()
       }
@@ -885,6 +900,12 @@ export function Viewer({ photos, startId, autoplay = false, focusPerson, allTags
         <button className={`ico ${music ? 'on' : ''}`} aria-label={music ? `Wyłącz muzykę: ${music.name}` : 'Dodaj muzykę do pokazu slajdów'} aria-pressed={!!music} title={music ? `Muzyka: ${music.name} (kliknij, aby wyłączyć)` : 'Muzyka do pokazu slajdów'} onClick={chooseMusic}><Sparkles size={19} /></button>
         <button className="chip" aria-label={`Czas slajdu: ${slideSecs} sekund. Kliknij, aby zmienić`} title="Czas jednego slajdu w pokazie"
           onClick={() => setSlideSecs((s) => { const n = ({ 2: 4, 4: 7, 7: 12, 12: 2 } as Record<number, number>)[s] ?? 4; try { localStorage.setItem('slide-secs', String(n)) } catch { /* brak pamięci przeglądarki */ } return n })}>{slideSecs} s</button>
+        {monitors > 1 && (
+          <button className={`chip ${onMonitor !== null ? 'on' : ''}`} aria-label={onMonitor === null ? 'Pokaz slajdów na innym monitorze' : `Pokaz na monitorze ${onMonitor + 1} z ${monitors}. Kliknij, aby przenieść na następny`}
+            title={onMonitor === null ? 'Przenieś okno na inny monitor i włącz pokaz na pełnym ekranie (Esc kończy pełny ekran)' : 'Przenieś na następny monitor (Esc kończy pełny ekran)'} onClick={toNextMonitor}>
+            {onMonitor === null ? 'Monitor' : `Monitor ${onMonitor + 1}/${monitors}`}
+          </button>
+        )}
         <button className="ico" aria-label="Pomniejsz" title="Pomniejsz (−)" disabled={zoom <= 1} onClick={() => zoomAt(1 / 1.4)}><ZoomOut size={19} /></button>
         <button className="ico" aria-label="Powiększ" title="Powiększ (+, kółko myszy, dwuklik: 100%)" onClick={() => zoomAt(1.4)}><ZoomIn size={19} /></button>
         <button className={`ico ${compare ? 'on' : ''}`} aria-label="Przytrzymaj, aby zobaczyć oryginał" aria-pressed={compare} title="Przytrzymaj, aby zobaczyć oryginał (B)"

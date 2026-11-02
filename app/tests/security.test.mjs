@@ -94,7 +94,7 @@ describe('Protokół zasobów i uprawnienia', () => {
     assert.deepEqual(uses, [])
   })
   test('uprawnienia okna: tylko to, co potrzebne', () => {
-    const allowed = new Set(['core:default', 'dialog:default', 'updater:default', 'process:allow-restart', 'opener:allow-reveal-item-in-dir'])
+    const allowed = new Set(['core:default', 'dialog:default', 'updater:default', 'process:allow-restart', 'opener:allow-reveal-item-in-dir', 'core:window:allow-set-fullscreen', 'core:window:allow-set-position'])
     for (const p of caps.permissions) assert.ok(allowed.has(p), `nieoczekiwane uprawnienie: ${p}`)
   })
   test('brak uprawnień do plików, powłoki, HTTP, schowka i dostępu do systemu', () => {
