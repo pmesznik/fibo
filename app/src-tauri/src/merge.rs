@@ -366,7 +366,7 @@ pub struct MergeReport {
     pub shifts: Vec<(i32, i32)>,
 }
 
-fn load_upright(path: &str) -> Result<RgbImage, String> {
+pub(crate) fn load_upright(path: &str) -> Result<RgbImage, String> {
     let img = crate::formats::open_upright(std::path::Path::new(path))?;
     let img = if img.width().max(img.height()) > WORK_SIDE { img.resize(WORK_SIDE, WORK_SIDE, FilterType::Triangle) } else { img };
     Ok(img.to_rgb8())

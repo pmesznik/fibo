@@ -222,6 +222,8 @@ export type DropReport = { folders: number; files: number; added: number }
 export const addDropped = (paths: string[]) => invoke<DropReport>('add_dropped', { paths })
 export const qualityScan = () => invoke<{ done: number; failed: number }>('quality_scan')
 export type MergeReport = { id: number; path: string; shifts: [number, number][] }
+export type PanoReport = { id: number; path: string; width: number; height: number }
+export const stitchPanorama = (ids: number[]) => invoke<PanoReport>('stitch_panorama', { ids })
 export const mergePhotos = (ids: number[], mode: 'hdr' | 'focus') => invoke<MergeReport>('merge_photos', { ids, mode })
 export const saveFilm = (dest: string, name: string, bytes: ArrayBuffer) => invoke<string>('save_film', bytes, { headers: { dest: encodeURIComponent(dest), name } })
 export const saveBookPdf = (body: ArrayBuffer, dest: string, name: string, paper: string, landscape: boolean) =>

@@ -21,7 +21,7 @@ import { Duplicates } from './Duplicates'
 import { UpdateDialog, useUpdater } from './Updater'
 import { exportSidecars, getSidecarEnabled, importSidecars, setSidecarEnabled } from './api'
 import {
-  addToAlbum, createAlbum, deleteAlbum, setAlbumHidden, listAlbumOrder, setAlbumOrder, listAlbums, fillPlaces, mergePhotos, addDropped, watchRoots, thumbCacheInfo, thumbCacheClear, listRoots, movePhotos, removeFromAlbum, removeRoot,
+  addToAlbum, createAlbum, deleteAlbum, setAlbumHidden, listAlbumOrder, setAlbumOrder, listAlbums, fillPlaces, mergePhotos, stitchPanorama, addDropped, watchRoots, thumbCacheInfo, thumbCacheClear, listRoots, movePhotos, removeFromAlbum, removeRoot,
   renameAlbum, renamePhoto, rescanRoots, trashPhotos, listSmart, saveSmart, deleteSmart, type SmartAlbum, listLocked, setFolderLocked, revealInExplorer, openPhotoExternal, findDuplicates, indexColors, rejectPersonInPhotos, rotatePhotos, getSkipGifPng, setSkipGifPng, detectCards, listPeople, listProps, renameFolder, type Prop, type Person, personPhotos, importPhotos, backupLibrary, backupPhotos, restoreLibrary, pickFile, hidePhotos, hiddenCount, restoreHidden, type Album,
 } from './api'
 import { AlbumPicker, PromptDialog } from './Dialogs'
@@ -1053,6 +1053,23 @@ export default function App() {
       },
     })
   }
+  /** Zszywa zaznaczone zdjęcia (2 do 9, kolejne kadry nakładają się na siebie) w panoramę; wynik to nowy plik obok pierwszego zdjęcia. */
+  const askPanorama = () => {
+    const ids = realIds()
+    setMenu(null)
+    if (ids.length < 2 || ids.length > 9) { say('Zaznacz od 2 do 9 zdjęć zrobionych obok siebie', 'err'); return }
+    setConfirm({
+      text: `Zszyć ${ids.length} ${pl(ids.length, 'zdjęcie', 'zdjęcia', 'zdjęć')} w panoramę? Powstanie nowy plik JPEG obok pierwszego zdjęcia, a oryginały zostaną bez zmian. Kadry powinny nakładać się na siebie w co najmniej jednej dziesiątej szerokości, najlepiej ze statywu albo przy obrocie wokół własnej osi. Program wyrówna przesunięcie i jasność, ale nie koryguje obrotu ani perspektywy. To może potrwać kilkanaście sekund.`,
+      yes: 'Zszyj',
+      run: async () => {
+        try {
+          const r = await stitchPanorama(ids)
+          await reload()
+          say(`Panorama gotowa (${r.width}×${r.height} px). Nowy plik jest obok pierwszego zdjęcia`, 'ok')
+        } catch (e) { say(`${e}`, 'err') }
+      },
+    })
+  }
   const dropOnFolder = (dir: string, dragged: number[] | null = dragIds) => {
     const ids = (dragged ?? []).filter((i) => i >= 0)
     setDragIds(null); setDropOver(null)
@@ -1811,6 +1828,7 @@ export default function App() {
               <>
                 <button className="text menu-item" role="menuitem" onClick={() => askMerge('hdr')}><Wand2 size={18} /> Połącz w HDR…</button>
                 <button className="text menu-item" role="menuitem" onClick={() => askMerge('focus')}><Wand2 size={18} /> Połącz w stos ostrości…</button>
+                <button className="text menu-item" role="menuitem" onClick={askPanorama}><Wand2 size={18} /> Zszyj w panoramę…</button>
               </>
             )}
             <button className="text menu-item" role="menuitem" title="Bez utraty jakości (JPEG): zmienia tylko znacznik orientacji" onClick={() => rotateSelected(true)}><RotateCw size={18} /> Obróć w prawo</button>

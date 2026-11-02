@@ -245,7 +245,8 @@ export function ProgressDock() {
   }
 
   // Małe zadania (kilka zdjęć) nie migają oknem: pokazujemy je od 30 pozycji albo gdy trwają dłużej niż 1,5 s.
-  const shown = (Object.keys(META) as Kind[]).map((k) => jobs[k]).filter((j): j is Job => !!j && (j.total >= 30 || Date.now() - j.start > 1500))
+  // Liczenie kolorów to po cichu działające zadanie w tle (przy każdym starcie dolicza tylko nowe zdjęcia), więc nie pokazuje okienka.
+  const shown = (Object.keys(META) as Kind[]).filter((k) => k !== 'colors').map((k) => jobs[k]).filter((j): j is Job => !!j && (j.total >= 30 || Date.now() - j.start > 1500))
   if (!shown.length) return null
   return (
     <div className="pd-dock">
