@@ -18,7 +18,7 @@ tauri-plugin-opener = "2"
 tokio = { version = "1", features = ["sync"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-rusqlite = { version = "0.32", features = ["bundled"] }
+rusqlite = { version = "0.41", features = ["bundled"] }
 walkdir = "2"
 # Natychmiastowe wykrywanie nowych plików w obserwowanych folderach (nasłuch systemu, bez odczytu zawartości).
 notify = { version = "8", default-features = false }
