@@ -180,7 +180,7 @@ Szukanie i porządkowanie:
 - [x] **Flagi „wybierz / odrzuć” i kolorowe etykiety** zapisywane do XMP, szybkie selekcjonowanie klawiaturą. P2 T S
 - [x] **Porównanie 2 do 4 zdjęć obok siebie** z jednoczesnym powiększaniem. P2 T M
 - [x] **Widok kalendarza** (miesiące z miniaturami). P3 T M Gotowe: menu → Szybkie akcje → „Widok kalendarza”: siatka miesiąca z miniaturą i liczbą zdjęć w dniu, rok i miesiące na górze, kliknięcie dnia pokazuje jego zdjęcia.
-- [ ] **Zwierzęta domowe** jako osobna kategoria osób. P4 T L
+- [x] **Zwierzęta domowe** jako osobna kategoria osób. P4 T L Gotowe w wersji „psy i koty na zdjęciach” (lokalny model treści, tag pies/kot i opcjonalne imię). Rozpoznawanie konkretnych zwierzaków poza zakresem (wymaga osobnego modelu).
 - [ ] **Prywatny, zablokowany album** (ukryty po haśle). P3 T M
 - [x] **Organizator plików**: przenoszenie zdjęć do folderów według daty, ze sprawdzeniem i cofaniem. P3 T M
 

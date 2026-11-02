@@ -42,6 +42,7 @@ import { OrganizerDialog } from './OrganizerDialog'
 import { LibraryCalendar } from './LibraryCalendar'
 import { QualityDialog } from './QualityDialog'
 import { TagSuggestDialog } from './TagSuggestDialog'
+import { PetsDialog } from './PetsDialog'
 import { TextSearch } from './TextSearch'
 import { Photobook } from './Photobook'
 import { beginPointerDrag, dragJustEnded } from './pointerDrag'
@@ -112,6 +113,7 @@ export default function App() {
   const [dayViewOpen, setDayViewOpen] = useState(false)
   const [qualityOpen, setQualityOpen] = useState(false)
   const [tagSuggestOpen, setTagSuggestOpen] = useState(false)
+  const [petsOpen, setPetsOpen] = useState(false)
   const [textSearchOpen, setTextSearchOpen] = useState(false)
   const [bookOpen, setBookOpen] = useState(false)
   /** Pliki przeciągane z Eksploratora nad oknem (pokazujemy podpowiedź „Upuść”). */
@@ -1225,6 +1227,7 @@ export default function App() {
                 { icon: Images, label: 'Fotoksiążka (PDF)', fn: () => { setDrawer(false); setBookOpen(true) }, on: false },
                 { icon: SearchIcon, label: 'Szukaj tekstu na zdjęciach', fn: () => { setDrawer(false); setTextSearchOpen(true) }, on: false },
                 { icon: Tag, label: 'Podpowiedzi tagów', fn: () => { setDrawer(false); setTagSuggestOpen(true) }, on: false },
+                { icon: Heart, label: 'Zwierzęta domowe', fn: () => { setDrawer(false); setPetsOpen(true) }, on: false },
                 { icon: Compare, label: 'Przegląd jakości zdjęć', fn: () => { setDrawer(false); setQualityOpen(true) }, on: false },
                 { icon: CalendarDays, label: 'Widok kalendarza', fn: () => { setDrawer(false); setDayViewOpen(true) }, on: false },
                 { icon: CalendarDays, label: 'Kalendarz do wydruku', fn: () => { setDrawer(false); setCalOpen(true) }, on: false },
@@ -1987,6 +1990,7 @@ export default function App() {
       )}
       {bookOpen && <Photobook say={say} onClose={() => setBookOpen(false)} photos={sel.filter((i) => i >= 0).length >= 2 ? filtered.filter((p) => sel.includes(p.id)) : filtered} />}
       {textSearchOpen && <TextSearch say={say} onClose={() => setTextSearchOpen(false)} onResults={(ids, title) => { setTextSearchOpen(false); openRanked(ids, title) }} />}
+      {petsOpen && <PetsDialog photos={all} say={say} onClose={() => setPetsOpen(false)} onChanged={() => reload()} onShow={(ids, title) => openRanked(ids, title)} />}
       {tagSuggestOpen && <TagSuggestDialog photos={all} say={say} onClose={() => setTagSuggestOpen(false)} onChanged={() => reload()} onShow={(ids, title) => openRanked(ids, title)} />}
       {qualityOpen && <QualityDialog photos={all} say={say} onClose={() => setQualityOpen(false)} onChanged={() => reload()} onShow={(ids, title) => openRanked(ids, title)} />}
       {dayViewOpen && <LibraryCalendar photos={all} onClose={() => setDayViewOpen(false)} onOpenDay={(ids, title) => openMemory(ids, title, '')} />}
