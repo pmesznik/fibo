@@ -27,6 +27,7 @@ const SHORTCUTS: [string, string][] = [
   ['6, 7, 8, 9', 'Etykieta kolorowa: czerwona, żółta, zielona, niebieska (powtórzony klawisz ją zdejmuje)'],
   ['Enter', 'Otwórz zaznaczone zdjęcie'],
   ['Prawy przycisk', 'Menu: tagi, album, nazwa, data, lokalizacja, eksport, ukrywanie, Kosz'],
+  ['Ctrl+F', 'Szukaj (nazwa pliku, aparat, tag, opis)'],
   ['? lub F1', 'Ta lista skrótów'],
   ['Esc', 'Zamknij okno, menu lub panel'],
   ['Podgląd: ← →', 'Poprzednie i następne zdjęcie'],

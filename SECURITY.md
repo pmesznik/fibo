@@ -56,6 +56,9 @@ i poproś o kontakt). Najnowsza wydana wersja jest jedyną wspieraną.
 - **Usuwanie zdjęć:** „Usuń z biblioteki” tylko ukrywa zdjęcia (pliki zostają). „Przenieś do Kosza” działa wyłącznie
   na zdjęciach znanych bibliotece, odrzuca foldery, dowiązania i pliki inne niż zdjęcia, nie usuwa całych folderów,
   a od 20 zdjęć (i dla całego folderu) backend wymaga słowa potwierdzenia.
+- **Ochrona bazy:** raz w tygodniu program zapisuje spójną kopię bazy (VACUUM INTO, osobne połączenie tylko do odczytu) w folderze danych programu,
+  w `kopie-automatyczne`; zostają trzy najnowsze, a kopie tam leżą tylko na tym komputerze. Przed kopią wykonuje `PRAGMA quick_check`; uszkodzonej bazy nie kopiuje
+  i pokazuje ostrzeżenie. Przy zamykaniu programu dziennik WAL jest scalany z plikiem bazy (`wal_checkpoint(TRUNCATE)`).
 - **Usuwanie duplikatów:** zakładka Duplikaty wysyła do programu pary „usuń to zdjęcie, zostaje tamto”, a backend (`dups.rs`) sprawdza każdą
   parę tuż przed usunięciem: kopia, która ma zostać, musi istnieć na dysku, nie może być na liście do usunięcia ani być tym samym plikiem
   (ta sama ścieżka po rozwinięciu), a pliki muszą być zgodne bajt po bajcie (zdjęcia tylko podobne wyłącznie po osobnej zgodzie). Para, która

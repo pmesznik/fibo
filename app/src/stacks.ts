@@ -53,7 +53,7 @@ export function findStacks(photos: Photo[]): Map<number, Stack> {
   for (const p of real) {
     const s = parts.get(p.id)!
     const key = `${s.folder}\u0000${s.stem}`
-    byName.set(key, [...(byName.get(key) ?? []), p])
+    { const l = byName.get(key); if (l) l.push(p); else byName.set(key, [p]) }
   }
   const units: Unit[] = []
   for (const group of byName.values()) {
@@ -109,7 +109,7 @@ export function collapseStacks(visible: Photo[], stacks: Map<number, Stack>, ope
   const present = new Map<Stack, Photo[]>()
   for (const p of visible) {
     const s = stacks.get(p.id)
-    if (s) present.set(s, [...(present.get(s) ?? []), p])
+    if (s) { const l = present.get(s); if (l) l.push(p); else present.set(s, [p]) }
   }
   const list: Photo[] = []
   const badges = new Map<number, StackBadge>()

@@ -1,4 +1,4 @@
-import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { startTransition, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { listen } from '@tauri-apps/api/event'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
 import { MapView } from './MapView'
@@ -55,6 +55,13 @@ import {
   Images, FolderOpen, Users, MapPin, Heart, Star, Plus, Play, Maximize2, X,
   Compare, SlidersHorizontal, Search as SearchIcon, ImageUp, Ruler, LayoutDashboard, Check, ListChecks, Tag, CalendarDays, Copy, RefreshCw, Download, Save, Pencil, Trash2, Eye, EyeOff, ChevronLeft, Wand2, Info, RotateCw, RotateCcw,
 } from './FiboIcons'
+
+/**
+ * Zbiór z tablicy numerów, zapamiętany dla tej samej tablicy. Zamiast `ids.includes(p.id)` w pętli po całej bibliotece
+ * (przy 100 tysiącach zdjęć i dużym zaznaczeniu to miliardy porównań) sprawdzamy `setOf(ids).has(p.id)`.
+ */
+const setCache = new WeakMap<number[], Set<number>>()
+const setOf = (a: number[]) => { let s = setCache.get(a); if (!s) { s = new Set(a); setCache.set(a, s) } return s }
 
 type Mode = 'library' | 'albums' | 'favs' | 'people' | 'dups' | 'map'
 type Sort = 'date-desc' | 'date-asc' | 'name' | 'rating' | 'size' | 'custom'
@@ -159,6 +166,8 @@ export default function App() {
   useEffect(() => { if (mode === 'dups') setDupsSeen(true) }, [mode])
   const [drawer, setDrawer] = useState(false)
   const [query, setQuery] = useState('')
+  // Filtrowanie dużej biblioteki idzie za wpisywanym tekstem z opóźnieniem, więc pole szukania nie zacina się przy każdym znaku.
+  const searchQuery = useDeferredValue(query)
   const [all, setAll] = useState<Photo[]>(inTauri ? [] : DEMO)
   const [busy, setBusy] = useState(false)
   const [progress, setProgress] = useState(0)
@@ -342,13 +351,20 @@ export default function App() {
     return () => { window.clearTimeout(first); window.removeEventListener('focus', onFocus); window.clearInterval(every) }
   }, [rescan])
 
+  // Sprawdzenie bazy po starcie (w tle): przy problemie od razu pytamy, co dalej, zamiast pokazywać znikające powiadomienie.
   useEffect(() => {
     if (!inTauri) return
-    // Podczas skanu wielu zdjęć nie przeładowujemy całej biblioteki po każdej partii (to zawieszało program): najwyżej raz na 4 s.
+    const un = listen<string>('db-problem', (e) => setConfirm({ text: e.payload, yes: 'Rozumiem', run: () => {} }))
+    return () => { un.then((f) => f()) }
+  }, [])
+
+  useEffect(() => {
+    if (!inTauri) return
+    // Podczas skanu wielu zdjęć nie przeładowujemy całej biblioteki po każdej partii (to zawieszało program): najwyżej raz na 15 s.
     let timer = 0
     const un = listen<number>('scan-progress', (e) => {
       setProgress(e.payload)
-      if (!timer) timer = window.setTimeout(() => { timer = 0; reload() }, 4000)
+      if (!timer) timer = window.setTimeout(() => { timer = 0; reload() }, 15000)
     })
     return () => { un.then((f) => f()); window.clearTimeout(timer) }
   }, [reload])
@@ -519,12 +535,12 @@ export default function App() {
   }
   const onlyFav = mode === 'favs'
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase()
+    const q = searchQuery.trim().toLowerCase()
     const list = all.filter((p) =>
       (!folder || dirOf(p.path) === folder) &&
       (albumId === null || p.albums.includes(albumId)) &&
       (!person || person.ids.has(p.id)) &&
-      (!trayView || tray.includes(p.id)) &&
+      (!trayView || setOf(tray).has(p.id)) &&
       (placeFilter === null || placeOf(p) === placeFilter) &&
       (!onlyFav || p.favorite) &&
       p.rating >= minStars &&
@@ -546,7 +562,7 @@ export default function App() {
     else if (sort === 'size') list.sort((a, b) => b.size - a.size)
     else list.sort((a, b) => (sort === 'date-desc' ? cmpWhen(whenOf(b), whenOf(a)) : cmpWhen(whenOf(a), whenOf(b))))
     return list
-  }, [all, albumNames, propOf, query, folder, albumId, person, trayView, tray, onlyFav, minStars, kindFilter, flagFilter, labelFilter, color, dateFrom, dateTo, missing, sort, activeTags, albumPos, placeFilter, placeOf])
+  }, [all, albumNames, propOf, searchQuery, folder, albumId, person, trayView, tray, onlyFav, minStars, kindFilter, flagFilter, labelFilter, color, dateFrom, dateTo, missing, sort, activeTags, albumPos, placeFilter, placeOf])
   const stacks = useMemo(() => findStacks(all), [all])
   const stackTotal = useMemo(() => stackCount(stacks), [stacks])
   const collapsed = useMemo(() => (stacksOn && stackTotal > 0 ? collapseStacks(filtered, stacks, openStacks) : null), [stacksOn, stackTotal, filtered, stacks, openStacks])
@@ -641,11 +657,11 @@ export default function App() {
     try {
       if (add) {
         const name = await addTag(real, tag)
-        setAll((l) => l.map((p) => (real.includes(p.id) && !p.tags.includes(name) ? { ...p, tags: [...p.tags, name].sort() } : p)))
+        setAll((l) => l.map((p) => (setOf(real).has(p.id) && !p.tags.includes(name) ? { ...p, tags: [...p.tags, name].sort() } : p)))
       } else {
         await removeTag(real, tag)
-        setAll((l) => l.map((p) => (real.includes(p.id) ? { ...p, tags: p.tags.filter((t) => t !== tag) } : p)))
-        setActiveTags((a) => a.filter((t) => t !== tag || all.some((p) => p.tags.includes(t) && !real.includes(p.id))))
+        setAll((l) => l.map((p) => (setOf(real).has(p.id) ? { ...p, tags: p.tags.filter((t) => t !== tag) } : p)))
+        setActiveTags((a) => a.filter((t) => t !== tag || all.some((p) => p.tags.includes(t) && !setOf(real).has(p.id))))
       }
     } catch (e) {
       say(`Błąd tagów: ${e}`, 'err')
@@ -745,14 +761,14 @@ export default function App() {
   }
   /** Gwiazdka schowka: dodaje wszystkie jego zdjęcia do ulubionych (a gdy już wszystkie są ulubione, usuwa je z ulubionych). */
   const favIds = (ids: number[]) => {
-    const picked = all.filter((p) => ids.includes(p.id) && p.id >= 0)
+    const picked = all.filter((p) => setOf(ids).has(p.id) && p.id >= 0)
     if (!picked.length) return
     const value = !picked.every((p) => p.favorite)
     for (const p of picked) { patch(p.id, { favorite: value }); if (inTauri) setFavorite(p.id, value) }
     say(value ? `Dodano do ulubionych: ${picked.length}` : `Usunięto z ulubionych: ${picked.length}`, 'ok')
   }
   const favSelected = () => {
-    const picked = all.filter((p) => sel.includes(p.id))
+    const picked = all.filter((p) => setOf(sel).has(p.id))
     const value = !picked.every((p) => p.favorite)
     for (const p of picked) { patch(p.id, { favorite: value }); if (inTauri && p.id >= 0) setFavorite(p.id, value) }
     setMenu(null)
@@ -825,14 +841,14 @@ export default function App() {
   /** Usuwa zdjęcia z biblioteki bez ruszania plików. Można je przywrócić z menu. */
   const askHide = (ids: number[], what: string) => {
     if (!ids.length) return
-    const list = all.filter((p) => ids.includes(p.id))
+    const list = all.filter((p) => setOf(ids).has(p.id))
     setConfirm({
       text: `Ukryć w FIBO ${what}: ${ids.length} ${pl(ids.length, 'zdjęcie', 'zdjęcia', 'zdjęć')} (${sizeText(list)})? Pliki zostają na dysku. Ukryte zdjęcia możesz przywrócić w menu, a ponowne dodanie folderu też je przywraca.`,
       yes: 'Ukryj w FIBO',
       run: async () => {
         try {
           const n = await hidePhotos(ids)
-          setAll((l) => l.filter((p) => !ids.includes(p.id)))
+          setAll((l) => l.filter((p) => !setOf(ids).has(p.id)))
           setSel([])
           await Promise.all([reloadAlbums(), reloadHidden()])
           say(`Ukryto w FIBO: ${n} (pliki zostały na dysku)`, 'ok')
@@ -843,11 +859,11 @@ export default function App() {
   /** Przenosi pliki do Kosza Windows. Od 20 zdjęć albo dla całego folderu trzeba wpisać słowo USUŃ (sprawdza je też backend). */
   const askTrash = (ids: number[], what: string, forceTyped = false) => {
     if (!ids.length) return
-    const list = all.filter((p) => ids.includes(p.id))
+    const list = all.filter((p) => setOf(ids).has(p.id))
     const summary = `${ids.length} ${pl(ids.length, 'zdjęcie', 'zdjęcia', 'zdjęć')} (${sizeText(list)})`
     const run = async (word?: string) => {
       const n = await trashPhotos(ids, word)
-      setAll((l) => l.filter((p) => !ids.includes(p.id)))
+      setAll((l) => l.filter((p) => !setOf(ids).has(p.id)))
       setSel([])
       await reloadAlbums()
       say(`Przeniesiono do Kosza: ${n}`, 'ok')
@@ -874,7 +890,7 @@ export default function App() {
     const ids = realIds()
     if (!ids.length) return
     if (!getClip()) return say('Schowek edycji jest pusty. Otwórz zdjęcie, zmień je i użyj „Kopiuj edycję”.')
-    const list = all.filter((p) => ids.includes(p.id))
+    const list = all.filter((p) => setOf(ids).has(p.id))
     setConfirm({
       text: `Zastosować skopiowaną edycję do ${list.length} ${pl(list.length, 'zdjęcia', 'zdjęć', 'zdjęć')}? Wyniki zostaną zapisane jako nowe kopie obok oryginałów (oryginały zostają bez zmian).`, yes: 'Zastosuj',
       run: async () => {
@@ -992,6 +1008,15 @@ export default function App() {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
+      // Ctrl+F: szukanie, jak w innych programach (pole jest w menu, więc je otwieramy i ustawiamy w nim kursor).
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'f') {
+        e.preventDefault(); setDrawer(true)
+        // Menu pojawia się z animacją, a do tego czasu pola nie da się zaznaczyć: próbujemy kilka razy.
+        let tries = 0
+        const grab = () => { const q = document.getElementById('q') as HTMLInputElement | null; q?.focus(); if (document.activeElement === q) q?.select(); else if (++tries < 12) window.setTimeout(grab, 50) }
+        window.setTimeout(grab, 30)
+        return
+      }
       if (e.ctrlKey || e.metaKey || e.altKey) return
       if (e.key === '?' || e.key === 'F1') { e.preventDefault(); setHelpDlg('keys'); return }
       if (confirm || prompt || picker || tagDlg || helpDlg || collage || compareOpen || dateIds || renameIds || locIds || exportIds) return
@@ -1101,7 +1126,7 @@ export default function App() {
   const dropOnFolder = (dir: string, dragged: number[] | null = dragIds) => {
     const ids = (dragged ?? []).filter((i) => i >= 0)
     setDragIds(null); setDropOver(null)
-    const moving = all.filter((p) => ids.includes(p.id) && dirOf(p.path) !== dir)
+    const moving = all.filter((p) => setOf(ids).has(p.id) && dirOf(p.path) !== dir)
     if (!moving.length) { say('Te zdjęcia już są w tym folderze', 'ok'); return }
     setConfirm({
       text: `Przenieść ${moving.length} ${pl(moving.length, 'zdjęcie', 'zdjęcia', 'zdjęć')} (${sizeText(moving)}) do folderu „${folderName(dir)}”? Pliki zmienią miejsce na dysku razem z plikami XMP i edycją.`,
@@ -1888,7 +1913,7 @@ export default function App() {
             </div>
             <div className="menu-grid">
             <button className="text menu-item" role="menuitem" onClick={favSelected}>
-              <Heart size={18} /> {all.filter((p) => sel.includes(p.id)).every((p) => p.favorite) ? 'Z ulubionych' : 'Do ulubionych'}
+              <Heart size={18} /> {all.filter((p) => setOf(sel).has(p.id)).every((p) => p.favorite) ? 'Z ulubionych' : 'Do ulubionych'}
             </button>
             <button className="text menu-item" role="menuitem" onClick={() => { setMenu(null); setTagDlg(true) }}><Tag size={18} /> Tagi…</button>
             {sel.length > 1 && (
@@ -2098,14 +2123,14 @@ export default function App() {
           Upuść zdjęcia lub foldery, aby dodać je do biblioteki
         </div>
       )}
-      {bookOpen && <Photobook say={say} onClose={() => setBookOpen(false)} photos={sel.filter((i) => i >= 0).length >= 2 ? filtered.filter((p) => sel.includes(p.id)) : filtered} />}
+      {bookOpen && <Photobook say={say} onClose={() => setBookOpen(false)} photos={sel.filter((i) => i >= 0).length >= 2 ? filtered.filter((p) => setOf(sel).has(p.id)) : filtered} />}
       {textSearchOpen && <TextSearch say={say} onClose={() => setTextSearchOpen(false)} onResults={(ids, title) => { setTextSearchOpen(false); openRanked(ids, title) }} />}
       {petsOpen && <PetsDialog photos={all} say={say} onClose={() => setPetsOpen(false)} onChanged={() => reload()} onShow={(ids, title) => openRanked(ids, title)} />}
       {tagSuggestOpen && <TagSuggestDialog photos={all} say={say} onClose={() => setTagSuggestOpen(false)} onChanged={() => reload()} onShow={(ids, title) => openRanked(ids, title)} />}
       {qualityOpen && <QualityDialog photos={all} say={say} onClose={() => setQualityOpen(false)} onChanged={() => reload()} onShow={(ids, title) => openRanked(ids, title)} />}
       {dayViewOpen && <LibraryCalendar photos={all} onClose={() => setDayViewOpen(false)} onOpenDay={(ids, title) => openMemory(ids, title, '')} />}
       {calOpen && <CalendarMaker photos={all.filter((p) => !p.video)} say={say} onClose={() => setCalOpen(false)} />}
-      {creditIds && creditIds.length > 0 && <CreditsDialog photos={all.filter((p) => creditIds.includes(p.id))} say={say} onClose={() => setCreditIds(null)} onDone={reload} />}
+      {creditIds && creditIds.length > 0 && <CreditsDialog photos={all.filter((p) => setOf(creditIds).has(p.id))} say={say} onClose={() => setCreditIds(null)} onDone={reload} />}
       {cardOffer && (
         <div className="glass fixed left-3 z-[1550] flex flex-wrap items-center gap-3 p-3" style={{ bottom: 'calc(12px + var(--sab))', borderRadius: 'var(--r-lg)', maxWidth: 'min(92vw, 460px)' }} role="status">
           <span style={{ flex: '1 1 200px', fontSize: 14 }}>Wykryto kartę pamięci z aparatu ({cardOffer}) ze zdjęciami.</span>

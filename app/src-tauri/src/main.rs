@@ -16,6 +16,7 @@ mod calendar;
 mod clip;
 mod color;
 mod dups;
+mod dbcare;
 mod formats;
 mod jobs;
 mod photos_backup;
@@ -108,7 +109,8 @@ fn open_db(path: &Path) -> rusqlite::Result<Connection> {
     let conn = Connection::open(path)?;
     // Tryb WAL: zapisy (np. analiza twarzy) nie blokują odczytów i są wielokrotnie szybsze niż domyślny dziennik. Dla bazy w pamięci pragma jest ignorowana.
     let _: String = conn.query_row("PRAGMA journal_mode = WAL", [], |r| r.get(0)).unwrap_or_default();
-    conn.execute_batch("PRAGMA synchronous = NORMAL; PRAGMA busy_timeout = 5000;")?;
+    // Większa pamięć podręczna, odczyt przez mapowanie pliku i tabele tymczasowe w pamięci: szybsze listowanie i sortowanie dużej biblioteki.
+    conn.execute_batch("PRAGMA synchronous = NORMAL; PRAGMA busy_timeout = 5000; PRAGMA cache_size = -65536; PRAGMA mmap_size = 268435456; PRAGMA temp_store = MEMORY;")?;
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS photos (
             id INTEGER PRIMARY KEY,
@@ -553,7 +555,8 @@ async fn refresh_library(app: tauri::AppHandle) -> Result<usize, String> {
     .map_err(|e| e.to_string())?
 }
 
-#[tauri::command]
+// Osobny wątek (async): wczytanie i przesłanie listy dużej biblioteki nie może zamrażać okna.
+#[tauri::command(async)]
 fn list_photos(state: State<'_, AppState>) -> Result<Vec<Photo>, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     let mut stmt = conn
@@ -2586,7 +2589,14 @@ fn find_duplicates_blocking(app: &tauri::AppHandle, max_distance: Option<u32>) -
     }
 
     // Co trzeba policzyć: suma kontrolna zawsze, hash percepcyjny tylko przy szukaniu podobnych.
-    let jobs: Vec<usize> = (0..recs.len()).filter(|&i| recs[i].fh.is_none() || (max_distance.is_some() && recs[i].dh.is_none())).collect();
+    // Identyczne pliki muszą mieć ten sam rozmiar: plik o rozmiarze, który nie powtarza się w bibliotece, nie ma identycznej kopii,
+    // więc nie czytamy go z dysku (przy pierwszym szukaniu to większość biblioteki).
+    let mut size_count: std::collections::HashMap<i64, u32> = std::collections::HashMap::new();
+    for r in &recs {
+        *size_count.entry(r.size).or_default() += 1;
+    }
+    let need_fh: Vec<bool> = recs.iter().map(|r| size_count.get(&r.size).copied().unwrap_or(0) > 1).collect();
+    let jobs: Vec<usize> = (0..recs.len()).filter(|&i| (recs[i].fh.is_none() && need_fh[i]) || (max_distance.is_some() && recs[i].dh.is_none())).collect();
     let total = jobs.len();
     let threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(2).min(8);
     let want_d = max_distance.is_some();
@@ -2595,7 +2605,7 @@ fn find_duplicates_blocking(app: &tauri::AppHandle, max_distance: Option<u32>) -
         let results: Vec<(usize, Option<u64>, Option<u64>)> = std::thread::scope(|s| {
             let handles: Vec<_> = (0..threads)
                 .map(|t| {
-                    let (recs, thumbs) = (&recs, &state.thumbs);
+                    let (recs, thumbs, need_fh) = (&recs, &state.thumbs, &need_fh);
                     s.spawn(move || {
                         let mut out = Vec::new();
                         for (k, &i) in batch.iter().enumerate() {
@@ -2603,7 +2613,7 @@ fn find_duplicates_blocking(app: &tauri::AppHandle, max_distance: Option<u32>) -
                                 continue;
                             }
                             let r = &recs[i];
-                            let fh = r.fh.map(|v| v as u64).or_else(|| file_hash(Path::new(&r.path)));
+                            let fh = r.fh.map(|v| v as u64).or_else(|| if need_fh[i] { file_hash(Path::new(&r.path)) } else { None });
                             let dh = if want_d {
                                 r.dh.map(|v| v as u64).or_else(|| {
                                     let thumb = thumbs.join(format!("{}_{}.jpg", r.id, r.modified));
@@ -2665,12 +2675,33 @@ fn find_duplicates_blocking(app: &tauri::AppHandle, max_distance: Option<u32>) -
             .filter_map(|(i, r)| r.dh.map(|h| (i, h as u64)))
             .filter(|(_, h)| (8..=56).contains(&h.count_ones()))
             .collect();
-        for a in 0..hashed.len() {
-            for b in (a + 1)..hashed.len() {
-                if (hashed[a].1 ^ hashed[b].1).count_ones() <= max {
-                    union(&mut parent, hashed[a].0, hashed[b].0);
-                }
-            }
+        // Porównanie każdy z każdym rozłożone na rdzenie procesora (przy 100 tysiącach zdjęć to miliardy porównań). Wynik jest ten sam,
+        // bo pary łączymy w grupy dopiero po zebraniu ich ze wszystkich wątków.
+        let threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(2).clamp(1, 16);
+        let pairs: Vec<(usize, usize)> = std::thread::scope(|sc| {
+            let hashed = &hashed;
+            let handles: Vec<_> = (0..threads)
+                .map(|t| {
+                    sc.spawn(move || {
+                        let mut out = Vec::new();
+                        let mut a = t;
+                        while a < hashed.len() {
+                            let ha = hashed[a].1;
+                            for b in (a + 1)..hashed.len() {
+                                if (ha ^ hashed[b].1).count_ones() <= max {
+                                    out.push((hashed[a].0, hashed[b].0));
+                                }
+                            }
+                            a += threads;
+                        }
+                        out
+                    })
+                })
+                .collect();
+            handles.into_iter().flat_map(|h| h.join().unwrap_or_default()).collect()
+        });
+        for (a, b) in pairs {
+            union(&mut parent, a, b);
         }
     }
 
@@ -4121,10 +4152,21 @@ fn main() {
             jobs::init(app.handle().clone());
             app.manage(AppState { db: Mutex::new(db), thumbs, sidecar: AtomicBool::new(sidecar) });
             people::start_learning(app.handle().clone());
+            dbcare::start(app.handle().clone(), dir.join("library.db"), dir.clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![list_roots, remove_root, rescan_roots, list_albums, create_album, rename_album, set_album_hidden, put_thumbnail, set_credits, color::index_colors, get_skip_gif_png, set_skip_gif_png, detect_cards, rotate::rotate_photos, list_album_order, set_album_order, open_photo_external, delete_album, add_to_album, remove_from_album, rename_photo, move_photos, get_sidecar_enabled, set_sidecar_enabled, export_sidecars, import_sidecars, scan_folder, refresh_library, find_duplicates, trash_photos, dups::trash_duplicates, export_photos, set_location, rename_batch, import_photos, gallery::export_gallery, gallery::export_gpx, gallery::export_gif, pdf::export_pdf, check::check_files, list_smart, save_smart, delete_smart, gallery::rename_folder, locks::list_locked, locks::set_folder_locked, set_date, shift_dates, set_caption, photo_exif, list_props, set_props, people::photo_people, people::unassign_faces, people::set_faces_autolearn, people::photo_face_boxes, people::shared_photos, people::add_manual_face, people::reassign_person_faces, backup::backup_library, photos_backup::backup_photos, backup::restore_library, hide_photos, hidden_count, restore_hidden, people::faces_status, people::set_faces_enabled, people::faces_start, people::faces_stop, people::faces_regroup, people::faces_reanalyze, people::faces_delete_all, people::list_people, people::person_photos, people::person_faces, people::set_person_cover, people::rename_person, people::merge_people, people::merge_suggestions, people::person_face_cards, people::photo_face_stats, calendar::save_calendar_pdf, calendar::save_book_pdf, people::confirm_faces, people::move_faces, people::reject_person_in_photos, people::move_person_faces, people::reject_faces, people::delete_person, people::restore_rejected_faces, people::ignore_person, people::split_person, picasa::picasa_scan, picasa::picasa_import, list_photos, thumbnail, thumbnail_data, people::face_crop, places::fill_places, film::save_film, merge::merge_photos, pano::stitch_panorama, ocr::ocr_status, ocr::ocr_start, ocr::ocr_stop, ocr::ocr_search, clip::clip_suggest_tags, quality::quality_scan, add_dropped, watcher::watch_roots, set_iptc, cache::thumb_cache_info, cache::thumb_cache_clear, watermark::save_watermark_text, organize::organize_plan, organize::organize_apply, organize::organize_last, organize::organize_undo, edits::get_edit, edits::save_edit_recipe, edits::put_edit_thumbnail, edits::delete_edit, edits::list_edit_history, edits::get_edit_version, set_rating, set_flag, set_label, rawdev::develop_raw, clip::clip_status, clip::clip_start, clip::clip_stop, clip::clip_search, set_favorite, add_tag, remove_tag, delete_tag, save_edit, save_collage, read_image, read_audio, has_original, restore_original])
-        .run(tauri::generate_context!())
-        .expect("błąd uruchomienia aplikacji");
+        .build(tauri::generate_context!())
+        .expect("błąd uruchomienia aplikacji")
+        .run(|app, event| {
+            // Przy zamykaniu (także przy restarcie po aktualizacji) dziennik WAL trafia do pliku bazy.
+            if let tauri::RunEvent::Exit = event {
+                if let Some(state) = app.try_state::<AppState>() {
+                    if let Ok(conn) = state.db.lock() {
+                        dbcare::checkpoint(&conn);
+                    }
+                }
+            }
+        });
 
 }
