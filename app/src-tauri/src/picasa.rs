@@ -14,7 +14,7 @@ use std::{
 
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 use crate::AppState;
 
@@ -171,7 +171,7 @@ fn contacts_xml() -> HashMap<String, String> {
 }
 
 /// Zbiera dane z `.picasa.ini` w folderach biblioteki i dopasowuje je do twarzy z bazy. Baza jest zablokowana tylko na czas odczytu.
-fn collect(app: &tauri::AppHandle) -> Result<Collected, String> {
+fn collect(app: &tauri::AppHandle, progress: &dyn Fn(usize, usize)) -> Result<Collected, String> {
     let state = app.state::<AppState>();
     let (folders, photos, faces) = {
         let conn = state.db.lock().map_err(|e| e.to_string())?;
@@ -186,7 +186,11 @@ fn collect(app: &tauri::AppHandle) -> Result<Collected, String> {
     };
     let global = contacts_xml();
     let mut out = Collected { folders: folders.len(), ..Default::default() };
-    for folder in &folders {
+    let step = (folders.len() / 200).max(1);
+    for (i, folder) in folders.iter().enumerate() {
+        if i % step == 0 || i + 1 == folders.len() {
+            progress(i + 1, folders.len());
+        }
         if folder.to_lowercase().replace('/', "\\").split('\\').any(|c| c == ".picasaoriginals") {
             continue;
         }
@@ -263,7 +267,7 @@ pub struct PicasaScan {
 #[tauri::command]
 pub async fn picasa_scan(app: tauri::AppHandle) -> Result<PicasaScan, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let c = collect(&app)?;
+        let c = collect(&app, &|d, t| { let _ = app.emit("picasa-progress", (0u8, d, t)); })?;
         let existing: HashMap<String, i64> = {
             let state = app.state::<AppState>();
             let conn = state.db.lock().map_err(|e| e.to_string())?;
@@ -320,14 +324,18 @@ pub struct PicasaReport {
 }
 
 /// Zapisuje przypisania. Twarzy ustawionej ręcznie w FIBO nie ruszamy. Dwie twarze z jednego zdjęcia nigdy nie trafiają do jednej osoby.
-fn apply_core(conn: &Connection, items: &[Matched], map: &HashMap<String, String>) -> Result<PicasaReport, String> {
+fn apply_core(conn: &Connection, items: &[Matched], map: &HashMap<String, String>, progress: &dyn Fn(usize, usize)) -> Result<PicasaReport, String> {
     let mut report = PicasaReport::default();
     let mut people: HashMap<String, i64> = HashMap::new();
     for (id, n) in conn.prepare("SELECT id, name FROM people WHERE name IS NOT NULL ORDER BY id").map_err(|e| e.to_string())?.query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?))).map_err(|e| e.to_string())?.filter_map(Result::ok) {
         people.entry(fold(&n)).or_insert(id);
     }
     let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
-    for m in items {
+    let step = (items.len() / 200).max(1);
+    for (i, m) in items.iter().enumerate() {
+        if i % step == 0 || i + 1 == items.len() {
+            progress(i + 1, items.len());
+        }
         let Some(to) = map.get(&m.key).map(|t| t.trim()).filter(|t| !t.is_empty()) else { continue };
         let (person, manual): (Option<i64>, i64) = tx.query_row("SELECT person_id, manual FROM faces WHERE id = ?1 AND rejected = 0", [m.face], |r| Ok((r.get(0)?, r.get(1)?))).map_err(|_| "Nie ma takiej twarzy".to_string())?;
         if manual == 1 && person.is_some() {
@@ -362,11 +370,11 @@ fn apply_core(conn: &Connection, items: &[Matched], map: &HashMap<String, String
 #[tauri::command]
 pub async fn picasa_import(app: tauri::AppHandle, map: Vec<NameMap>) -> Result<PicasaReport, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let c = collect(&app)?;
+        let c = collect(&app, &|d, t| { let _ = app.emit("picasa-progress", (0u8, d, t)); })?;
         let map: HashMap<String, String> = map.into_iter().map(|m| (m.key, m.to)).collect();
         let state = app.state::<AppState>();
         let conn = state.db.lock().map_err(|e| e.to_string())?;
-        let report = apply_core(&conn, &c.matched, &map)?;
+        let report = apply_core(&conn, &c.matched, &map, &|d, t| { let _ = app.emit("picasa-progress", (1u8, d, t)); })?;
         crate::people::mark_dirty();
         Ok(report)
     })
@@ -448,7 +456,7 @@ mod tests {
         let (f1, f2, f3, f4, f5) = (face(&c, 1, None, 0), face(&c, 2, None, 0), face(&c, 3, Some(alunia), 1), face(&c, 4, None, 0), face(&c, 4, None, 0));
         let items = [m(f1, 1, "alunia"), m(f2, 2, "Ja"), m(f3, 3, "Ja"), m(f4, 4, "Ja"), m(f5, 4, "Ja")];
         let map: HashMap<String, String> = [("alunia", "Alunia"), ("ja", "Ja")].iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
-        let r = apply_core(&c, &items, &map).unwrap();
+        let r = apply_core(&c, &items, &map, &|_, _| {}).unwrap();
         assert_eq!(r, PicasaReport { imported: 3, kept: 1, conflicts: 1, people_created: 1 });
         let (p, manual, auto): (i64, i64, i64) = c.query_row("SELECT person_id, manual, auto FROM faces WHERE id = ?1", [f1], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).unwrap();
         assert_eq!((p, manual, auto), (alunia, 1, 0), "twarz trafia do istniejącej osoby o tym imieniu (wielkość liter bez znaczenia) jako potwierdzona");
@@ -463,7 +471,7 @@ mod tests {
         let c = db();
         let f = face(&c, 1, None, 0);
         let map: HashMap<String, String> = [("ja".to_string(), "  ".to_string())].into_iter().collect();
-        assert_eq!(apply_core(&c, &[m(f, 1, "Ja")], &map).unwrap(), PicasaReport::default());
+        assert_eq!(apply_core(&c, &[m(f, 1, "Ja")], &map, &|_, _| {}).unwrap(), PicasaReport::default());
         let p: Option<i64> = c.query_row("SELECT person_id FROM faces WHERE id = ?1", [f], |r| r.get(0)).unwrap();
         assert_eq!(p, None);
     }

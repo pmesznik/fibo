@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { listen } from '@tauri-apps/api/event'
 import { X } from './FiboIcons'
 import { picasaImport, picasaScan, type PicasaReport, type PicasaScan } from './api'
 
@@ -6,6 +7,21 @@ const fmt = (n: number) => n.toLocaleString('pl-PL')
 const pl = (n: number, one: string, few: string, many: string) =>
   n === 1 ? one : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? few : many
 const fold = (s: string) => s.split(/\s+/).filter(Boolean).join(' ').toLowerCase()
+
+/** Pasek postępu z procentami. `what` opisuje, co się teraz dzieje. */
+function Progress({ what, done, total }: { what: string; done: number; total: number }) {
+  const pct = total > 0 ? Math.min(100, Math.floor((done / total) * 100)) : 0
+  return (
+    <div style={{ padding: '18px 16px 20px' }} role="status">
+      <p style={{ margin: '0 0 8px', fontSize: 14 }}>
+        {what}{total > 0 && <> <b>{fmt(done)}</b> z {fmt(total)} ({pct}%)</>}
+      </p>
+      <div role="progressbar" aria-label={what} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} style={{ height: 8, borderRadius: 4, background: 'var(--tonal)', overflow: 'hidden' }}>
+        <div style={{ width: `${total > 0 ? pct : 3}%`, height: '100%', background: 'var(--accent)', transition: 'width .2s' }} />
+      </div>
+    </div>
+  )
+}
 
 /**
  * Przenoszenie imion z Picasy 3. Program czyta tylko pliki .picasa.ini w folderach biblioteki (niczego w nich nie zmienia) i pokazuje imiona,
@@ -16,6 +32,13 @@ export function PicasaImport({ say, onClose, onDone }: { say: (m: string, kind?:
   const [to, setTo] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState(false)
   const [report, setReport] = useState<PicasaReport | null>(null)
+  /** Etap (0: czytanie plików Picasy, 1: zapis twarzy), ile zrobiono i ile razem. */
+  const [prog, setProg] = useState<[number, number, number] | null>(null)
+
+  useEffect(() => {
+    const un = listen<[number, number, number]>('picasa-progress', (e) => setProg(e.payload))
+    return () => { un.then((f) => f()) }
+  }, [])
 
   useEffect(() => {
     let dead = false
@@ -42,14 +65,14 @@ export function PicasaImport({ say, onClose, onDone }: { say: (m: string, kind?:
 
   const run = async () => {
     if (!scan || busy) return
-    setBusy(true)
+    setBusy(true); setProg(null)
     try {
       const r = await picasaImport(scan.names.map((n) => ({ key: n.key, to: to[n.key] ?? '' })))
       setReport(r)
       onDone()
       say(`Z Picasy przeniesiono ${fmt(r.imported)} ${pl(r.imported, 'twarz', 'twarze', 'twarzy')}`, 'ok')
     } catch (e) { say(`Błąd: ${e}`, 'err') }
-    setBusy(false)
+    setBusy(false); setProg(null)
   }
 
   return (
@@ -61,7 +84,7 @@ export function PicasaImport({ say, onClose, onDone }: { say: (m: string, kind?:
           <button className="ico" aria-label="Zamknij" disabled={busy} onClick={onClose}><X size={22} /></button>
         </div>
 
-        {!scan && <div className="empty" style={{ height: 180 }}>Czytam pliki Picasy w folderach biblioteki…</div>}
+        {!scan && <Progress what="Czytam pliki Picasy w folderach biblioteki" done={prog?.[1] ?? 0} total={prog?.[2] ?? 0} />}
 
         {scan && report && (
           <div className="sheet-body" style={{ padding: '8px 16px 16px' }}>
@@ -76,7 +99,11 @@ export function PicasaImport({ say, onClose, onDone }: { say: (m: string, kind?:
           </div>
         )}
 
-        {scan && !report && (
+        {scan && !report && busy && (
+          <Progress what={prog?.[0] === 1 ? 'Zapisuję twarze w FIBO' : 'Czytam pliki Picasy'} done={prog?.[1] ?? 0} total={prog?.[2] ?? 0} />
+        )}
+
+        {scan && !report && !busy && (
           <>
             <div style={{ padding: '4px 16px 8px', color: 'var(--muted)', fontSize: 13 }}>
               Znaleziono {fmt(scan.named)} {pl(scan.named, 'nazwaną twarz', 'nazwane twarze', 'nazwanych twarzy')} w {fmt(scan.files)} {pl(scan.files, 'folderze', 'folderach', 'folderach')} biblioteki. Pliki Picasy są tylko czytane.
@@ -114,8 +141,8 @@ export function PicasaImport({ say, onClose, onDone }: { say: (m: string, kind?:
             )}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px 14px' }}>
               <span style={{ color: 'var(--muted)', fontSize: 13, flex: 1 }}>{fmt(total)} {pl(total, 'twarz', 'twarze', 'twarzy')} do {fmt(people)} {pl(people, 'osoby', 'osób', 'osób')}, jako potwierdzone</span>
-              <button className="chip" disabled={busy} onClick={onClose}>Anuluj</button>
-              <button className="chip accent" disabled={busy || total === 0} onClick={run}>{busy ? 'Przenoszę…' : `Przenieś ${fmt(total)}`}</button>
+              <button className="chip" onClick={onClose}>Anuluj</button>
+              <button className="chip accent" disabled={total === 0} onClick={run}>{`Przenieś ${fmt(total)}`}</button>
             </div>
           </>
         )}
