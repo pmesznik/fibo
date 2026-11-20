@@ -5,6 +5,11 @@
   --bg:#f3f4f7; --panel:#fff; --text:#1c2430; --muted:#5f6b7c; --line:#dfe3e8;
   --accent:#6d5bf0; --ok:#2e8b57; --err:#c0392b; --warn:#c2620a;   /* akcent: fiolet z logo FIBO; ok, błąd i ostrzeżenie to kolory stanu */
   --star:#f5b301;
+  /* Bursztyn: kolor „haczyk” dla tego, co wskazane i najważniejsze (najechanie, fokus, aktywna zakładka, główne działania). Dopełnia fiolet FIBO. */
+  --hook:#ffb627; --hook-2:#ff9a1f; --hook-ink:#2a1a00; --hook-fg:#a86a00;
+  --hook-glow:0 0 0 1px color-mix(in srgb, var(--hook) 70%, transparent), 0 6px 22px color-mix(in srgb, var(--hook) 38%, transparent);
+  /* Ruch: krótkie czasy i sprężyste wejście; ograniczenie ruchu w systemie wyłącza animacje (niżej). */
+  --dur-1:.14s; --dur-2:.22s; --dur-3:.3s; --spring:cubic-bezier(.34,1.56,.64,1);
   --sat:var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
   --sab:var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
   --r-lg:28px; --r-card:20px; --r-md:16px; --r-sm:12px;
@@ -20,10 +25,10 @@
   color-scheme: light dark;
 }
 /* Motyw: domyślnie jak w systemie; ręczny wybór (menu → Wygląd) ustawia data-theme na <html>. */
-:root[data-theme="dark"] { --bg:#13112b; --panel:#1e1b4b; --text:#ecebf7; --muted:#a29fc4; --line:#34306b; --ok:#4cc38a; --err:#ff6b5f; --warn:#f5a524; color-scheme: dark; }
+:root[data-theme="dark"] { --bg:#13112b; --panel:#1e1b4b; --text:#ecebf7; --muted:#a29fc4; --line:#34306b; --ok:#4cc38a; --err:#ff6b5f; --warn:#ff8a3d; --hook-fg:#ffc14d; color-scheme: dark; }
 :root[data-theme="light"] { color-scheme: light; }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) { --bg:#13112b; --panel:#1e1b4b; --text:#ecebf7; --muted:#a29fc4; --line:#34306b; --ok:#4cc38a; --err:#ff6b5f; --warn:#f5a524; }
+  :root:not([data-theme="light"]) { --bg:#13112b; --panel:#1e1b4b; --text:#ecebf7; --muted:#a29fc4; --line:#34306b; --ok:#4cc38a; --err:#ff6b5f; --warn:#ff8a3d; --hook-fg:#ffc14d; }
 }
 @media (prefers-contrast: more) {
   :root { --line:color-mix(in srgb, var(--text) 55%, transparent); --muted:color-mix(in srgb, var(--text) 80%, var(--panel)); --glass-line:var(--line); }
@@ -69,7 +74,7 @@ button.ico { display:grid; place-items:center; min-width:44px; min-height:44px; 
 button.ico:hover { background:var(--tonal); color:var(--text); }
 button.ico.on { background:var(--tonal); color:var(--accent); }
 button:active:not(:disabled) { transform:scale(.985); }
-:focus-visible { outline:2.5px solid color-mix(in srgb, var(--accent) 70%, transparent); outline-offset:2px; }
+:focus-visible { outline:2.5px solid var(--hook); outline-offset:2px; }
 
 /* Pola */
 label { display:block; margin:12px 0 4px; font-size:12px; font-weight:600; color:var(--muted); }
@@ -263,3 +268,85 @@ details.sec > .sec-body { padding:0 14px 14px; }
 
 /* Podczas przeciągania zdjęć i osób nie zaznaczamy tekstu na stronie. */
 body.fibo-dragging, body.fibo-dragging * { user-select: none !important; cursor: grabbing !important; }
+
+/* ===== Ruch i podświetlenia =====
+   Animujemy tylko transform, scale, translate, opacity i cień (bez przeliczania układu), od 140 do 300 ms.
+   Bursztyn pokazuje, co jest wskazane; fiolet pokazuje stan (włączone, zaznaczone). */
+
+/* Przyciski: płynne przejścia, uniesienie przy najechaniu, sprężyste wciśnięcie. */
+button, .chip, .qa, .swatch { transition:translate var(--dur-2) var(--ease), scale var(--dur-1) var(--ease), background-color var(--dur-2) var(--ease), border-color var(--dur-2) var(--ease), color var(--dur-2) var(--ease), box-shadow var(--dur-2) var(--ease), opacity var(--dur-2) var(--ease); }
+button:active:not(:disabled), .chip:active:not(:disabled) { transform:none; scale:.96; transition-duration:.08s; }
+.chip:hover:not(:disabled) { translate:0 -1px; border-color:color-mix(in srgb, var(--hook) 75%, var(--line)); box-shadow:0 4px 14px color-mix(in srgb, var(--hook) 22%, transparent); }
+.chip.on:hover:not(:disabled) { border-color:var(--accent); }
+button.wide:hover:not(:disabled) { translate:0 -1px; box-shadow:0 0 0 1.5px color-mix(in srgb, var(--hook) 70%, transparent), var(--elev-1); }
+button.danger:hover:not(:disabled) { box-shadow:0 0 0 1.5px color-mix(in srgb, var(--err) 60%, transparent); }
+button.ico:hover:not(:disabled) { color:var(--hook-fg); background:color-mix(in srgb, var(--hook) 16%, transparent); }
+button.ico:hover:not(:disabled) svg { scale:1.12; }
+button.ico svg, button.menu-item svg, #tabs button svg, .qa svg { transition:scale var(--dur-2) var(--spring), color var(--dur-2) var(--ease), translate var(--dur-2) var(--ease); }
+
+/* Główne działania: bursztyn z poświatą przy najechaniu. */
+.chip.accent, button.primary { background:linear-gradient(135deg, var(--hook), var(--hook-2)); border-color:transparent; color:var(--hook-ink); }
+.chip.accent:hover:not(:disabled), button.primary:hover:not(:disabled) { translate:0 -2px; box-shadow:var(--hook-glow); }
+.chip.accent svg, button.primary svg { color:var(--hook-ink); }
+
+/* Pozycje menu: bursztynowa belka wysuwa się z lewej, ikona lekko przesuwa się w prawo. */
+button.menu-item { position:relative; }
+button.menu-item::before { content:''; position:absolute; left:2px; top:22%; bottom:22%; width:3px; border-radius:3px; background:var(--hook); scale:1 0; transition:scale var(--dur-2) var(--spring); }
+button.menu-item:hover:not(:disabled)::before, button.menu-item:focus-visible::before { scale:1 1; }
+button.menu-item:hover:not(:disabled) { background:color-mix(in srgb, var(--hook) 12%, var(--tonal)); }
+button.menu-item:hover:not(:disabled) svg { color:var(--hook-fg); translate:3px 0; }
+.qa:hover { translate:0 -2px; border-color:color-mix(in srgb, var(--hook) 70%, transparent); box-shadow:0 6px 18px color-mix(in srgb, var(--hook) 20%, transparent); }
+.qa:hover svg { scale:1.15; color:var(--hook-fg); }
+
+/* Zakładki u góry: bursztynowa kreska pod aktywną, ikona podskakuje przy najechaniu. */
+#tabs button { position:relative; }
+#tabs button::after { content:''; position:absolute; left:50%; bottom:3px; width:18px; height:3px; margin-left:-9px; border-radius:3px; background:var(--hook); scale:0 1; transition:scale var(--dur-3) var(--spring); }
+#tabs button.active::after { scale:1 1; }
+#tabs button.active svg { color:var(--hook-fg); }
+#tabs button:hover:not(.active):not(:disabled) { color:var(--text); background:color-mix(in srgb, var(--hook) 10%, transparent); }
+#tabs button:hover:not(:disabled) svg { translate:0 -2px; scale:1.08; }
+#menuBtn:hover, .fab-pill:hover { box-shadow:var(--hook-glow); translate:0 -1px; }
+.fab-pill svg { transition:rotate var(--dur-3) var(--spring); }
+.fab-pill:hover svg { rotate:90deg; }
+
+/* Kafelki zdjęć: uniesienie, bursztynowa obwódka i lekkie przybliżenie miniatury. Zaznaczenie zostaje fioletowe. */
+.tile { transition:translate var(--dur-2) var(--ease), outline-color var(--dur-2) var(--ease); outline:2.5px solid transparent; outline-offset:3px; }
+.tile:hover { translate:0 -3px; outline-color:var(--hook); }
+.tile img { transition:scale .4s var(--ease); animation:img-in var(--dur-3) var(--ease); }
+.tile:hover img { scale:1.045; }
+@keyframes img-in { from { opacity:0; } }
+
+/* Karty osób: uniesienie i bursztynowy pierścień wokół twarzy. */
+.pcard { transition:translate var(--dur-2) var(--ease); }
+.pcard:hover { translate:0 -3px; }
+.pcard .pface { transition:box-shadow var(--dur-2) var(--ease), scale var(--dur-2) var(--spring); }
+.pcard:hover .pface { scale:1.04; box-shadow:0 0 0 3px var(--hook), 0 8px 22px color-mix(in srgb, var(--hook) 30%, transparent) !important; }
+
+/* Okna, menu i tła pod nimi pojawiają się płynnie (osobne właściwości scale i opacity nie kolidują z centrowaniem okien). */
+[role=dialog], [role=menu] { animation:pop-in var(--dur-2) var(--ease); }
+.fixed.inset-0 { animation:fade-in var(--dur-2) var(--ease); }
+@keyframes pop-in { from { opacity:0; scale:.96; } }
+@keyframes fade-in { from { opacity:0; } }
+.toast { animation:toast-in var(--dur-3) var(--spring); }
+@keyframes toast-in { from { opacity:0; translate:0 14px; scale:.94; } }
+
+/* Szuflada menu: grupy wjeżdżają kolejno po otwarciu. */
+#drawer.open .dr-body > * { animation:slide-in var(--dur-3) var(--ease) both; }
+#drawer.open .dr-body > *:nth-child(2) { animation-delay:.03s; }
+#drawer.open .dr-body > *:nth-child(3) { animation-delay:.06s; }
+#drawer.open .dr-body > *:nth-child(4) { animation-delay:.09s; }
+#drawer.open .dr-body > *:nth-child(5) { animation-delay:.12s; }
+#drawer.open .dr-body > *:nth-child(n+6) { animation-delay:.15s; }
+@keyframes slide-in { from { opacity:0; translate:-14px 0; } }
+
+/* Przełączniki, segmenty i pola: bursztyn przy najechaniu i przy pisaniu. */
+.sw.is-on { background:linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 70%, var(--hook))); }
+.chip:hover .sw::after { scale:1.12; }
+.seg button:hover:not(.on) { color:var(--text); background:color-mix(in srgb, var(--hook) 12%, transparent); }
+input[type=text], input[type=search], textarea, select { transition:border-color var(--dur-2) var(--ease), box-shadow var(--dur-2) var(--ease); }
+input[type=text]:focus, input[type=search]:focus, textarea:focus, select:focus { border-color:var(--hook); box-shadow:0 0 0 3px color-mix(in srgb, var(--hook) 25%, transparent); outline:none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .tile:hover, .pcard:hover, .chip:hover, .qa:hover, button:hover { translate:none !important; }
+  .tile:hover img, .pcard:hover .pface { scale:none !important; }
+}

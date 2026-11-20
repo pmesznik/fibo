@@ -206,7 +206,7 @@ export function People({ say, ask, onOpenPerson, onChanged, faceSize = 150, onFa
       )}
       <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${Math.max(150, Math.round(faceSize * 0.8) + 70)}px, 1fr))` }}>
         {shown.map((p) => (
-          <div key={p.id} aria-grabbed={dragId === p.id} data-drop={`person:${p.id}`}
+          <div key={p.id} className="pcard" aria-grabbed={dragId === p.id} data-drop={`person:${p.id}`}
             onPointerDown={(e) => beginPointerDrag(e, {
               label: p.name ?? 'Nieznana osoba',
               onStart: () => setDragId(p.id),
@@ -219,7 +219,7 @@ export function People({ say, ask, onOpenPerson, onChanged, faceSize = 150, onFa
             })}
             style={{ opacity: p.ignored ? 0.55 : dragId === p.id ? 0.4 : 1, borderRadius: 'var(--r-lg)', outline: overId === p.id ? '3px solid var(--accent)' : 'none', outlineOffset: 4, cursor: 'grab' }}>
             <button className="bare block w-full text-center" aria-label={`${p.name ?? 'Nieznana osoba'}, ${p.photos} ${pl(p.photos, 'zdjęcie', 'zdjęcia', 'zdjęć')}`} onClick={() => { if (!dragJustEnded()) open(p) }}>
-              <div style={{ width: Math.round(faceSize * 0.8), height: Math.round(faceSize * 0.8), margin: '0 auto', borderRadius: '50%', overflow: 'hidden', boxShadow: 'var(--elev-1)', background: 'var(--tonal)' }}>
+              <div className="pface" style={{ width: Math.round(faceSize * 0.8), height: Math.round(faceSize * 0.8), margin: '0 auto', borderRadius: '50%', overflow: 'hidden', boxShadow: 'var(--elev-1)', background: 'var(--tonal)' }}>
                 {p.cover !== null && <FaceImg id={p.cover} />}
               </div>
               <div className="mt-2 truncate" style={{ fontWeight: 600 }}>{p.name ?? 'Nieznana osoba'}</div>

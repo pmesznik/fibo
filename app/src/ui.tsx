@@ -41,7 +41,7 @@ export function Chip({ on, off, onClick, children, label }: {
 
 export function Toast({ text, kind }: { text: string | null; kind?: 'ok' | 'err' }) {
   if (!text) return null
-  return <div role="status" className={`toast ${kind ?? ''}`}>{text}</div>
+  return <div key={text} role="status" className={`toast ${kind ?? ''}`}>{text}</div>
 }
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'

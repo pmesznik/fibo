@@ -1,8 +1,14 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { Photo } from './api'
 
-/** Wiersz montowany dopiero w pobliżu ekranu; poza nim zostaje pusty o tej samej wysokości, więc tysiące zdjęć nie obciążają przeglądarki. */
-function LazyRow({ height, gap, children }: { height: number; gap: number; children: ReactNode }) {
+/**
+ * Ile wierszy siatki obsługuje jeden obserwator. Dawniej każdy wiersz miał własny: przy 100 tysiącach zdjęć to ok. 20 tysięcy komponentów
+ * i obserwatorów tworzonych przy każdym powrocie do biblioteki, stąd przycięcia przy przełączaniu widoków.
+ */
+const ROWS_PER_BLOCK = 24
+
+/** Blok wierszy montowany dopiero w pobliżu ekranu; poza nim zostaje pusty o tej samej wysokości, więc tysiące zdjęć nie obciążają okna. */
+function LazyBlock({ height, children }: { height: number; children: () => ReactNode }) {
   const ref = useRef<HTMLDivElement>(null)
   const [near, setNear] = useState(false)
   useEffect(() => {
@@ -12,7 +18,17 @@ function LazyRow({ height, gap, children }: { height: number; gap: number; child
     io.observe(el)
     return () => io.disconnect()
   }, [])
-  return <div ref={ref} style={{ display: 'flex', gap, height }}>{near ? children : null}</div>
+  return <div ref={ref} style={{ height, contain: 'layout' }}>{near ? children() : null}</div>
+}
+
+/** Dzieli wiersze na bloki i liczy wysokość każdego bloku (wiersze plus odstępy między nimi). */
+function blocks<T>(rows: T[], heightOf: (row: T) => number, gap: number): { rows: T[]; height: number; first: number }[] {
+  const out: { rows: T[]; height: number; first: number }[] = []
+  for (let i = 0; i < rows.length; i += ROWS_PER_BLOCK) {
+    const part = rows.slice(i, i + ROWS_PER_BLOCK)
+    out.push({ rows: part, first: i, height: part.reduce((s, r) => s + heightOf(r), 0) + gap * (part.length - 1) })
+  }
+  return out
 }
 
 /** Siatka wierszy o równej wysokości: każde zdjęcie zachowuje swoje proporcje. */
@@ -34,7 +50,7 @@ export function Justified({ photos, rowHeight, gap = 12, children }: {
     return () => ro.disconnect()
   }, [])
 
-  const rows = useMemo(() => {
+  const parts = useMemo(() => {
     if (!width) return []
     const out: { items: { p: Photo; r: number }[]; h: number }[] = []
     let cur: { p: Photo; r: number }[] = []
@@ -50,23 +66,31 @@ export function Justified({ photos, rowHeight, gap = 12, children }: {
     }
     // Ostatni wiersz zostaje w docelowej wysokości, żeby jedno zdjęcie nie rozciągało się na całą szerokość.
     if (cur.length) out.push({ items: cur, h: Math.min(rowHeight, (width - gap * (cur.length - 1)) / sum) })
-    return out
+    return blocks(out, (r) => r.h, gap)
   }, [photos, width, rowHeight, gap])
 
   return (
     <div ref={ref} style={{ display: 'flex', flexDirection: 'column', gap }}>
-      {rows.map((row, i) => (
-        <LazyRow key={i} height={row.h} gap={gap}>
-          {row.items.map(({ p, r }) => (
-            <div key={p.id} style={{ width: r * row.h, height: row.h, flex: 'none' }}>{children(p, r * row.h, row.h)}</div>
-          ))}
-        </LazyRow>
+      {parts.map((b) => (
+        <LazyBlock key={b.first} height={b.height}>
+          {() => (
+            <div style={{ display: 'flex', flexDirection: 'column', gap }}>
+              {b.rows.map((row, i) => (
+                <div key={b.first + i} style={{ display: 'flex', gap, height: row.h }}>
+                  {row.items.map(({ p, r }) => (
+                    <div key={p.id} style={{ width: r * row.h, height: row.h, flex: 'none' }}>{children(p, r * row.h, row.h)}</div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
+        </LazyBlock>
       ))}
     </div>
   )
 }
 
-/** Siatka kafelków 4:3 o równej szerokości. Montuje tylko wiersze w pobliżu ekranu (jak `Justified`), więc 10 tysięcy zdjęć w jednej sekcji nie tworzy 10 tysięcy elementów. */
+/** Siatka kafelków 4:3 o równej szerokości. Montuje tylko bloki wierszy w pobliżu ekranu (jak `Justified`), więc 10 tysięcy zdjęć w jednej sekcji nie tworzy 10 tysięcy elementów. */
 export function VirtualGrid({ photos, size, gap = 12, children }: {
   photos: Photo[]
   /** Najmniejsza szerokość kafelka; faktyczna jest nieco większa, żeby wiersz wypełnił szerokość. */
@@ -89,20 +113,28 @@ export function VirtualGrid({ photos, size, gap = 12, children }: {
   const cols = Math.max(1, Math.floor((width + gap) / (size + gap)))
   const cellW = width ? (width - gap * (cols - 1)) / cols : 0
   const cellH = cellW * 0.75
-  const rows = useMemo(() => {
+  const parts = useMemo(() => {
     const out: Photo[][] = []
     for (let i = 0; i < photos.length; i += cols) out.push(photos.slice(i, i + cols))
-    return out
-  }, [photos, cols])
+    return blocks(out, () => cellH, gap)
+  }, [photos, cols, cellH, gap])
 
   return (
     <div ref={ref} style={{ display: 'flex', flexDirection: 'column', gap }}>
-      {width > 0 && rows.map((row, i) => (
-        <LazyRow key={i} height={cellH} gap={gap}>
-          {row.map((p) => (
-            <div key={p.id} style={{ width: cellW, height: cellH, flex: 'none', display: 'grid' }}>{children(p)}</div>
-          ))}
-        </LazyRow>
+      {width > 0 && parts.map((b) => (
+        <LazyBlock key={b.first} height={b.height}>
+          {() => (
+            <div style={{ display: 'flex', flexDirection: 'column', gap }}>
+              {b.rows.map((row, i) => (
+                <div key={b.first + i} style={{ display: 'flex', gap, height: cellH }}>
+                  {row.map((p) => (
+                    <div key={p.id} style={{ width: cellW, height: cellH, flex: 'none', display: 'grid' }}>{children(p)}</div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
+        </LazyBlock>
       ))}
     </div>
   )

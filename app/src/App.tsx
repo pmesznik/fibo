@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { listen } from '@tauri-apps/api/event'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
 import { MapView } from './MapView'
@@ -68,7 +68,18 @@ const applyTheme = (t: Theme) => {
 }
 
 /** Data zrobienia zdjęcia (EXIF), a gdy jej nie ma, data modyfikacji pliku. Format: RRRR-MM-DD GG:MM:SS. */
-const whenOf = (p: Photo) => (p.taken && /^\d{4}-\d{2}/.test(p.taken) ? p.taken : new Date(p.modified * 1000).toISOString().replace('T', ' '))
+// Data zdjęcia do sortowania i grupowania. Zapamiętana dla każdego obiektu zdjęcia: sortowanie ponad 100 tysięcy zdjęć wołało ją miliony razy
+// (z tworzeniem daty i tekstu przy każdym porównaniu). Zmienione zdjęcie to nowy obiekt, więc wpis nie zestarzeje się.
+const whenCache = new WeakMap<Photo, string>()
+const whenOf = (p: Photo) => {
+  let w = whenCache.get(p)
+  if (w === undefined) { w = p.taken && /^\d{4}-\d{2}/.test(p.taken) ? p.taken : new Date(p.modified * 1000).toISOString().replace('T', ' '); whenCache.set(p, w) }
+  return w
+}
+/** Porównanie dat w zapisie RRRR-MM-DD (zwykłe porównanie znaków, wielokrotnie szybsze od localeCompare i zgodne z kolejnością dat). */
+const cmpWhen = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
+/** Jeden wspólny porządek nazw (polskie litery, liczby jak liczby); localeCompare z opcjami tworzył go od nowa przy każdym porównaniu. */
+const nameOrder = new Intl.Collator('pl', { numeric: true })
 const MONTHS = ['Styczeń', 'Luty', 'Marzec', 'Kwiecień', 'Maj', 'Czerwiec', 'Lipiec', 'Sierpień', 'Wrzesień', 'Październik', 'Listopad', 'Grudzień']
 
 const TABS: { id: Mode; icon: typeof Images; label: string }[] = [
@@ -525,12 +536,12 @@ export default function App() {
       (!q || `${p.name} ${p.camera ?? ''} ${p.exif ?? ''} ${p.caption ?? ''} ${p.tags.join(' ')} ${p.albums.map((a) => `${albumNames.get(a) ?? ''} ${propText('album', String(a))}`).join(' ')} ${folderName(dirOf(p.path))} ${propText('folder', dirOf(p.path))} ${placeOf(p)}`.toLowerCase().includes(q)),
     )
     if (person?.ranked) list.sort((a, b) => (person.ranked!.get(a.id) ?? 1e9) - (person.ranked!.get(b.id) ?? 1e9))
-    else if (sort === 'custom' && albumId !== null) list.sort((a, b) => (albumPos.get(a.id) ?? 1e9) - (albumPos.get(b.id) ?? 1e9) || whenOf(b).localeCompare(whenOf(a)))
-    else if (sort === 'custom') list.sort((a, b) => whenOf(b).localeCompare(whenOf(a)))
-    else if (sort === 'name') list.sort((a, b) => a.name.localeCompare(b.name, 'pl', { numeric: true }))
-    else if (sort === 'rating') list.sort((a, b) => b.rating - a.rating || whenOf(b).localeCompare(whenOf(a)))
+    else if (sort === 'custom' && albumId !== null) list.sort((a, b) => (albumPos.get(a.id) ?? 1e9) - (albumPos.get(b.id) ?? 1e9) || cmpWhen(whenOf(b), whenOf(a)))
+    else if (sort === 'custom') list.sort((a, b) => cmpWhen(whenOf(b), whenOf(a)))
+    else if (sort === 'name') list.sort((a, b) => nameOrder.compare(a.name, b.name))
+    else if (sort === 'rating') list.sort((a, b) => b.rating - a.rating || cmpWhen(whenOf(b), whenOf(a)))
     else if (sort === 'size') list.sort((a, b) => b.size - a.size)
-    else list.sort((a, b) => (sort === 'date-desc' ? whenOf(b).localeCompare(whenOf(a)) : whenOf(a).localeCompare(whenOf(b))))
+    else list.sort((a, b) => (sort === 'date-desc' ? cmpWhen(whenOf(b), whenOf(a)) : cmpWhen(whenOf(a), whenOf(b))))
     return list
   }, [all, albumNames, propOf, query, folder, albumId, person, trayView, tray, onlyFav, minStars, kindFilter, flagFilter, labelFilter, color, dateFrom, dateTo, missing, sort, activeTags, albumPos, placeFilter, placeOf])
   const stacks = useMemo(() => findStacks(all), [all])
@@ -549,8 +560,8 @@ export default function App() {
     }
     const newest = (l: Photo[]) => l.reduce((m, p) => (whenOf(p) > m ? whenOf(p) : m), '')
     return [...map.entries()]
-      .map(([dir, list]): [string, Photo[], string] => [dir, list.sort((a, b) => whenOf(b).localeCompare(whenOf(a))), newest(list)])
-      .sort((a, b) => b[2].localeCompare(a[2]))
+      .map(([dir, list]): [string, Photo[], string] => [dir, list.sort((a, b) => cmpWhen(whenOf(b), whenOf(a))), newest(list)])
+      .sort((a, b) => cmpWhen(b[2], a[2]))
   }, [all])
   const placeCounts = useMemo(() => {
     const m = new Map<string, number>()
@@ -1031,7 +1042,7 @@ export default function App() {
   const dropOnPhoto = async (targetId: number, moving: number[] | null = dragIds) => {
     setDragIds(null)
     if (!reorderMode || albumId === null || !moving || moving.includes(targetId)) return
-    const order = all.filter((p) => p.albums.includes(albumId)).sort((a, b) => (albumPos.get(a.id) ?? 1e9) - (albumPos.get(b.id) ?? 1e9) || whenOf(b).localeCompare(whenOf(a))).map((p) => p.id)
+    const order = all.filter((p) => p.albums.includes(albumId)).sort((a, b) => (albumPos.get(a.id) ?? 1e9) - (albumPos.get(b.id) ?? 1e9) || cmpWhen(whenOf(b), whenOf(a))).map((p) => p.id)
     const forward = order.indexOf(moving[0]) < order.indexOf(targetId)
     const rest = order.filter((id) => !moving.includes(id))
     const at = rest.indexOf(targetId) + (forward ? 1 : 0)
@@ -1167,7 +1178,7 @@ export default function App() {
         }}
         aria-label={`${p.video ? 'Film ' : ''}${p.name}, ocena ${p.rating}${p.favorite ? ', ulubione' : ''}${sb?.leader ? `, stos ${sb.count} zdjęć` : ''}${flagOf(p) === 1 ? ', wybrane' : flagOf(p) === -1 ? ', odrzucone' : ''}${labelOf(p) ? `, etykieta ${LABELS[labelOf(p) - 1].name}` : ''}`}
         aria-pressed={on}
-        className={`bare group relative overflow-hidden text-left ${ratio43 ? 'aspect-[4/3]' : 'h-full w-full'}`}
+        className={`tile bare group relative overflow-hidden text-left ${ratio43 ? 'aspect-[4/3]' : 'h-full w-full'}`}
         style={{ borderRadius: 'var(--r-card)', boxShadow: on ? '0 0 0 3px var(--accent)' : sb?.open ? '0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent)' : 'var(--elev-1)', opacity: flagOf(p) === -1 && !on ? 0.5 : 1, contentVisibility: 'auto', containIntrinsicSize: `${size}px ${Math.round(size * 0.75)}px` }}
       >
         <Thumb photo={p} />
@@ -1224,7 +1235,8 @@ export default function App() {
       <nav id="tabs" className="glass" aria-label="Widoki">
         {TABS.map((t) => (
           <button key={t.id} className={(person && !person.memory ? 'people' : mode) === t.id ? 'active' : ''} aria-current={(person && !person.memory ? 'people' : mode) === t.id ? 'page' : undefined}
-            onClick={() => { setMode(t.id); if (t.id === 'albums') setFolder(null); if (t.id === 'albums' || t.id === 'library') { setAlbumId(null); setPerson(null) } }}>
+            // Przełączenie jako przejście: okno od razu reaguje na kliknięcie, a cięższy widok rysuje się bez blokowania.
+            onClick={() => startTransition(() => { setMode(t.id); if (t.id === 'albums') setFolder(null); if (t.id === 'albums' || t.id === 'library') { setAlbumId(null); setPerson(null) } })}>
             <t.icon size={19} strokeWidth={1.8} />
             <span>{t.label}</span>
           </button>
@@ -1440,7 +1452,7 @@ export default function App() {
               </div>
               <div className="chips">
                 <Chip on={!folder} onClick={() => setFolder(null)}>Wszystkie <b>{all.length}</b></Chip>
-                {(folderSort === 'name' ? [...folders].sort((a, b) => folderName(a[0]).localeCompare(folderName(b[0]), 'pl', { numeric: true })) : folders).slice(0, 40).map(([dir, list]) => (
+                {(folderSort === 'name' ? [...folders].sort((a, b) => nameOrder.compare(folderName(a[0]), folderName(b[0]))) : folders).slice(0, 40).map(([dir, list]) => (
                   <Chip key={dir} on={folder === dir} onClick={() => { setFolder(dir); setMode('library'); setDrawer(false) }}>
                     {folderName(dir)} <b>{list.length}</b>
                   </Chip>
@@ -2023,7 +2035,7 @@ export default function App() {
           </span>
           </div>
           {(() => {
-            const targets = [...folders].filter(([d]) => !locked.includes(d)).sort((a, b) => folderName(a[0]).localeCompare(folderName(b[0]), 'pl', { numeric: true })).slice(0, 40)
+            const targets = [...folders].filter(([d]) => !locked.includes(d)).sort((a, b) => nameOrder.compare(folderName(a[0]), folderName(b[0]))).slice(0, 40)
             return targets.length > 0 && (
               <div className="flex items-center gap-2 overflow-x-auto" style={{ width: '100%', flexWrap: 'nowrap' }}>
                 <span style={{ fontSize: 13, color: 'var(--muted)', whiteSpace: 'nowrap' }}>Przenieś do folderu:</span>
