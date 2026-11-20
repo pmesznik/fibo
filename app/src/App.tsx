@@ -56,7 +56,7 @@ import {
   Compare, SlidersHorizontal, Search as SearchIcon, ImageUp, Ruler, LayoutDashboard, Check, ListChecks, Tag, CalendarDays, Copy, RefreshCw, Download, Save, Pencil, Trash2, Eye, EyeOff, ChevronLeft, Wand2, Info, RotateCw, RotateCcw,
 } from './FiboIcons'
 
-type Mode = 'library' | 'albums' | 'favs' | 'people' | 'map'
+type Mode = 'library' | 'albums' | 'favs' | 'people' | 'dups' | 'map'
 type Sort = 'date-desc' | 'date-asc' | 'name' | 'rating' | 'size' | 'custom'
 type Group = 'year' | 'month' | 'none'
 type Theme = 'auto' | 'light' | 'dark'
@@ -87,6 +87,7 @@ const TABS: { id: Mode; icon: typeof Images; label: string }[] = [
   { id: 'albums', icon: FolderOpen, label: 'Albumy' },
   { id: 'favs', icon: Heart, label: 'Ulubione' },
   { id: 'people', icon: Users, label: 'Osoby' },
+  { id: 'dups', icon: Copy, label: 'Duplikaty' },
   { id: 'map', icon: MapPin, label: 'Mapa' },
 ]
 
@@ -153,7 +154,9 @@ export default function App() {
   const [saverList, setSaverList] = useState<Photo[] | null>(null)
   const idleSince = useRef(Date.now())
   const [viewer, setViewer] = useState<{ id: number; autoplay: boolean; list?: Photo[]; focus?: { id: number; name: string | null } } | null>(null)
-  const [dupOpen, setDupOpen] = useState(false)
+  // Zakładka Duplikaty zostaje w pamięci po pierwszym otwarciu, żeby wyniki szukania nie znikały przy przełączaniu zakładek.
+  const [dupsSeen, setDupsSeen] = useState(false)
+  useEffect(() => { if (mode === 'dups') setDupsSeen(true) }, [mode])
   const [drawer, setDrawer] = useState(false)
   const [query, setQuery] = useState('')
   const [all, setAll] = useState<Photo[]>(inTauri ? [] : DEMO)
@@ -1286,7 +1289,7 @@ export default function App() {
                 { icon: SearchIcon, label: 'Szukaj tekstu na zdjęciach', fn: () => { setDrawer(false); setTextSearchOpen(true) }, on: false },
                 { icon: Tag, label: 'Podpowiedzi tagów', fn: () => { setDrawer(false); setTagSuggestOpen(true) }, on: false },
                 { icon: Heart, label: 'Zwierzęta domowe', fn: () => { setDrawer(false); setPetsOpen(true) }, on: false },
-                { icon: Copy, label: 'Duplikaty', fn: () => { setDrawer(false); setDupOpen(true) }, on: false },
+                { icon: Copy, label: 'Duplikaty', fn: () => { setDrawer(false); startTransition(() => setMode('dups')) }, on: false },
                 { icon: Compare, label: 'Przegląd jakości zdjęć', fn: () => { setDrawer(false); setQualityOpen(true) }, on: false },
                 { icon: FolderOpen, label: 'Porządkuj według daty', fn: () => { setDrawer(false); setOrganizeOpen(true) }, on: false },
               ]],
@@ -1748,6 +1751,25 @@ export default function App() {
           </>
         )}
 
+        {dupsSeen && (
+          <div hidden={mode !== 'dups'}>
+            <Duplicates
+              all={all}
+              locked={locked}
+              onLockedChanged={reloadLocked}
+              suspended={!!viewer}
+              onOpen={(id, list) => openViewer(id, false, list)}
+              onTrashed={(ids) => {
+                const gone = new Set(ids)
+                setAll((l) => l.filter((p) => !gone.has(p.id)))
+                setSel((s) => s.filter((i) => !gone.has(i)))
+                reload()
+              }}
+              say={say}
+            />
+          </div>
+        )}
+
         {mode === 'people' && (
           <People say={say} ask={setConfirm} onChanged={() => {}} faceSize={faceSize} onFaceSize={setFaceSize}
             onOpenPerson={(name, ids, id) => { if (id !== undefined) peopleReturn.current = { id, top: document.querySelector('main')?.scrollTop ?? 0 }; setPersonFacesMode(true); setPerson({ id, name, ids: new Set(ids) }); setAlbumId(null); setFolder(null); setMode('library') }} />
@@ -2094,20 +2116,6 @@ export default function App() {
       {inTauri && <ProgressDock />}
       <Toast text={toast?.text ?? null} kind={toast?.kind} />
 
-      {dupOpen && (
-        <Duplicates
-          all={all}
-          suspended={!!viewer}
-          onClose={() => setDupOpen(false)}
-          onOpen={(id, list) => openViewer(id, false, list)}
-          onTrashed={(ids) => {
-            setAll((l) => l.filter((p) => !ids.includes(p.id)))
-            setSel((s) => s.filter((i) => !ids.includes(i)))
-            reload()
-          }}
-          say={say}
-        />
-      )}
 
       {saverList && <ScreenSaver photos={saverList} onClose={() => { idleSince.current = Date.now(); setSaverList(null) }} />}
       {viewer && (

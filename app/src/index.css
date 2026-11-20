@@ -350,3 +350,6 @@ input[type=text]:focus, input[type=search]:focus, textarea:focus, select:focus {
   .tile:hover, .pcard:hover, .chip:hover, .qa:hover, button:hover { translate:none !important; }
   .tile:hover img, .pcard:hover .pface { scale:none !important; }
 }
+
+/* Kłódka niechronionego folderu w drzewie duplikatów: bez wypełnienia, żeby nie wyglądała na włączoną. */
+.lock-off .fi { fill-opacity: 0; }

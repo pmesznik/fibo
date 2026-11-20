@@ -15,6 +15,7 @@ mod backup;
 mod calendar;
 mod clip;
 mod color;
+mod dups;
 mod formats;
 mod jobs;
 mod photos_backup;
@@ -3546,6 +3547,73 @@ mod tests {
     }
 
     #[test]
+    fn duplicates_are_trashed_only_when_a_verified_copy_stays() {
+        use dups::{trash_duplicates_core, DupDelete};
+        let dir = std::env::temp_dir().join("mz-dups-trash");
+        let state = test_state(&dir);
+        let (a, b, k) = (dir.join("A"), dir.join("B"), dir.join("Kopie"));
+        for d in [&a, &b, &k] {
+            fs::create_dir_all(d).unwrap();
+        }
+        let img = |v: u8| { let mut i = image::RgbImage::new(8, 8); i.put_pixel(1, 1, image::Rgb([v, v, v])); i };
+        // A/a1 = B/b1, A/a2 = B/b2, A/a3 i B/b3 to różne zdjęcia, Kopie/k1 = a1.
+        img(10).save(a.join("a1.jpg")).unwrap();
+        fs::copy(a.join("a1.jpg"), b.join("b1.jpg")).unwrap();
+        fs::copy(a.join("a1.jpg"), k.join("k1.jpg")).unwrap();
+        img(60).save(a.join("a2.jpg")).unwrap();
+        fs::copy(a.join("a2.jpg"), b.join("b2.jpg")).unwrap();
+        img(120).save(a.join("a3.jpg")).unwrap();
+        img(200).save(b.join("b3.jpg")).unwrap();
+        for d in [&a, &b, &k] {
+            scan_blocking(&state, d.to_str().unwrap(), &|_| {}).unwrap();
+        }
+        let id = |n: &str| photo_id(&state, n);
+        let fake = |p: &str| fs::remove_file(p).map_err(|e| e.to_string());
+        let log = dir.join(dups::LOG_NAME);
+        let pair = |x: &str, y: &str| DupDelete { id: id(x), keep: id(y) };
+
+        // Dwie kopie, które wskazują siebie nawzajem jako „zostaje”: nie usuwamy żadnej.
+        let r = trash_duplicates_core(&state, &[pair("a2.jpg", "b2.jpg"), pair("b2.jpg", "a2.jpg")], false, None, &fake, Some(&log)).unwrap();
+        assert_eq!((r.trashed, r.skipped.len()), (0, 2));
+        assert!(a.join("a2.jpg").exists() && b.join("b2.jpg").exists());
+
+        // Różna zawartość: bez zgody na podobne nie usuwamy; zdjęcie, które ma zostać, nie może być tym samym.
+        let r = trash_duplicates_core(&state, &[pair("a3.jpg", "b3.jpg"), pair("b3.jpg", "b3.jpg")], false, None, &fake, Some(&log)).unwrap();
+        assert_eq!((r.trashed, r.skipped.len()), (0, 2));
+        assert!(a.join("a3.jpg").exists() && b.join("b3.jpg").exists());
+
+        // Kopia, która miała zostać, zniknęła z dysku: nie usuwamy ostatniej.
+        let k1 = id("k1.jpg");
+        fs::remove_file(k.join("k1.jpg")).unwrap();
+        let r = trash_duplicates_core(&state, &[DupDelete { id: id("a1.jpg"), keep: k1 }], false, None, &fake, Some(&log)).unwrap();
+        assert_eq!(r.trashed, 0);
+        assert!(a.join("a1.jpg").exists());
+
+        // Poprawna para: kopia z A idzie do Kosza, B zostaje, a dziennik zapisuje obie ścieżki.
+        let r = trash_duplicates_core(&state, &[pair("a1.jpg", "b1.jpg"), pair("a2.jpg", "b2.jpg")], false, None, &fake, Some(&log)).unwrap();
+        assert_eq!((r.trashed, r.skipped.len()), (2, 0));
+        assert!(!a.join("a1.jpg").exists() && b.join("b1.jpg").exists() && b.join("b2.jpg").exists());
+        let text = fs::read_to_string(&log).unwrap();
+        assert!(text.contains("a1.jpg") && text.contains("zostaje:") && text.contains("b1.jpg"));
+
+        // Druga próba usunięcia ostatniej kopii (b1, bo „zostaje” a1, którego już nie ma) jest odrzucona.
+        assert!(trash_duplicates_core(&state, &[DupDelete { id: id("b1.jpg"), keep: k1 }], false, None, &fake, None).unwrap().trashed == 0);
+        assert!(b.join("b1.jpg").exists());
+
+        // Zablokowany folder (oryginał) chroni zdjęcia nawet przy poprawnej parze.
+        state.db.lock().unwrap().execute("INSERT INTO locked_folders (path) VALUES (?1)", [b.to_string_lossy()]).unwrap();
+        img(10).save(a.join("a4.jpg")).unwrap();
+        fs::copy(b.join("b1.jpg"), a.join("a4.jpg")).unwrap();
+        scan_blocking(&state, a.to_str().unwrap(), &|_| {}).unwrap();
+        assert!(trash_duplicates_core(&state, &[pair("b1.jpg", "a4.jpg")], false, None, &fake, None).is_err());
+        assert!(b.join("b1.jpg").exists());
+        // Zgoda na podobne pozwala usunąć różniące się pliki, ale tylko gdy druga kopia istnieje.
+        let r = trash_duplicates_core(&state, &[pair("a3.jpg", "b3.jpg")], true, None, &fake, None).unwrap();
+        assert_eq!(r.trashed, 1, "usuwamy a3 z niezablokowanego A, a b3 w chronionym B zostaje");
+        assert!(!a.join("a3.jpg").exists() && b.join("b3.jpg").exists());
+    }
+
+    #[test]
     fn hiding_and_safe_deletion() {
         let dir = std::env::temp_dir().join("mz-delete-test");
         let state = test_state(&dir);
@@ -4055,7 +4123,7 @@ fn main() {
             people::start_learning(app.handle().clone());
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![list_roots, remove_root, rescan_roots, list_albums, create_album, rename_album, set_album_hidden, put_thumbnail, set_credits, color::index_colors, get_skip_gif_png, set_skip_gif_png, detect_cards, rotate::rotate_photos, list_album_order, set_album_order, open_photo_external, delete_album, add_to_album, remove_from_album, rename_photo, move_photos, get_sidecar_enabled, set_sidecar_enabled, export_sidecars, import_sidecars, scan_folder, refresh_library, find_duplicates, trash_photos, export_photos, set_location, rename_batch, import_photos, gallery::export_gallery, gallery::export_gpx, gallery::export_gif, pdf::export_pdf, check::check_files, list_smart, save_smart, delete_smart, gallery::rename_folder, locks::list_locked, locks::set_folder_locked, set_date, shift_dates, set_caption, photo_exif, list_props, set_props, people::photo_people, people::unassign_faces, people::set_faces_autolearn, people::photo_face_boxes, people::shared_photos, people::add_manual_face, people::reassign_person_faces, backup::backup_library, photos_backup::backup_photos, backup::restore_library, hide_photos, hidden_count, restore_hidden, people::faces_status, people::set_faces_enabled, people::faces_start, people::faces_stop, people::faces_regroup, people::faces_reanalyze, people::faces_delete_all, people::list_people, people::person_photos, people::person_faces, people::set_person_cover, people::rename_person, people::merge_people, people::merge_suggestions, people::person_face_cards, people::photo_face_stats, calendar::save_calendar_pdf, calendar::save_book_pdf, people::confirm_faces, people::move_faces, people::reject_person_in_photos, people::move_person_faces, people::reject_faces, people::delete_person, people::restore_rejected_faces, people::ignore_person, people::split_person, picasa::picasa_scan, picasa::picasa_import, list_photos, thumbnail, thumbnail_data, people::face_crop, places::fill_places, film::save_film, merge::merge_photos, pano::stitch_panorama, ocr::ocr_status, ocr::ocr_start, ocr::ocr_stop, ocr::ocr_search, clip::clip_suggest_tags, quality::quality_scan, add_dropped, watcher::watch_roots, set_iptc, cache::thumb_cache_info, cache::thumb_cache_clear, watermark::save_watermark_text, organize::organize_plan, organize::organize_apply, organize::organize_last, organize::organize_undo, edits::get_edit, edits::save_edit_recipe, edits::put_edit_thumbnail, edits::delete_edit, edits::list_edit_history, edits::get_edit_version, set_rating, set_flag, set_label, rawdev::develop_raw, clip::clip_status, clip::clip_start, clip::clip_stop, clip::clip_search, set_favorite, add_tag, remove_tag, delete_tag, save_edit, save_collage, read_image, read_audio, has_original, restore_original])
+        .invoke_handler(tauri::generate_handler![list_roots, remove_root, rescan_roots, list_albums, create_album, rename_album, set_album_hidden, put_thumbnail, set_credits, color::index_colors, get_skip_gif_png, set_skip_gif_png, detect_cards, rotate::rotate_photos, list_album_order, set_album_order, open_photo_external, delete_album, add_to_album, remove_from_album, rename_photo, move_photos, get_sidecar_enabled, set_sidecar_enabled, export_sidecars, import_sidecars, scan_folder, refresh_library, find_duplicates, trash_photos, dups::trash_duplicates, export_photos, set_location, rename_batch, import_photos, gallery::export_gallery, gallery::export_gpx, gallery::export_gif, pdf::export_pdf, check::check_files, list_smart, save_smart, delete_smart, gallery::rename_folder, locks::list_locked, locks::set_folder_locked, set_date, shift_dates, set_caption, photo_exif, list_props, set_props, people::photo_people, people::unassign_faces, people::set_faces_autolearn, people::photo_face_boxes, people::shared_photos, people::add_manual_face, people::reassign_person_faces, backup::backup_library, photos_backup::backup_photos, backup::restore_library, hide_photos, hidden_count, restore_hidden, people::faces_status, people::set_faces_enabled, people::faces_start, people::faces_stop, people::faces_regroup, people::faces_reanalyze, people::faces_delete_all, people::list_people, people::person_photos, people::person_faces, people::set_person_cover, people::rename_person, people::merge_people, people::merge_suggestions, people::person_face_cards, people::photo_face_stats, calendar::save_calendar_pdf, calendar::save_book_pdf, people::confirm_faces, people::move_faces, people::reject_person_in_photos, people::move_person_faces, people::reject_faces, people::delete_person, people::restore_rejected_faces, people::ignore_person, people::split_person, picasa::picasa_scan, picasa::picasa_import, list_photos, thumbnail, thumbnail_data, people::face_crop, places::fill_places, film::save_film, merge::merge_photos, pano::stitch_panorama, ocr::ocr_status, ocr::ocr_start, ocr::ocr_stop, ocr::ocr_search, clip::clip_suggest_tags, quality::quality_scan, add_dropped, watcher::watch_roots, set_iptc, cache::thumb_cache_info, cache::thumb_cache_clear, watermark::save_watermark_text, organize::organize_plan, organize::organize_apply, organize::organize_last, organize::organize_undo, edits::get_edit, edits::save_edit_recipe, edits::put_edit_thumbnail, edits::delete_edit, edits::list_edit_history, edits::get_edit_version, set_rating, set_flag, set_label, rawdev::develop_raw, clip::clip_status, clip::clip_start, clip::clip_stop, clip::clip_search, set_favorite, add_tag, remove_tag, delete_tag, save_edit, save_collage, read_image, read_audio, has_original, restore_original])
         .run(tauri::generate_context!())
         .expect("błąd uruchomienia aplikacji");
 

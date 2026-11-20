@@ -147,6 +147,10 @@ export const listSmart = () => invoke<SmartAlbum[]>('list_smart')
 export const saveSmart = (name: string, filters: string) => invoke('save_smart', { name, filters })
 export const deleteSmart = (id: number) => invoke('delete_smart', { id })
 export const exportPhotos = (ids: number[], dest: string, maxSide: number, quality: number, watermark: Watermark | null = null, format: 'jpg' | 'png' | 'webp' = 'jpg') => invoke<MoveReport>('export_photos', { ids, dest, maxSide, quality, watermark, format })
+export type DupTrashReport = { trashed: number; skipped: { path: string; reason: string }[]; log: string }
+/** Przenosi duplikaty do Kosza: każda para (usuń `id`, zostaje `keep`) jest sprawdzana jeszcze raz w programie przed usunięciem. */
+export const trashDuplicates = (items: { id: number; keep: number }[], allowSimilar: boolean, confirm?: string) =>
+  invoke<DupTrashReport>('trash_duplicates', { items, allowSimilar, confirm })
 export const trashPhotos = (ids: number[], confirm?: string) => invoke<number>('trash_photos', { ids, confirm })
 export const hidePhotos = (ids: number[]) => invoke<number>('hide_photos', { ids })
 export const hiddenCount = () => invoke<number>('hidden_count')

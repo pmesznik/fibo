@@ -56,6 +56,12 @@ i poproś o kontakt). Najnowsza wydana wersja jest jedyną wspieraną.
 - **Usuwanie zdjęć:** „Usuń z biblioteki” tylko ukrywa zdjęcia (pliki zostają). „Przenieś do Kosza” działa wyłącznie
   na zdjęciach znanych bibliotece, odrzuca foldery, dowiązania i pliki inne niż zdjęcia, nie usuwa całych folderów,
   a od 20 zdjęć (i dla całego folderu) backend wymaga słowa potwierdzenia.
+- **Usuwanie duplikatów:** zakładka Duplikaty wysyła do programu pary „usuń to zdjęcie, zostaje tamto”, a backend (`dups.rs`) sprawdza każdą
+  parę tuż przed usunięciem: kopia, która ma zostać, musi istnieć na dysku, nie może być na liście do usunięcia ani być tym samym plikiem
+  (ta sama ścieżka po rozwinięciu), a pliki muszą być zgodne bajt po bajcie (zdjęcia tylko podobne wyłącznie po osobnej zgodzie). Para, która
+  nie przejdzie sprawdzenia, jest pomijana i pokazana w raporcie. Foldery chronione (te same co zablokowane) są pomijane, a każde usunięcie
+  trafia do dziennika `usuniete-duplikaty.log` w folderze danych programu (ścieżka usuniętego pliku i kopii, która została). Po stronie okna
+  zaznaczanie nigdy nie zabiera ostatniej kopii z grupy, co sprawdzają testy z losowymi bibliotekami.
 - **Szukanie po treści zdjęć (na życzenie):** koder obrazu CLIP (ok. 350 MB, licencja MIT) jest dołączony do instalatora, pobierany tylko podczas
   budowania z przypiętą sumą SHA256 i liczony lokalnie. Wektory zdjęć (512 liczb na zdjęcie) leżą w bazie biblioteki, nie opuszczają komputera i nie
   trafiają do kopii biblioteki. Słowa zapytania zamieniane są na wektory z listy ok. 130 pojęć zapisanej w programie, więc nie ma kodera tekstu ani

@@ -470,10 +470,16 @@ describe('Edycja wsadowa i opisy', () => {
 })
 
 describe('Duplikaty i wtyczka opener', () => {
-  test('duplikaty: przy 20 lub więcej plikach wymagane jest słowo USUŃ, a ważniejszy katalog wpływa na wybór głównego zdjęcia', () => {
+  test('duplikaty: słowo USUŃ od 20 plików, usuwanie tylko parami „usuń i zostaje” sprawdzanymi w programie, foldery chronione', () => {
     const d = readFileSync(new URL('../src/Duplicates.tsx', import.meta.url), 'utf8')
     assert.match(d, /markedList\.length >= 20 \? word\.trim\(\)/)
-    assert.match(d, /bestOf\(list, order\)/)
+    assert.match(d, /trashDuplicates\(items/, 'okno duplikatów usuwa przez sprawdzające polecenie, nie przez zwykłe trash_photos')
+    assert.doesNotMatch(d, /trashPhotos\(/)
+    assert.match(d, /markOne\(marks, members\(g\), id, locked\)/, 'ręczne zaznaczenie nie może zabrać ostatniej kopii ani chronionego zdjęcia')
+    const rs = readFileSync(new URL('../src-tauri/src/dups.rs', import.meta.url), 'utf8')
+    assert.match(rs, /same_bytes\(a, b\)/, 'przed usunięciem pliki są porównywane bajt po bajcie')
+    assert.match(rs, /doomed\.contains\(&it\.keep\)/, 'kopia, która ma zostać, nie może być na liście do usunięcia')
+    assert.match(rs, /trash_photos_core\(state, ok, confirm, del\)/, 'Kosz, blokady folderów i słowo potwierdzenia jak przy zwykłym usuwaniu')
   })
   test('wtyczka opener ma tylko uprawnienie pokazania elementu w katalogu (bez otwierania adresów i plików)', () => {
     const caps = JSON.parse(readFileSync(new URL('../src-tauri/capabilities/default.json', import.meta.url), 'utf8'))

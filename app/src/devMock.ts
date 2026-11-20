@@ -96,6 +96,21 @@ for (const [i, name, taken] of [[10, "IMG_5000.ARW", "2026-01-05 09:00:00"], [11
   p.path = `C:\\Zdjecia\\${FOLDERS[0]}\\${name}`; p.name = name; p.taken = taken; p.camera = "Canon EOS R6"
 }
 
+// Przykładowe duplikaty: kopia części biblioteki na dysku D: (z tą samą strukturą folderów) i kilka zdjęć w Pobranych.
+const DUP_COPY = Array.from({ length: 16 }, (_, k) => [30 + k, 70 + k] as const)
+const DUP_DL = Array.from({ length: 5 }, (_, k) => [50 + k, 86 + k] as const)
+for (const [o, c] of DUP_COPY) {
+  const src = photos[o], p = photos[c]
+  p.path = `D:\\Kopia zdjęć\\${FOLDERS[o % FOLDERS.length]}\\${src.name}`; p.name = src.name; p.size = src.size; p.taken = src.taken
+}
+for (const [o, c] of DUP_DL) { const src = photos[o], p = photos[c]; p.path = `C:\\Users\\Ola\\Downloads\\${src.name.replace('.jpg', ' (1).jpg')}`; p.name = src.name; p.size = src.size }
+const mockLocked = new Set<string>()
+const mockDupGroups = () => [
+  ...DUP_COPY.map(([o, c]) => ({ kind: 'exact', ids: [o + 1, c + 1] })),
+  ...DUP_DL.map(([o, c]) => ({ kind: 'exact', ids: [o + 1, c + 1] })),
+  { kind: 'similar', ids: [4, 5, 22] },
+]
+
 const faceCards = (personId: number) =>
   Array.from({ length: 26 }, (_, k) => ({ face: personId * 100 + k, photo: ((personId * 7 + k * 3) % PHOTO_N) + 1, unsure: k < 5 && personId % 2 === 1, stack: personId * 100 + k, taken: k % 7 === 6 ? null : `${2008 + ((k * 5) % 17)}:0${1 + (k % 9)}:1${k % 10} 12:00:00`, modified: 0 }))
 
@@ -134,7 +149,8 @@ function respond(cmd: string, args: Record<string, unknown> = {}): unknown | Pro
     case 'photo_people': return [{ id: 1, name: 'Mama', face: 100 }, { id: 3, name: 'Alunia', face: 300 }]
     case 'photo_exif': return [['Aparat', 'Canon EOS R6'], ['Czas naświetlania', '1/250 s'], ['Przysłona', 'f/2.8'], ['ISO', '200'], ['Ogniskowa', '50 mm']]
     case 'has_original': return false
-    case 'find_duplicates': return [{ kind: 'exact', ids: [1, 13] }, { kind: 'similar', ids: [4, 5, 22] }, { kind: 'exact', ids: [30, 31] }]
+    case 'find_duplicates': return mockDupGroups()
+    case 'trash_duplicates': { const items = (args as { items: { id: number }[] }).items; return { trashed: items.length, skipped: [], log: 'C:/Users/Ola/AppData/Roaming/pl.local.menedzerzdjec/usuniete-duplikaty.log' } }
     case 'photo_face_stats': return photos.filter((p) => p.id % 3 === 0).map((p) => [p.id, 1 + (p.id % 3), 0.8])
     case 'save_calendar_pdf': return 'C:\\Zdjecia\\Kalendarz_2027.pdf'
     case 'clip_status': return { models_ok: true, running: false, indexed: 90, total: 96, concepts: 134 }
@@ -173,6 +189,8 @@ function respond(cmd: string, args: Record<string, unknown> = {}): unknown | Pro
       return id
     }
     case 'plugin:event|unlisten': return null
+    case 'list_locked': return [...mockLocked]
+    case 'set_folder_locked': { const p = String(args.path); mockLocked.delete(p); if (args.locked) mockLocked.add(p); return null }
     default:
       return cmd.startsWith('list_') || cmd.startsWith('plugin:') ? [] : null
   }
