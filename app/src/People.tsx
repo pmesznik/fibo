@@ -11,6 +11,7 @@ import { useEscape } from './ui'
 import { FaceImg } from './FaceImg'
 import { beginPointerDrag, dragJustEnded } from './pointerDrag'
 import { MergeDialog } from './MergePeople'
+import { PicasaImport } from './PicasaImport'
 
 export { FaceImg }
 
@@ -30,6 +31,7 @@ export function People({ say, ask, onOpenPerson, onChanged, faceSize = 150, onFa
   const [people, setPeople] = useState<Person[]>([])
   const [prog, setProg] = useState<FacesProgress | null>(null)
   const [renaming, setRenaming] = useState<Person | null>(null)
+  const [picasa, setPicasa] = useState(false)
   // Okno łączenia (a = osoba wyjściowa, b = druga, jeśli już wybrana) i okno zarządzania twarzami jednej osoby.
   const [merge, setMerge] = useState<{ a: Person; b: Person | null } | null>(null)
   // Podpowiedzi: dla osoby bez imienia najlepiej pasująca znana osoba.
@@ -183,6 +185,7 @@ export function People({ say, ask, onOpenPerson, onChanged, faceSize = 150, onFa
           </button>
           {!st.running && <button className="chip" onClick={regroup} title="Grupuje twarze w osoby od nowa (szybko). Imiona i ręczne poprawki zostają.">Pogrupuj od nowa</button>}
           {!st.running && <button className="chip" onClick={reanalyze} title="Analizuje wszystkie zdjęcia od nowa, dokładniej">Przeanalizuj ponownie</button>}
+          {!st.running && <button className="chip" onClick={() => setPicasa(true)} title="Przenosi imiona osób z Picasy 3 (z plików .picasa.ini obok zdjęć). Pliki Picasy są tylko czytane.">Przenieś z Picasy…</button>}
           {st.rejected > 0 && !st.running && (
             <button className="chip" onClick={restoreRejected} title="Odrzucone twarze wracają do automatycznego grupowania">Przywróć odrzucone ({fmt(st.rejected)})</button>
           )}
@@ -275,6 +278,7 @@ export function People({ say, ask, onOpenPerson, onChanged, faceSize = 150, onFa
         </>
       )}
 
+      {picasa && <PicasaImport say={say} onClose={() => setPicasa(false)} onDone={() => { refresh(); onChanged() }} />}
       {merge && (
         <MergeDialog people={people} a={merge.a} b={merge.b} say={say} onClose={() => setMerge(null)} onDone={() => { refresh(); onChanged() }} onFacesChanged={() => { refresh(); onChanged() }} />
       )}

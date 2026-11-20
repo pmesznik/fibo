@@ -289,7 +289,12 @@ export const setFacesAutolearn = (on: boolean) => invoke('set_faces_autolearn', 
 export const rejectFaces = (ids: number[]) => invoke<number>('reject_faces', { ids })
 export const deletePerson = (id: number) => invoke<number>('delete_person', { id })
 export const restoreRejectedFaces = () => invoke<number>('restore_rejected_faces')
-export const splitPerson = (id: number) => invoke<number>('split_person', { id })
+export type PicasaName = { key: string; name: string; variants: string[]; faces: number; matched: number; existing: number | null }
+export type PicasaScan = { folders: number; files: number; named: number; no_photo: number; no_face: number; unresolved: number; names: PicasaName[] }
+export type PicasaReport = { imported: number; kept: number; conflicts: number; people_created: number }
+export const picasaScan = () => invoke<PicasaScan>('picasa_scan')
+export const picasaImport = (map: { key: string; to: string }[]) => invoke<PicasaReport>('picasa_import', { map })
+export const splitPerson =(id: number) => invoke<number>('split_person', { id })
 export const ignorePerson =(id: number, ignored: boolean) => invoke('ignore_person', { id, ignored })
 
 export async function pickFile(title: string, extensions: string[], filterName = 'Kopia biblioteki FIBO') {

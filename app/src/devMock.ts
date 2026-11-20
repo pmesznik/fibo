@@ -120,6 +120,14 @@ function respond(cmd: string, args: Record<string, unknown> = {}): unknown | Pro
     case 'list_people':
       return NAMES.map((name, i) => ({ id: i + 1, name, count: 40 - i * 5, photos: 30 - i * 4, cover: (i + 1) * 100, ignored: false, unsure: i % 2 === 0 ? i + 2 : 0 }))
     case 'person_photos': return photos.slice(0, 20).map((p) => p.id)
+    case 'picasa_scan': return { folders: 12, files: 9, named: 1240, no_photo: 40, no_face: 130, unresolved: 3, names: [
+      { key: 'oleńka', name: 'Oleńka', variants: [], faces: 520, matched: 470, existing: 2 },
+      { key: 'ja', name: 'Ja', variants: [], faces: 400, matched: 360, existing: null },
+      { key: 'oli mama', name: 'Oli Mama', variants: ['Oli mama'], faces: 90, matched: 80, existing: null },
+      { key: 'martyna', name: 'Martyna', variants: [], faces: 60, matched: 50, existing: null },
+      { key: 'martyna knebel', name: 'Martyna Knebel', variants: [], faces: 40, matched: 33, existing: 4 },
+    ] }
+    case 'picasa_import': return { imported: 993, kept: 4, conflicts: 2, people_created: 3 }
     case 'person_face_cards': return faceCards(Number(args.id))
     case 'person_faces': return faceCards(Number(args.id)).map((f) => f.face).slice(0, 12)
     case 'merge_suggestions': return args.id === null ? [{ id: 6, other: 1, score: 0.78, conflict: false }] : [2, 3, 4, 5, 6].map((o, k) => ({ id: Number(args.id), other: o, score: 0.7 - k * 0.1, conflict: o === 4 }))

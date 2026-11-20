@@ -43,6 +43,7 @@ i poproś o kontakt). Najnowsza wydana wersja jest jedyną wspieraną.
   jako JSON, a nie wykonywany. Pliki `.fibo.json` innych autorów są wczytywane tylko przy znaczniku `fibo_edit` i limicie rozmiaru.
 - **Kopia zdjęć na dysk** nie usuwa niczego, ale zmienione zdjęcie zastępuje starszą kopię tego samego pliku. Foldery o tej samej nazwie
   z różnych dysków trafiają do osobnych folderów (z literą dysku w nazwie).
+- **Przenoszenie osób z Picasy** (Osoby → „Przenieś z Picasy…”) czyta tylko pliki `.picasa.ini` w folderach, które już są w bibliotece FIBO, oraz ogólną listę osób Picasy (`contacts.xml`). Niczego w plikach Picasy nie zmienia i nie używa sieci. Imiona przypisuje do twarzy, które FIBO sam wykrył (nie tworzy twarzy z ramek), nie nadpisuje twarzy ustawionych ręcznie w FIBO, a użytkownik przed zapisem widzi i poprawia listę imion.
 - **Kopia biblioteki** (plik .db) zawiera tagi, oceny, albumy, ścieżki i opisy zdjęć, a nie zawiera osób ani danych twarzy.
   Kopia bezpieczeństwa, którą program robi przed przywróceniem, leży w folderze danych programu, zawiera też osoby i jest tylko jedna (najnowsza).
 - **Eksport galerii HTML** zawiera pomniejszone zdjęcia bez EXIF (bez współrzędnych), a także nazwy plików, opisy i daty zdjęć.
