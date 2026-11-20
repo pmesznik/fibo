@@ -68,7 +68,7 @@ export type FilmResult = { blob: Blob; ext: 'mp4' | 'webm'; seconds: number }
  */
 export async function recordFilm(o: FilmOptions, load: (i: number) => Promise<ImageBitmap>, audio: ArrayBuffer | null, onProgress: (done: number, total: number) => void, signal: AbortSignal): Promise<FilmResult> {
   const fmt = pickFilmMime((m) => typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(m))
-  if (!fmt) throw new Error('Okno programu nie umie nagrywać filmów na tym komputerze')
+  if (!fmt) throw new Error('Okno programu nie potrafi nagrywać filmów na tym komputerze')
   const canvas = document.createElement('canvas')
   canvas.width = o.width; canvas.height = o.height
   const ctx = canvas.getContext('2d', { alpha: false })!

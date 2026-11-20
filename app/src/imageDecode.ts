@@ -56,7 +56,7 @@ export async function makeVideoThumbBlob(url: string, side = 360): Promise<{ blo
     const ready = (ev: 'loadeddata' | 'seeked') => new Promise<void>((ok, fail) => {
       const t = window.setTimeout(() => fail(new Error('Film nie odpowiada')), 12000)
       v.addEventListener(ev, () => { window.clearTimeout(t); ok() }, { once: true })
-      v.addEventListener('error', () => { window.clearTimeout(t); fail(new Error('Okno aplikacji nie umie odtworzyć tego filmu (nieobsługiwany kodek)')) }, { once: true })
+      v.addEventListener('error', () => { window.clearTimeout(t); fail(new Error('Okno programu nie potrafi odtworzyć tego filmu (nieobsługiwany kodek)')) }, { once: true })
     })
     const loaded = ready('loadeddata')
     v.src = url

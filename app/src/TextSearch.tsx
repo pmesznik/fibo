@@ -50,7 +50,7 @@ export function TextSearch({ onResults, onClose, say }: {
     try {
       const r = await ocrSearch(query)
       if (r.indexed === 0) setNote('Najpierw rozpoznaj tekst na zdjęciach (przycisk wyżej). To jednorazowa praca w tle.')
-      else if (r.ids.length === 0) setNote(`Nie znalazłem „${query}” na zdjęciach${st && st.indexed < st.total ? ` (rozpoznano ${st.indexed} z ${st.total}, reszta jeszcze nie)` : ''}.`)
+      else if (r.ids.length === 0) setNote(`Nie znaleziono „${query}” na zdjęciach${st && st.indexed < st.total ? ` (rozpoznano ${st.indexed} z ${st.total}, reszta jeszcze nie)` : ''}.`)
       else {
         setSnips(r.ids.slice(0, 8).map((id, i) => ({ id, text: r.snippets[i] })))
         setNote(`Znaleziono ${r.ids.length} ${pl(r.ids.length, 'zdjęcie', 'zdjęcia', 'zdjęć')}. Przykłady tekstu poniżej.`)

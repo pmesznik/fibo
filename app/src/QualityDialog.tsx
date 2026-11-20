@@ -131,7 +131,7 @@ export function QualityDialog({ photos, onClose, onChanged, onShow, say }: {
                 <button className="chip" disabled={bursts.length === 0} onClick={pickBest}><Check size={14} /> Wybierz najlepsze ({bursts.length} {pl(bursts.length, 'seria', 'serie', 'serii')})</button>
                 <button className="chip" disabled={bursts.length === 0} onClick={() => { onShow(bursts.map((b) => b.best.id), 'Najlepsze z serii'); onClose() }}>Pokaż w bibliotece</button>
               </div>
-              {bursts.length === 0 && <div style={{ color: 'var(--muted)', fontSize: 13 }}>{real.length - unmeasured === 0 ? 'Najpierw oceń jakość zdjęć.' : 'Nie znalazłem serii zdjęć z ocenioną ostrością.'}</div>}
+              {bursts.length === 0 && <div style={{ color: 'var(--muted)', fontSize: 13 }}>{real.length - unmeasured === 0 ? 'Najpierw oceń jakość zdjęć.' : 'Nie znaleziono serii zdjęć z ocenioną ostrością.'}</div>}
               <div style={{ display: 'grid', gap: 8 }}>
                 {bursts.slice(0, 40).map((b) => (
                   <div key={b.best.id} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>

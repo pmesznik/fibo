@@ -84,7 +84,7 @@ export function PicasaImport({ say, onClose, onDone }: { say: (m: string, kind?:
               {' '}Wpisz to samo imię w dwóch wierszach, żeby je połączyć, a puste imię pomija wiersz.
             </div>
             {scan.names.length === 0 ? (
-              <div className="empty" style={{ height: 160 }}>Nie znalazłem imion z Picasy w folderach biblioteki.</div>
+              <div className="empty" style={{ height: 160 }}>Nie znaleziono imion z Picasy w folderach biblioteki.</div>
             ) : (
               <div className="sheet-body" style={{ padding: '0 16px 8px' }}>
                 {scan.names.map((n) => {

@@ -628,7 +628,7 @@ export function Viewer({ photos, startId, autoplay = false, focusPerson, allTags
     const ctx = c.getContext('2d', { willReadFrequently: true })!
     ctx.drawImage(bitmap, 0, 0, c.width, c.height)
     const a = detectHorizonAngle({ d: ctx.getImageData(0, 0, c.width, c.height).data, w: c.width, h: c.height })
-    if (a === null) { say('Nie znalazłem wyraźnej poziomej linii (horyzontu). Wyprostuj ręcznie suwakiem', 'err'); return }
+    if (a === null) { say('Nie znaleziono wyraźnej poziomej linii (horyzontu). Wyprostuj ręcznie suwakiem', 'err'); return }
     change((s) => ({ ...s, geo: { ...s.geo, angle: Math.max(-15, Math.min(15, a)) } }))
     say(`Wyprostowano o ${a.toString().replace('.', ',')}°. Możesz to poprawić suwakiem`, 'ok')
   }
@@ -682,7 +682,7 @@ export function Viewer({ photos, startId, autoplay = false, focusPerson, allTags
         {loadError && <div className="empty">Nie można otworzyć zdjęcia: {loadError}</div>}
         {photo.video && (
           <video key={photo.id} src={videoUrl(photo.id)} controls autoPlay playsInline aria-label={photo.name}
-            onError={() => say('Okno aplikacji nie umie odtworzyć tego filmu (nieobsługiwany kodek, np. H.265 bez rozszerzenia systemu). Otwórz go w innym odtwarzaczu.', 'err')}
+            onError={() => say('Okno programu nie potrafi odtworzyć tego filmu (nieobsługiwany kodek, np. H.265 bez rozszerzenia systemu). Otwórz go w innym odtwarzaczu.', 'err')}
             style={{ maxWidth: '100%', maxHeight: '100%', borderRadius: 'var(--r-md)', boxShadow: '0 10px 40px rgba(0,0,0,.4)', background: '#000' }} />
         )}
         {!photo.video && !bitmap && !loadError && <div className="empty">Wczytywanie…</div>}
@@ -1061,7 +1061,7 @@ export function Viewer({ photos, startId, autoplay = false, focusPerson, allTags
               <Sec id="tune-lens" icon={<Aperture size={17} />} title="Korekta obiektywu" hint={edit.geo.lensD || edit.geo.lensV || edit.geo.lensCA ? 'Zmieniono' : 'Bez zmian'}>
                 <p style={{ margin: '0 0 6px', fontSize: 13, color: 'var(--muted)' }}>Ręczna korekta wad obiektywu. Dystorsja dodatnia prostuje „beczkę” (linie wygięte na zewnątrz), ujemna „poduszkę”.</p>
                 <Slider label="Dystorsja" value={edit.geo.lensD} min={-100} max={100} onStart={snap} onChange={(v) => live((s) => ({ ...s, geo: { ...s.geo, lensD: v } }))} />
-                <Slider label="Winietowanie (rozjaśnienie rogów)" value={edit.geo.lensV} min={-100} max={100} onStart={snap} onChange={(v) => live((s) => ({ ...s, geo: { ...s.geo, lensV: v } }))} />
+                <Slider label="Winieta (rozjaśnienie lub przyciemnienie rogów)" value={edit.geo.lensV} min={-100} max={100} onStart={snap} onChange={(v) => live((s) => ({ ...s, geo: { ...s.geo, lensV: v } }))} />
                 <Slider label="Aberracja chromatyczna (kolorowe obwódki)" value={edit.geo.lensCA} min={-100} max={100} onStart={snap} onChange={(v) => live((s) => ({ ...s, geo: { ...s.geo, lensCA: v } }))} />
               </Sec>
               <button className="wide" onClick={() => change((s) => ({ ...s, adj: ZERO_ADJUST, curves: undefined, hsl: undefined, geo: { ...s.geo, lensD: 0, lensV: 0, lensCA: 0 } }))}>Zeruj dostrajanie</button>

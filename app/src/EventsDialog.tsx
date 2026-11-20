@@ -48,7 +48,7 @@ export function EventsDialog({ photos, albumNames, onShow, onCreate, onClose }: 
           Zdjęcia zrobione blisko siebie w czasie (przerwa do 20 godzin), od 10 zdjęć. Wybierz propozycję, żeby ją obejrzeć albo zamienić w album. Nic nie powstaje bez Twojego kliknięcia.
         </div>
         <div style={{ overflowY: 'auto', padding: '8px 16px 16px', display: 'grid', gap: 10 }}>
-          {events.length === 0 && <div className="empty">Nie znalazłem wydarzeń. Potrzebne są zdjęcia z datą, po co najmniej 10 z jednego dnia lub z kilku dni z rzędu.</div>}
+          {events.length === 0 && <div className="empty">Nie znaleziono wydarzeń. Potrzebne są zdjęcia z datą, po co najmniej 10 z jednego dnia lub z kilku dni z rzędu.</div>}
           {events.slice(0, limit).map((e) => {
             const previews = [0, Math.floor(e.ids.length / 3), Math.floor((e.ids.length * 2) / 3), e.ids.length - 1].filter((v, i, a) => a.indexOf(v) === i).map((i) => byId.get(e.ids[i])).filter((p): p is Photo => !!p)
             const label = rangeLabel(e.first, e.last)

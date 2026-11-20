@@ -120,7 +120,7 @@ export function Duplicates({ all, suspended, onClose, onOpen, onTrashed, say }: 
     setMarked(new Set(ids))
     say(`Zaznaczono ${ids.length} ${pl(ids.length, 'kopię', 'kopie', 'kopii')} z „${shortDir(dir)}”. Sprawdź i kliknij „Przenieś do Kosza” na dole`, 'ok')
   }
-  const pairLabel = (p: FolderPair) => p.kind === 'identical' ? 'Te same zdjęcia w obu katalogach' : p.kind === 'subset' ? `„${shortDir(p.inside === 'a' ? p.a : p.b)}” w całości jest w „${shortDir(p.inside === 'a' ? p.b : p.a)}”` : 'Część zdjęć wspólna'
+  const pairLabel = (p: FolderPair) => p.kind === 'identical' ? 'Te same zdjęcia w obu folderach' : p.kind === 'subset' ? `„${shortDir(p.inside === 'a' ? p.a : p.b)}” w całości jest w „${shortDir(p.inside === 'a' ? p.b : p.a)}”` : 'Część zdjęć wspólna'
 
   const markedList = useMemo(() => [...marked], [marked])
   const markedBytes = markedList.reduce((n, id) => n + (byId.get(id)?.size ?? 0), 0)
@@ -154,7 +154,7 @@ export function Duplicates({ all, suspended, onClose, onOpen, onTrashed, say }: 
         <div style={{ color: 'var(--muted)', fontSize: 13, marginBottom: 14 }}>Znajdź kopie tych samych zdjęć i przenieś zbędne do Kosza</div>
 
         <section className="sec">
-          <h2 className="sec-h"><i><ScanSearch size={17} /></i>Co szukać</h2>
+          <h2 className="sec-h"><i><ScanSearch size={17} /></i>Czego szukać</h2>
           <div className="chips">
             {LEVELS.map((l) => <Chip key={l.id} on={level === l.id} onClick={() => setLevel(l.id)}>{l.label}</Chip>)}
           </div>
@@ -171,10 +171,10 @@ export function Duplicates({ all, suspended, onClose, onOpen, onTrashed, say }: 
         )}
 
         {pairs.length > 0 && (
-          <section className="sec" aria-label="Powtarzające się katalogi">
-            <h2 className="sec-h"><i><FolderOpen size={17} /></i>Powtarzające się katalogi<span style={{ font: '400 13px system-ui', color: 'var(--muted)' }}>{pairs.length} {pl(pairs.length, 'para', 'pary', 'par')}, od 100% w dół</span></h2>
+          <section className="sec" aria-label="Powtarzające się foldery">
+            <h2 className="sec-h"><i><FolderOpen size={17} /></i>Powtarzające się foldery<span style={{ font: '400 13px system-ui', color: 'var(--muted)' }}>{pairs.length} {pl(pairs.length, 'para', 'pary', 'par')}, od 100% w dół</span></h2>
             <p style={{ margin: '0 2px 8px', color: 'var(--muted)', fontSize: 13 }}>
-              Te pary katalogów zawierają te same zdjęcia. Wybierz katalog, z którego chcesz usunąć kopie: zaznaczę do Kosza tylko te zdjęcia, które mają odpowiednik w drugim katalogu, więc ich oryginały zostaną.
+              Te pary folderów zawierają te same zdjęcia. Wybierz folder, z którego chcesz usunąć kopie: zaznaczę do Kosza tylko te zdjęcia, które mają odpowiednik w drugim folderze, więc ich oryginały zostaną.
             </p>
             <div style={{ display: 'grid', gap: 10 }}>
               {pairs.map((p) => (
@@ -187,8 +187,8 @@ export function Duplicates({ all, suspended, onClose, onOpen, onTrashed, say }: 
                   {([[p.a, p.b, p.countA], [p.b, p.a, p.countB]] as [string, string, number][]).map(([dir, other, n]) => (
                     <div key={dir} style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
                       <span style={{ flex: 1, minWidth: 0, wordBreak: 'break-all', fontSize: 13, userSelect: 'text' }} title={dir}>{dir} <span style={{ color: 'var(--muted)' }}>({n})</span></span>
-                      <button className="ico" aria-label={`Pokaż w Eksploratorze: ${dir}`} title="Pokaż katalog w Eksploratorze" onClick={() => revealInExplorer(dir).catch((e) => say(`Nie udało się otworzyć Eksploratora: ${e}`, 'err'))}><FolderOpen size={17} /></button>
-                      <button className="chip" onClick={() => markFolder(dir, other)} title={`Zaznacz do Kosza kopie z tego katalogu, które mają odpowiednik w „${shortDir(other)}”`}>Usuń kopie stąd</button>
+                      <button className="ico" aria-label={`Pokaż w Eksploratorze: ${dir}`} title="Pokaż folder w Eksploratorze" onClick={() => revealInExplorer(dir).catch((e) => say(`Nie udało się otworzyć Eksploratora: ${e}`, 'err'))}><FolderOpen size={17} /></button>
+                      <button className="chip" onClick={() => markFolder(dir, other)} title={`Zaznacz do Kosza kopie z tego folderu, które mają odpowiednik w „${shortDir(other)}”`}>Usuń kopie stąd</button>
                     </div>
                   ))}
                 </div>
@@ -198,10 +198,10 @@ export function Duplicates({ all, suspended, onClose, onOpen, onTrashed, say }: 
         )}
 
         {shown.length > 0 && folderStats.length > 1 && (
-          <section className="sec" aria-label="Ważniejszy katalog">
-            <h2 className="sec-h"><i><FolderOpen size={17} /></i>Który katalog jest ważniejszy?</h2>
+          <section className="sec" aria-label="Ważniejszy folder">
+            <h2 className="sec-h"><i><FolderOpen size={17} /></i>Który folder jest ważniejszy?</h2>
             <p style={{ margin: '0 2px 8px', color: 'var(--muted)', fontSize: 13 }}>
-              Kliknij katalogi w kolejności ważności (1 = najważniejszy). Zdjęcie z ważniejszego katalogu jest „główne” i zostaje, a jego kopie z innych katalogów są zaznaczane do Kosza. Bez wyboru główne jest największe i najlepsze.
+              Kliknij foldery w kolejności ważności (1 = najważniejszy). Zdjęcie z ważniejszego folderu jest „główne” i zostaje, a jego kopie z innych folderów są zaznaczane do Kosza. Bez wyboru główne jest największe i najlepsze.
             </p>
             <div style={{ display: 'grid', gap: 6 }}>
               {folderStats.map(([dir, n]) => {
@@ -211,12 +211,12 @@ export function Duplicates({ all, suspended, onClose, onOpen, onTrashed, say }: 
                     <button className={`chip${rank >= 0 ? ' on' : ''}`} aria-pressed={rank >= 0} aria-label={`${rank >= 0 ? `Ważność ${rank + 1}: ` : 'Ustaw jako ważniejszy: '}${dir}`} onClick={() => pickFolder(dir)}
                       style={{ minWidth: 44, justifyContent: 'center' }}>{rank >= 0 ? `${rank + 1}` : '○'}</button>
                     <span style={{ flex: 1, minWidth: 0, wordBreak: 'break-all', fontSize: 14, userSelect: 'text' }} title={dir}>{dir} <span style={{ color: 'var(--muted)' }}>({n})</span></span>
-                    <button className="ico" aria-label={`Pokaż w Eksploratorze: ${dir}`} title="Pokaż katalog w Eksploratorze" onClick={() => revealInExplorer(dir).catch((e) => say(`Nie udało się otworzyć Eksploratora: ${e}`, 'err'))}><FolderOpen size={17} /></button>
+                    <button className="ico" aria-label={`Pokaż w Eksploratorze: ${dir}`} title="Pokaż folder w Eksploratorze" onClick={() => revealInExplorer(dir).catch((e) => say(`Nie udało się otworzyć Eksploratora: ${e}`, 'err'))}><FolderOpen size={17} /></button>
                   </div>
                 )
               })}
             </div>
-            {order.length > 0 && <button className="wide" onClick={() => applyOrder([])}>Wyczyść kolejność katalogów</button>}
+            {order.length > 0 && <button className="wide" onClick={() => applyOrder([])}>Wyczyść kolejność folderów</button>}
           </section>
         )}
 

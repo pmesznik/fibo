@@ -225,7 +225,7 @@ export default function App() {
   useEffect(() => { reload() }, [reload])
   const reloadAlbums = useCallback(async () => { if (inTauri) setAlbums(await listAlbums()) }, [])
   const reloadRoots = useCallback(async () => { if (inTauri) setRoots(await listRoots()) }, [])
-  // Taca: trwały koszyk zdjęć z różnych folderów i albumów; akcje działają na jej zawartości po „Zaznacz z tacy”.
+  // Schowek: trwały zbiór zdjęć z różnych folderów i albumów; akcje działają na jej zawartości po „Zaznacz” w schowku.
   // Albumy inteligentne: zapisane zestawy filtrów (szukanie, ocena, daty, braki, tagi), których zawartość liczy się na bieżąco.
   const [smart, setSmart] = useState<SmartAlbum[]>([])
   const reloadSmart = useCallback(async () => { if (inTauri) setSmart(await listSmart()) }, [])
@@ -234,7 +234,7 @@ export default function App() {
   const reloadLocked = useCallback(async () => { if (inTauri) setLocked(await listLocked()) }, [])
   useEffect(() => { reloadLocked() }, [reloadLocked])
   const [together, setTogether] = useState<Person[] | null>(null)
-  /** Scalanie osoby, którą właśnie przeglądasz, z inną (ta sama osoba rozpoznana jako dwie). */
+  /** Łączenie osoby, którą właśnie przeglądasz, z inną (ta sama osoba rozpoznana jako dwie). */
   const [mergeWith, setMergeWith] = useState<{ people: Person[]; a: Person } | null>(null)
   const [props, setPropsList] = useState<Prop[]>([])
   const [propsFor, setPropsFor] = useState<null | { kind: 'album' | 'folder'; id: string; title: string }>(null)
@@ -740,7 +740,7 @@ export default function App() {
     if (inTauri) setLabel(ids, next).catch((e) => say(`Nie udało się zapisać etykiety: ${e}`, 'err'))
     say(next ? `Etykieta ${LABELS[next - 1].name}` : 'Zdjęto etykietę', 'ok')
   }
-  /** Gwiazdka z tacy: dodaje wszystkie zdjęcia z tacy do ulubionych (a gdy już wszystkie są ulubione, usuwa je z ulubionych). */
+  /** Gwiazdka schowka: dodaje wszystkie jego zdjęcia do ulubionych (a gdy już wszystkie są ulubione, usuwa je z ulubionych). */
   const favIds = (ids: number[]) => {
     const picked = all.filter((p) => ids.includes(p.id) && p.id >= 0)
     if (!picked.length) return
@@ -1594,12 +1594,12 @@ export default function App() {
                   {placeFilter !== null && <Chip on onClick={() => setPlaceFilter(null)} label="Usuń filtr miejsca"><MapPin size={13} /> {placeFilter} <X size={13} /></Chip>}
                   {albumId !== null && <Chip on onClick={() => setAlbumId(null)} label="Pokaż całą bibliotekę"><FolderOpen size={13} /> Album: {albums.find((a) => a.id === albumId)?.name ?? '…'} <X size={13} /></Chip>}
                   {(query.trim() || minStars > 0 || dateFrom || dateTo || missing || activeTags.length > 0) && <Chip onClick={saveSmartAlbum} label="Zapisz filtry jako album inteligentny"><Star size={13} /> Zapisz jako album inteligentny</Chip>}
-                  {trayView && <Chip on onClick={() => setTrayView(false)} label="Pokaż całą bibliotekę"><ListChecks size={13} /> Taca <X size={13} /></Chip>}
+                  {trayView && <Chip on onClick={() => setTrayView(false)} label="Pokaż całą bibliotekę"><ListChecks size={13} /> Schowek <X size={13} /></Chip>}
                   {person && <Chip on onClick={() => setPerson(null)} label="Pokaż całą bibliotekę"><Users size={13} /> {person.name} <X size={13} /></Chip>}
                   {person?.id !== undefined && <Chip on={personFacesMode} onClick={() => setPersonFacesMode(true)} label="Pokaż twarze">Twarze</Chip>}
                   {person?.id !== undefined && <Chip on={!personFacesMode} onClick={() => setPersonFacesMode(false)} label="Pokaż zdjęcia">Zdjęcia</Chip>}
                   {person && <Chip onClick={slideshow} label="Pokaz zdjęć tej osoby"><Play size={13} /> Pokaz zdjęć</Chip>}
-                  {person && !person.memory && person.id !== undefined && <Chip onClick={async () => { try { const all = await listPeople(); const a = all.find((o) => o.id === person.id); if (a) setMergeWith({ people: all.filter((o) => !o.ignored || o.id === a.id), a }); else say('Nie znalazłem tej osoby', 'err') } catch (e) { say(`Błąd: ${e}`, 'err') } }} label="Scal tę osobę z inną"><Users size={13} /> Scal z inną osobą…</Chip>}
+                  {person && !person.memory && person.id !== undefined && <Chip onClick={async () => { try { const all = await listPeople(); const a = all.find((o) => o.id === person.id); if (a) setMergeWith({ people: all.filter((o) => !o.ignored || o.id === a.id), a }); else say('Nie znaleziono tej osoby', 'err') } catch (e) { say(`Błąd: ${e}`, 'err') } }} label="Połącz tę osobę z inną"><Users size={13} /> Połącz z inną osobą…</Chip>}
                   {person && !person.memory && <Chip onClick={async () => { try { setTogether((await listPeople()).filter((o) => !o.ignored)) } catch (e) { say(`Błąd: ${e}`, 'err') } }} label="Pokaż tylko zdjęcia razem z inną osobą"><Users size={13} /> Razem z…</Chip>}
                   {folder && <Chip on onClick={() => setFolder(null)} label="Usuń filtr folderu"><FolderOpen size={13} /> {folderName(folder)} <X size={13} /></Chip>}
                   {(dateFrom || dateTo) && <Chip on onClick={() => { setDateFrom(''); setDateTo('') }} label="Usuń filtr dat"><CalendarDays size={13} /> {dateFrom || '…'} – {dateTo || '…'} <X size={13} /></Chip>}
@@ -1877,8 +1877,8 @@ export default function App() {
               const allIn = ids.every((i) => tray.includes(i))
               setTray((t) => (allIn ? t.filter((i) => !ids.includes(i)) : [...new Set([...t, ...ids])]))
               setMenu(null)
-              say(allIn ? 'Usunięto z tacy' : `Dodano do tacy (razem ${new Set([...tray, ...ids]).size})`, 'ok')
-            }}><ListChecks size={18} /> {realIds().every((i) => tray.includes(i)) ? 'Z tacy' : 'Do tacy'}</button>
+              say(allIn ? 'Usunięto ze schowka' : `Dodano do schowka (razem ${new Set([...tray, ...ids]).size})`, 'ok')
+            }}><ListChecks size={18} /> {realIds().every((i) => tray.includes(i)) ? 'Ze schowka' : 'Do schowka'}</button>
             <button className="text menu-item" role="menuitem" onClick={() => { setMenu(null); setPicker(true) }}><FolderOpen size={18} /> Do albumu…</button>
             {albumId !== null && (
               <button className="text menu-item" role="menuitem" onClick={leaveAlbum}><X size={18} /> Z albumu</button>
@@ -1950,25 +1950,25 @@ export default function App() {
           onCreate={() => { setPicker(false); newAlbum(true) }} />
       )}
       {tray.length > 0 && (
-        <div className="glass fixed flex flex-wrap items-center gap-1" role="group" aria-label="Taca zdjęć"
+        <div className="glass fixed flex flex-wrap items-center gap-1" role="group" aria-label="Schowek zdjęć"
           style={{ left: 16, bottom: 'calc(16px + var(--sab))', zIndex: 1040, padding: '6px 8px 6px 14px', borderRadius: 'var(--r-lg)', maxWidth: 'min(94vw, 760px)' }}>
-          <span style={{ fontWeight: 650, fontSize: 14, marginRight: 4 }}>Taca: {tray.length}</span>
-          {realIds().length > 0 && <button className="chip" title="Dodaj zaznaczone zdjęcia do tacy" onClick={() => { const n = new Set([...tray, ...realIds()]); setTray([...n]); say(`Dodano do tacy (razem ${n.size})`, 'ok') }}>Zatrzymaj zaznaczone</button>}
-          <button className={`chip${trayView ? ' on' : ''}`} aria-pressed={trayView} onClick={() => { setTrayView((v) => !v); setMode('library'); setAlbumId(null); setFolder(null) }}>{trayView ? 'Pokaż wszystko' : 'Pokaż tacę'}</button>
-          <button className="chip" onClick={() => { setSel([...tray]); say(`Zaznaczono z tacy: ${tray.length}. Kliknij prawym przyciskiem, żeby wybrać akcję`, 'ok') }}>Zaznacz</button>
-          <button className="chip" title="Dodaj zdjęcia z tacy do albumu" onClick={() => { setSel([...tray]); setPicker(true) }}><FolderOpen size={14} /> Do albumu</button>
-          <button className="chip" title="Dodaj zdjęcia z tacy do ulubionych (gwiazdka)" onClick={() => favIds(tray)}><Star size={14} /> Ulubione</button>
-          <button className="ico" aria-label="Obróć zdjęcia z tacy w lewo" title="Obróć w lewo (bez utraty jakości)" onClick={() => rotateIds(tray, false)}><RotateCcw size={17} /></button>
-          <button className="ico" aria-label="Obróć zdjęcia z tacy w prawo" title="Obróć w prawo (bez utraty jakości)" onClick={() => rotateIds(tray, true)}><RotateCw size={17} /></button>
-          <button className="chip" disabled={tray.length < 2} title="Zrób kolaż ze zdjęć z tacy" onClick={() => { setSel([...tray]); setCollage(true) }}><LayoutDashboard size={14} /> Kolaż</button>
-          <button className="chip" title="Eksport lub wydruk (PDF) zdjęć z tacy" onClick={() => setExportIds([...tray])}><Download size={14} /> Eksport i druk</button>
+          <span style={{ fontWeight: 650, fontSize: 14, marginRight: 4 }}>Schowek: {tray.length}</span>
+          {realIds().length > 0 && <button className="chip" title="Dodaj zaznaczone zdjęcia do schowka" onClick={() => { const n = new Set([...tray, ...realIds()]); setTray([...n]); say(`Dodano do schowka (razem ${n.size})`, 'ok') }}>Dodaj zaznaczone</button>}
+          <button className={`chip${trayView ? ' on' : ''}`} aria-pressed={trayView} onClick={() => { setTrayView((v) => !v); setMode('library'); setAlbumId(null); setFolder(null) }}>{trayView ? 'Pokaż wszystko' : 'Pokaż schowek'}</button>
+          <button className="chip" onClick={() => { setSel([...tray]); say(`Zaznaczono ze schowka: ${tray.length}. Kliknij prawym przyciskiem, żeby wybrać akcję`, 'ok') }}>Zaznacz</button>
+          <button className="chip" title="Dodaj zdjęcia ze schowka do albumu" onClick={() => { setSel([...tray]); setPicker(true) }}><FolderOpen size={14} /> Do albumu</button>
+          <button className="chip" title="Dodaj zdjęcia ze schowka do ulubionych (gwiazdka)" onClick={() => favIds(tray)}><Star size={14} /> Ulubione</button>
+          <button className="ico" aria-label="Obróć zdjęcia ze schowka w lewo" title="Obróć w lewo (bez utraty jakości)" onClick={() => rotateIds(tray, false)}><RotateCcw size={17} /></button>
+          <button className="ico" aria-label="Obróć zdjęcia ze schowka w prawo" title="Obróć w prawo (bez utraty jakości)" onClick={() => rotateIds(tray, true)}><RotateCw size={17} /></button>
+          <button className="chip" disabled={tray.length < 2} title="Zrób kolaż ze zdjęć ze schowka" onClick={() => { setSel([...tray]); setCollage(true) }}><LayoutDashboard size={14} /> Kolaż</button>
+          <button className="chip" title="Eksport lub wydruk (PDF) zdjęć ze schowka" onClick={() => setExportIds([...tray])}><Download size={14} /> Eksport i druk</button>
           <button className="chip" title="Pomniejszone kopie do wysłania e-mailem (1024 px, bez lokalizacji)" onClick={() => { setExportSize(1024); setExportIds([...tray]) }}>E-mail</button>
-          <button className="ico" aria-label="Wyczyść tacę" title="Wyczyść tacę" onClick={() => { setTray([]); setTrayView(false) }}><X size={18} /></button>
+          <button className="ico" aria-label="Wyczyść schowek" title="Wyczyść schowek" onClick={() => { setTray([]); setTrayView(false) }}><X size={18} /></button>
         </div>
       )}
       {mergeWith && (
         <MergeDialog people={mergeWith.people} a={mergeWith.a} b={null} say={say} onClose={() => setMergeWith(null)}
-          onDone={() => { setMergeWith(null); setPerson(null); setMode('people'); say('Osoby scalone. Wróciłem do listy osób', 'ok') }} />
+          onDone={() => { setMergeWith(null); setPerson(null); setMode('people'); say('Osoby połączone. Wrócono do listy osób', 'ok') }} />
       )}
       {together && person && (
         <>

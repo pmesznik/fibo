@@ -80,7 +80,7 @@ export function useUpdater() {
     const watchdog = window.setInterval(() => {
       if (!finished && Date.now() - last > 90000) {
         window.clearInterval(watchdog)
-        setError('Pobieranie przestało postępować (sprawdź połączenie z internetem). Możesz zamknąć to okno i spróbować później.')
+        setError('Pobieranie utknęło (sprawdź połączenie z internetem). Możesz zamknąć to okno i spróbować później.')
         setPhase('error')
       }
     }, 5000)

@@ -54,11 +54,11 @@ export function ContentSearch({ onResults, onClose, say }: {
     try {
       const r = await clipSearch(query)
       if (r.matched.length === 0) {
-        setNote(`Nie znam ${r.unknown.length > 1 ? 'tych słów' : 'tego słowa'}: ${r.unknown.join(', ')}. Spróbuj prostszych słów, np. ${EXAMPLES.slice(0, 5).join(', ')}.`)
+        setNote(`Nie rozpoznano ${r.unknown.length > 1 ? 'tych słów' : 'tego słowa'}: ${r.unknown.join(', ')}. Spróbuj prostszych słów, np. ${EXAMPLES.slice(0, 5).join(', ')}.`)
       } else if (r.indexed === 0) {
         setNote('Najpierw zaindeksuj zdjęcia (przycisk wyżej). To jednorazowa praca w tle.')
       } else if (r.ids.length === 0) {
-        setNote(`Nie znalazłem zdjęć pasujących do: ${r.matched.join(', ')}.${r.indexed < (st?.total ?? 0) ? ` Zaindeksowano dopiero ${r.indexed} z ${st?.total} zdjęć.` : ''}`)
+        setNote(`Nie znaleziono zdjęć pasujących do: ${r.matched.join(', ')}.${r.indexed < (st?.total ?? 0) ? ` Zaindeksowano dopiero ${r.indexed} z ${st?.total} zdjęć.` : ''}`)
       } else {
         onResults(r.ids, `Szukanie: ${r.matched.join(' i ')}`)
         onClose()
